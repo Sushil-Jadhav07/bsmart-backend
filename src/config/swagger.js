@@ -16,20 +16,10 @@ const options = {
         url: 'http://localhost:5000/api',
         description: 'Local Development Server',
       },
-    ],
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        },
-      },
-    },
-    security: [
       {
-        bearerAuth: [],
-      },
+        url: 'https://bsmart.asynk.store/',
+        description: 'Production Server',
+      }
     ],
   },
   apis: ['./src/routes/*.js'], // Path to the API docs
