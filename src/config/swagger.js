@@ -17,7 +17,7 @@ const options = {
         description: 'Local Development Server',
       },
       {
-        url: 'https://bsmart.asynk.store/',
+        url: 'https://bsmart.asynk.store/api',
         description: 'Production Server',
       }
     ],
