@@ -13,13 +13,27 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:5000/api',
+        url: 'http://localhost:5000',
         description: 'Local Development Server',
       },
       {
-        url: 'https://bsmart.asynk.store/api',
+        url: 'https://bsmart.asynk.store',
         description: 'Production Server',
       }
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+    security: [
+      {
+        bearerAuth: [],
+      },
     ],
   },
   apis: ['./src/routes/*.js'], // Path to the API docs

@@ -15,7 +15,7 @@ const jwt = require('jsonwebtoken');
 
 /**
  * @swagger
- * /auth/register:
+ * /api/auth/register:
  *   post:
  *     summary: Register a new user
  *     tags: [Auth]
@@ -63,7 +63,7 @@ router.post('/register', register);
 
 /**
  * @swagger
- * /auth/login:
+ * /api/auth/login:
  *   post:
  *     summary: Login user
  *     tags: [Auth]
@@ -103,7 +103,7 @@ router.post('/login', login);
 
 /**
  * @swagger
- * /auth/me:
+ * /api/auth/me:
  *   get:
  *     summary: Get current user profile
  *     tags: [Auth]
