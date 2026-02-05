@@ -1,8 +1,9 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
+const Comment = require('../models/Comment');
 
-// Helper to transform post with fileUrl
-const transformPost = (post, baseUrl) => {
+// Helper to transform post with fileUrl and is_liked_by_me
+const transformPost = (post, baseUrl, currentUserId = null) => {
   const postObj = post.toObject ? post.toObject() : post;
   
   if (postObj.media && Array.isArray(postObj.media)) {
@@ -10,6 +11,12 @@ const transformPost = (post, baseUrl) => {
       ...item,
       fileUrl: `${baseUrl}/uploads/${item.fileName}`
     }));
+  }
+
+  if (currentUserId && postObj.likes) {
+    postObj.is_liked_by_me = postObj.likes.some(id => id.toString() === currentUserId.toString());
+  } else {
+    postObj.is_liked_by_me = false;
   }
   
   return postObj;
@@ -101,8 +108,17 @@ exports.getPost = async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    // Fetch comments for the post
+    const comments = await Comment.find({ post_id: req.params.id })
+      .sort({ createdAt: -1 });
+
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.json(transformPost(post, baseUrl));
+    const transformedPost = transformPost(post, baseUrl, req.userId);
+    
+    // Attach comments
+    transformedPost.comments = comments;
+
+    res.json(transformedPost);
   } catch (error) {
     console.error(error);
     if (error.kind === 'ObjectId') {

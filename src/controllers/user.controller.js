@@ -1,0 +1,128 @@
+const User = require('../models/User');
+const Post = require('../models/Post');
+
+// Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
+const transformPost = (post, baseUrl) => {
+  const postObj = post.toObject ? post.toObject() : post;
+  
+  if (postObj.media && Array.isArray(postObj.media)) {
+    postObj.media = postObj.media.map(item => ({
+      ...item,
+      fileUrl: `${baseUrl}/uploads/${item.fileName}`
+    }));
+  }
+  
+  return postObj;
+};
+
+// @desc    Get user profile with posts
+// @route   GET /api/users/:id
+// @access  Public (or Private depending on requirement)
+exports.getUserProfile = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // 1. Fetch User
+    const user = await User.findById(userId).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // 2. Fetch User's Posts
+    const posts = await Post.find({ user_id: userId })
+      .sort({ createdAt: -1 })
+      .populate('user_id', 'username full_name avatar_url');
+
+    // 3. Transform posts to include fileUrl
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const transformedPosts = posts.map(post => transformPost(post, baseUrl));
+
+    // 4. Construct Response
+    res.json({
+      user,
+      posts: transformedPosts
+    });
+
+  } catch (error) {
+    console.error(error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update user details
+// @route   PUT /api/users/:id
+// @access  Private
+exports.updateUser = async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // Check if user is authorized (updating own profile or admin)
+    // Note: Assuming req.user is populated by auth middleware
+    if (req.user.id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to update this profile' });
+    }
+
+    // Update fields
+    const { full_name, bio, avatar_url, phone, username } = req.body;
+    
+    // Build update object
+    const updateFields = {};
+    if (full_name) updateFields.full_name = full_name;
+    if (bio) updateFields.bio = bio;
+    if (avatar_url) updateFields.avatar_url = avatar_url;
+    if (phone) updateFields.phone = phone;
+    if (username) updateFields.username = username;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json(user);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Delete user
+// @route   DELETE /api/users/:id
+// @access  Private
+exports.deleteUser = async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // Check if user is authorized (deleting own profile or admin)
+    if (req.user.id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to delete this profile' });
+    }
+
+    // 1. Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // 2. Delete user's posts
+    await Post.deleteMany({ user_id: userId });
+
+    // 3. Delete user
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: 'User and all associated data deleted successfully' });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};

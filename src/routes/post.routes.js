@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { createPost, getFeed, getPost, deletePost } = require('../controllers/post.controller');
+const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 
 /**
  * @swagger
@@ -50,6 +51,27 @@ const { createPost, getFeed, getPost, deletePost } = require('../controllers/pos
  *             type: string
  *         likes_count:
  *           type: number
+ *         is_liked_by_me:
+ *           type: boolean
+ *         comments:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               _id:
+ *                 type: string
+ *               text:
+ *                 type: string
+ *               user:
+ *                 type: object
+ *                 properties:
+ *                   username:
+ *                     type: string
+ *                   avatar_url:
+ *                     type: string
+ *               createdAt:
+ *                 type: string
+ *                 format: date-time
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -190,5 +212,117 @@ router.get('/:id', verifyToken, getPost);
  *         description: Post not found
  */
 router.delete('/:id', verifyToken, deletePost);
+
+/**
+ * @swagger
+ * /api/posts/{id}/like:
+ *   post:
+ *     summary: Like a post
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Liked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 likes_count:
+ *                   type: number
+ *                 liked:
+ *                   type: boolean
+ *       400:
+ *         description: Already liked
+ *       404:
+ *         description: Post not found
+ */
+router.post('/:id/like', verifyToken, likePost);
+
+/**
+ * @swagger
+ * /api/posts/{id}/unlike:
+ *   post:
+ *     summary: Unlike a post
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Unliked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 likes_count:
+ *                   type: number
+ *                 liked:
+ *                   type: boolean
+ *       400:
+ *         description: Not liked yet
+ *       404:
+ *         description: Post not found
+ */
+router.post('/:id/unlike', verifyToken, unlikePost);
+
+/**
+ * @swagger
+ * /api/posts/{id}/likes:
+ *   get:
+ *     summary: Get users who liked a post
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of users who liked the post
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: number
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       full_name:
+ *                         type: string
+ *                       avatar_url:
+ *                         type: string
+ *       404:
+ *         description: Post not found
+ */
+router.get('/:id/likes', verifyToken, getPostLikes);
 
 module.exports = router;

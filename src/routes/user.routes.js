@@ -1,0 +1,134 @@
+const express = require('express');
+const router = express.Router();
+const { getUserProfile, updateUser, deleteUser } = require('../controllers/user.controller');
+const auth = require('../middleware/auth');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Users
+ *   description: User management
+ */
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   get:
+ *     summary: Get user details and their posts
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User details with posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *                 posts:
+ *                   type: array
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Post'
+ *                       - type: object
+ *                         properties:
+ *                           media:
+ *                             type: array
+ *                             items:
+ *                               allOf:
+ *                                 - $ref: '#/components/schemas/MediaItem'
+ *                                 - type: object
+ *                                   properties:
+ *                                     fileUrl:
+ *                                       type: string
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/:id', getUserProfile);
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   put:
+ *     summary: Update user details
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *               avatar_url:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/:id', auth, updateUser);
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   delete:
+ *     summary: Delete user and their posts
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.delete('/:id', auth, deleteUser);
+
+module.exports = router;

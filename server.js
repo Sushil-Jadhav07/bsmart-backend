@@ -10,6 +10,8 @@ const passport = require('./src/config/passport');
 const authRoutes = require('./src/routes/auth.routes');
 const postRoutes = require('./src/routes/post.routes');
 const uploadRoutes = require('./src/routes/upload.routes');
+const userRoutes = require('./src/routes/user.routes');
+const commentRoutes = require('./src/routes/comment.routes');
 
 const app = express();
 
@@ -32,6 +34,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api', commentRoutes);
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok' });

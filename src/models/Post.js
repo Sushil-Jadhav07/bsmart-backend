@@ -55,6 +55,10 @@ const postSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  comments_count: {
+    type: Number,
+    default: 0
+  },
   likes: {
     type: [{
       type: mongoose.Schema.Types.ObjectId,
