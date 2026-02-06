@@ -7,6 +7,11 @@ const commentSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  parent_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Comment',
+    default: null
+  },
   user: {
     id: {
       type: mongoose.Schema.Types.ObjectId,

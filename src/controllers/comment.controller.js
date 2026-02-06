@@ -10,7 +10,7 @@ const User = require('../models/User');
 exports.addComment = async (req, res) => {
   try {
     const { postId } = req.params;
-    const { text } = req.body;
+    const { text, parent_id } = req.body;
     const userId = req.userId;
 
     if (!text) {
@@ -23,6 +23,30 @@ exports.addComment = async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    let parentCommentId = null;
+
+    // Handle replies
+    if (parent_id) {
+      const parentComment = await Comment.findById(parent_id);
+      if (!parentComment) {
+        return res.status(404).json({ message: 'Parent comment not found' });
+      }
+
+      // Ensure parent comment belongs to the same post
+      if (parentComment.post_id.toString() !== postId) {
+        return res.status(400).json({ message: 'Parent comment does not belong to this post' });
+      }
+
+      // Prevent nested replies (only 1 level allowed)
+      if (parentComment.parent_id) {
+        // If parent is already a reply, use its parent_id instead (flat structure for replies)
+        // OR strictly forbid it as per requirement "Ensure parent.parent_id is null"
+        return res.status(400).json({ message: 'Nested replies are not allowed' });
+      }
+
+      parentCommentId = parent_id;
+    }
+
     // Get user details
     const user = await User.findById(userId);
     if (!user) {
@@ -32,6 +56,7 @@ exports.addComment = async (req, res) => {
     // Create comment
     const newComment = new Comment({
       post_id: postId,
+      parent_id: parentCommentId,
       user: {
         id: user._id,
         username: user.username,
@@ -171,7 +196,7 @@ exports.getComments = async (req, res) => {
     //   return res.status(404).json({ message: 'Post not found' });
     // }
 
-    const query = { post_id: postId };
+    const query = { post_id: postId, parent_id: null };
 
     const comments = await Comment.find(query)
       .sort({ createdAt: -1 })
@@ -188,6 +213,39 @@ exports.getComments = async (req, res) => {
     });
   } catch (error) {
     console.error('Get comments error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Get replies for a comment
+ * @route GET /api/comments/:commentId/replies
+ * @access Public/Private
+ */
+exports.getReplies = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { parent_id: commentId };
+
+    const replies = await Comment.find(query)
+      .sort({ createdAt: 1 }) // Oldest first for replies
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Comment.countDocuments(query);
+
+    res.json({
+      page,
+      limit,
+      total,
+      replies
+    });
+  } catch (error) {
+    console.error('Get replies error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
