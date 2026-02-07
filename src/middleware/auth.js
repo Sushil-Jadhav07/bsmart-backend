@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   try {
     // 1. Get token from header
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -12,8 +13,14 @@ const auth = (req, res, next) => {
     // 2. Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Attach user ID to request object
-    req.userId = decoded.id;
+    // 3. Attach user to request object
+    const user = await User.findById(decoded.id);
+    if (!user) {
+        return res.status(401).json({ message: 'User not found' });
+    }
+
+    req.user = user;
+    req.userId = user._id; // Keep this for backward compatibility if needed
 
     next();
   } catch (error) {

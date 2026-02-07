@@ -15,39 +15,53 @@ const generateToken = (id) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { email, password, username, full_name, phone } = req.body;
+    const { email, password, username, full_name, phone, role } = req.body;
 
-    // 0. Manual Password Validation (since it's optional in model for OAuth)
+    // 0. Role Validation
+    if (role) {
+        if (role === 'admin') {
+            return res.status(400).json({ message: 'Cannot register as admin' });
+        }
+        if (!['member', 'vendor'].includes(role)) {
+            return res.status(400).json({ message: 'Invalid role. Allowed: member, vendor' });
+        }
+    }
+
+    // 1. Manual Password Validation
     if (!password || password.length < 6) {
       return res.status(400).json({ message: 'Password is required and must be at least 6 characters' });
     }
 
-    // 1. Check if user exists
+    // 2. Check if user exists
     const userExists = await User.findOne({ $or: [{ email }, { username }] });
     if (userExists) {
       return res.status(400).json({ message: 'User with this email or username already exists' });
     }
 
-    // 2. Hash password
+    // 3. Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 3. Create user
+    // 4. Create user
+    const userRole = role || 'member';
+    
     const user = await User.create({
       email,
       password: hashedPassword,
       username,
       full_name,
-      phone
+      phone,
+      role: userRole
     });
 
-    // 4. Create Wallet for user
-    await Wallet.create({
+    // 5. Create Wallet for user
+    const initialBalance = userRole === 'vendor' ? 5000 : 0;
+    const wallet = await Wallet.create({
       user_id: user._id,
-      balance: 0
+      balance: initialBalance
     });
 
-    // 5. Return response (without password)
+    // 6. Return response
     res.status(201).json({
       token: generateToken(user._id),
       user: {
@@ -56,7 +70,9 @@ exports.register = async (req, res) => {
         username: user.username,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
-        phone: user.phone
+        phone: user.phone,
+        role: user.role,
+        wallet: wallet
       }
     });
 
@@ -74,7 +90,6 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     // 1. Check for email
-    // We explicitly select the password because it's set to select: false in model
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
@@ -88,7 +103,10 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // 3. Return response
+    // 3. Get Wallet
+    const wallet = await Wallet.findOne({ user_id: user._id });
+
+    // 4. Return response
     res.json({
       token: generateToken(user._id),
       user: {
@@ -97,9 +115,10 @@ exports.login = async (req, res) => {
         username: user.username,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
-        phone: user.phone
-      },
-      message: 'Login successful'
+        phone: user.phone,
+        role: user.role,
+        wallet: wallet
+      }
     });
 
   } catch (error) {
@@ -113,15 +132,16 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    // req.userId comes from auth middleware
-    const user = await User.findById(req.userId);
-    const wallet = await Wallet.findOne({ user_id: req.userId });
+    // req.user is already attached by auth middleware
+    const user = req.user;
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Combine user and wallet data
+    // Fetch wallet explicitly since it's not embedded anymore
+    const wallet = await Wallet.findOne({ user_id: user._id });
+    
     const userData = user.toObject();
     if (wallet) {
         userData.wallet = wallet;

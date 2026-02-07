@@ -68,7 +68,45 @@ exports.addComment = async (req, res) => {
     await newComment.save();
 
     // Increment post comments count
-    await Post.findByIdAndUpdate(postId, { $inc: { comments_count: 1 } });
+    // If it's a top-level comment, also add to latest_comments (preview)
+    if (!parentCommentId) {
+      await Post.findByIdAndUpdate(postId, { 
+        $inc: { comments_count: 1 },
+        $push: { 
+          latest_comments: {
+            $each: [{
+              _id: newComment._id,
+              text: newComment.text,
+              user: newComment.user,
+              createdAt: newComment.createdAt,
+              replies: []
+            }],
+            $sort: { createdAt: -1 },
+            $slice: 2 // Keep only the latest 2 comments
+          }
+        }
+      });
+    } else {
+      // It's a reply. Try to add it to the parent comment in latest_comments
+        // We use $push operator via findByIdAndUpdate which is atomic and safer than save() for nested arrays
+        // Note: latest_comments is an array of subdocuments. We need to match the post AND the specific comment in the array.
+        
+        await Post.updateOne(
+          { _id: postId, "latest_comments._id": parentCommentId },
+          { 
+            $push: { 
+              "latest_comments.$.replies": {
+                _id: newComment._id,
+                text: newComment.text,
+                user: newComment.user,
+                createdAt: newComment.createdAt
+              }
+            }
+          }
+        );
+      
+      await Post.findByIdAndUpdate(postId, { $inc: { comments_count: 1 } });
+    }
 
     res.status(201).json(newComment);
   } catch (error) {

@@ -42,6 +42,11 @@ const jwt = require('jsonwebtoken');
  *                 type: string
  *               phone:
  *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [member, vendor]
+ *                 default: member
+ *                 description: User role (cannot register as admin)
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -55,7 +60,7 @@ const jwt = require('jsonwebtoken');
  *                 user:
  *                   $ref: '#/components/schemas/User'
  *       400:
- *         description: User already exists
+ *         description: User already exists or invalid role
  *       500:
  *         description: Server error
  */
@@ -166,6 +171,16 @@ router.get(
  *           type: string
  *         phone:
  *           type: string
+ *         role:
+ *           type: string
+ *           enum: [member, vendor, admin]
+ *         wallet:
+ *           type: object
+ *           properties:
+ *             balance:
+ *               type: number
+ *             currency:
+ *               type: string
  *         createdAt:
  *           type: string
  *           format: date-time

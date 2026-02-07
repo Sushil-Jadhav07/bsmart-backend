@@ -59,6 +59,32 @@ const postSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  latest_comments: {
+    type: [{
+      _id: mongoose.Schema.Types.ObjectId,
+      text: String,
+      user: {
+        id: mongoose.Schema.Types.ObjectId,
+        username: String,
+        avatar_url: String
+      },
+      createdAt: Date,
+      replies: {
+        type: [{
+          _id: mongoose.Schema.Types.ObjectId,
+          text: String,
+          user: {
+            id: mongoose.Schema.Types.ObjectId,
+            username: String,
+            avatar_url: String
+          },
+          createdAt: Date
+        }],
+        default: []
+      }
+    }],
+    default: []
+  },
   likes: {
     type: [{
       type: mongoose.Schema.Types.ObjectId,

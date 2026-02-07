@@ -2,6 +2,8 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 
+const Wallet = require('../models/Wallet');
+
 passport.use(
   new GoogleStrategy(
     {
@@ -49,7 +51,8 @@ passport.use(
           full_name: profile.displayName,
           avatar_url: profile.photos && profile.photos[0] ? profile.photos[0].value : '',
           provider: 'google',
-          // password is not set for OAuth users
+          // Default role for OAuth users
+          role: 'member'
         });
 
         await newUser.save();
