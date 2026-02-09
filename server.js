@@ -17,6 +17,19 @@ const app = express();
 
 // Middleware
 app.use(express.json());
+
+// JSON Syntax Error Handler
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('Bad JSON:', err.message);
+    return res.status(400).json({ 
+      message: 'Invalid JSON format', 
+      error: err.message 
+    });
+  }
+  next();
+});
+
 app.use(passport.initialize()); // Initialize Passport
 app.use(cors({
   origin: "*",

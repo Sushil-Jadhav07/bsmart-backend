@@ -15,37 +15,16 @@ const transformPost = (post, baseUrl) => {
   return postObj;
 };
 
-// @desc    Get all users (with pagination & search)
+// @desc    Get all users (without pagination & search)
 // @route   GET /api/users
 // @access  Public
 exports.getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
-
-    const query = {};
-    if (search) {
-      query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { full_name: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const users = await User.find(query)
+    const users = await User.find()
       .select('-password')
-      .skip((page - 1) * limit)
-      .limit(limit)
       .sort({ createdAt: -1 });
 
-    const total = await User.countDocuments(query);
-
-    res.json({
-      page,
-      limit,
-      total,
-      users
-    });
+    res.json(users);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

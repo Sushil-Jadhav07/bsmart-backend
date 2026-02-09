@@ -6,12 +6,18 @@ const mediaSchema = new mongoose.Schema({
     required: true
   },
   ratio: {
-    type: Number,
-    default: 1
+    type: String,
+    default: '1/1'
   },
   filter: {
-    type: String,
-    default: 'Original'
+    name: {
+      type: String,
+      default: 'Original'
+    },
+    css: {
+      type: String,
+      default: ''
+    }
   },
   type: {
     type: String,

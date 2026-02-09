@@ -14,9 +14,19 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *         fileName:
  *           type: string
  *         ratio:
- *           type: number
- *         filter:
  *           type: string
+ *           default: "1/1"
+ *           example: '3/4'
+ *         filter:
+ *           type: object
+ *           properties:
+ *             name:
+ *               type: string
+ *               default: "Original"
+ *             css:
+ *               type: string
+ *               default: ""
+ *               example: "contrast(1.1) saturate(1.25)"
  *         type:
  *           type: string
  *           default: image
