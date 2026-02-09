@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getUserProfile, updateUser, deleteUser } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 
 /**
@@ -12,9 +12,56 @@ const auth = require('../middleware/auth');
 
 /**
  * @swagger
+ * /api/users:
+ *   get:
+ *     summary: Get all users
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by username or full name
+ *     responses:
+ *       200:
+ *         description: List of users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/User'
+ *       500:
+ *         description: Server error
+ */
+router.get('/', auth, getAllUsers);
+
+/**
+ * @swagger
  * /api/users/{id}:
  *   get:
- *     summary: Get user details and their posts
+ *     summary: Get user details
  *     tags: [Users]
  *     parameters:
  *       - in: path
@@ -25,36 +72,17 @@ const auth = require('../middleware/auth');
  *         description: User ID
  *     responses:
  *       200:
- *         description: User details with posts
+ *         description: User details
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 user:
- *                   $ref: '#/components/schemas/User'
- *                 posts:
- *                   type: array
- *                   items:
- *                     allOf:
- *                       - $ref: '#/components/schemas/Post'
- *                       - type: object
- *                         properties:
- *                           media:
- *                             type: array
- *                             items:
- *                               allOf:
- *                                 - $ref: '#/components/schemas/MediaItem'
- *                                 - type: object
- *                                   properties:
- *                                     fileUrl:
- *                                       type: string
+ *               $ref: '#/components/schemas/User'
  *       404:
  *         description: User not found
  *       500:
  *         description: Server error
  */
-router.get('/:id', getUserProfile);
+router.get('/:id', getUserById);
 
 /**
  * @swagger

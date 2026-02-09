@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { register, login, getMe } = require('../controllers/auth.controller');
+const { getAllUsers } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 const passport = require('passport');
 const jwt = require('jsonwebtoken');
@@ -130,12 +131,85 @@ router.post('/login', login);
  */
 router.get('/me', auth, getMe);
 
-// @desc    Auth with Google
-// @route   GET /api/auth/google
+/**
+ * @swagger
+ * /api/auth/users:
+ *   get:
+ *     summary: Get all users
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by username or full name
+ *     responses:
+ *       200:
+ *         description: List of users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/User'
+ *       500:
+ *         description: Server error
+ */
+router.get('/users', auth, getAllUsers);
+
+/**
+ * @swagger
+ * /api/auth/google:
+ *   get:
+ *     summary: Initiate Google Authentication
+ *     description: Redirects user to Google login page. NOTE - This cannot be tested directly in Swagger UI as it causes a redirect. Open in browser.
+ *     tags: [Auth]
+ *     responses:
+ *       302:
+ *         description: Redirects to Google
+ */
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
-// @desc    Google auth callback
-// @route   GET /api/auth/google/callback
+/**
+ * @swagger
+ * /api/auth/google/callback:
+ *   get:
+ *     summary: Google Authentication Callback
+ *     description: Handle callback from Google. Redirects to frontend with token.
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         description: Authorization code from Google
+ *     responses:
+ *       302:
+ *         description: Redirects to frontend with JWT token
+ *       401:
+ *         description: Authentication failed
+ */
 router.get(
   '/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: '/login' }),

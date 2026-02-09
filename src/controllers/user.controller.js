@@ -15,10 +15,47 @@ const transformPost = (post, baseUrl) => {
   return postObj;
 };
 
-// @desc    Get user profile with posts
+// @desc    Get all users (with pagination & search)
+// @route   GET /api/users
+// @access  Public
+exports.getAllUsers = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+
+    const query = {};
+    if (search) {
+      query.$or = [
+        { username: { $regex: search, $options: 'i' } },
+        { full_name: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('-password')
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      page,
+      limit,
+      total,
+      users
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get user profile
 // @route   GET /api/users/:id
 // @access  Public (or Private depending on requirement)
-exports.getUserProfile = async (req, res) => {
+exports.getUserById = async (req, res) => {
   try {
     const userId = req.params.id;
     
@@ -29,20 +66,7 @@ exports.getUserProfile = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // 2. Fetch User's Posts
-    const posts = await Post.find({ user_id: userId })
-      .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url');
-
-    // 3. Transform posts to include fileUrl
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const transformedPosts = posts.map(post => transformPost(post, baseUrl));
-
-    // 4. Construct Response
-    res.json({
-      user,
-      posts: transformedPosts
-    });
+    res.json(user);
 
   } catch (error) {
     console.error(error);
