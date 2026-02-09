@@ -5,9 +5,29 @@ const mediaSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  ratio: {
+  type: {
     type: String,
-    default: '1/1'
+    enum: ["image", "video"],
+    default: "image"
+  },
+  crop: {
+    mode: {
+      type: String,
+      enum: ["original", "1:1", "4:5", "16:9"],
+      default: "original"
+    },
+    zoom: {
+      type: Number,
+      default: 1
+    },
+    x: {
+      type: Number,
+      default: 0
+    },
+    y: {
+      type: Number,
+      default: 0
+    }
   },
   filter: {
     name: {
@@ -19,9 +39,13 @@ const mediaSchema = new mongoose.Schema({
       default: ''
     }
   },
-  type: {
-    type: String,
-    default: 'image'
+  adjustments: {
+    brightness: { type: Number, default: 0 },
+    contrast: { type: Number, default: 0 },
+    saturation: { type: Number, default: 0 },
+    temperature: { type: Number, default: 0 },
+    fade: { type: Number, default: 0 },
+    vignette: { type: Number, default: 0 }
   }
 }, { _id: false });
 
@@ -47,6 +71,15 @@ const postSchema = new mongoose.Schema({
   },
   tags: {
     type: Array,
+    default: []
+  },
+  people_tags: {
+    type: [{
+      user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      username: String,
+      x: Number,  // relative x position 0..1
+      y: Number   // relative y position 0..1
+    }],
     default: []
   },
   hide_likes_count: {

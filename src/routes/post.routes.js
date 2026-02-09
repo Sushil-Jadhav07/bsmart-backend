@@ -13,10 +13,29 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *       properties:
  *         fileName:
  *           type: string
- *         ratio:
+ *         type:
  *           type: string
- *           default: "1/1"
- *           example: '3/4'
+ *           enum: [image, video]
+ *           default: image
+ *         fileUrl:
+ *           type: string
+ *           description: Computed URL for the file (response only)
+ *         crop:
+ *           type: object
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: ["original", "1:1", "4:5", "16:9"]
+ *               default: "original"
+ *             zoom:
+ *               type: number
+ *               default: 1
+ *             x:
+ *               type: number
+ *               default: 0
+ *             y:
+ *               type: number
+ *               default: 0
  *         filter:
  *           type: object
  *           properties:
@@ -27,12 +46,21 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *               type: string
  *               default: ""
  *               example: "contrast(1.1) saturate(1.25)"
- *         type:
- *           type: string
- *           default: image
- *         fileUrl:
- *           type: string
- *           description: Computed URL for the file (response only)
+ *         adjustments:
+ *           type: object
+ *           properties:
+ *             brightness:
+ *               type: number
+ *             contrast:
+ *               type: number
+ *             saturation:
+ *               type: number
+ *             temperature:
+ *               type: number
+ *             fade:
+ *               type: number
+ *             vignette:
+ *               type: number
  *     Post:
  *       type: object
  *       properties:
@@ -59,6 +87,19 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *           type: array
  *           items:
  *             type: string
+ *         people_tags:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               user_id:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               x:
+ *                 type: number
+ *               y:
+ *                 type: number
  *         likes_count:
  *           type: number
  *         is_liked_by_me:
@@ -116,6 +157,19 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *                 type: array
  *                 items:
  *                   type: string
+ *               people_tags:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     user_id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     x:
+ *                       type: number
+ *                     y:
+ *                       type: number
  *               hide_likes_count:
  *                 type: boolean
  *               turn_off_commenting:

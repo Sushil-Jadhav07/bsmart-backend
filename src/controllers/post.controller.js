@@ -27,16 +27,21 @@ const transformPost = (post, baseUrl, currentUserId = null) => {
 // @access  Private
 exports.createPost = async (req, res) => {
   try {
-    const { caption, location, media, tags, hide_likes_count, turn_off_commenting, type } = req.body;
+    const { caption, location, media, tags, people_tags, hide_likes_count, turn_off_commenting, type } = req.body;
 
     // Validate media
     if (!media || media.length === 0) {
       return res.status(400).json({ message: 'At least one media item is required' });
     }
 
+    const validCropModes = ["original", "1:1", "4:5", "16:9"];
+
     for (const item of media) {
       if (!item.fileName) {
         return res.status(400).json({ message: 'Each media item must have a fileName' });
+      }
+      if (item.crop && item.crop.mode && !validCropModes.includes(item.crop.mode)) {
+        return res.status(400).json({ message: `Invalid crop mode: ${item.crop.mode}` });
       }
     }
 
@@ -46,6 +51,7 @@ exports.createPost = async (req, res) => {
       location,
       media,
       tags,
+      people_tags,
       hide_likes_count,
       turn_off_commenting,
       type
