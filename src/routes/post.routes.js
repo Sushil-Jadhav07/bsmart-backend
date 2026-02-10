@@ -195,35 +195,15 @@ router.post('/', verifyToken, createPost);
  *     tags: [Posts]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *         description: Items per page
  *     responses:
  *       200:
  *         description: List of posts
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *                 total:
- *                   type: integer
- *                 posts:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Post'
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Post'
  */
 router.get('/feed', verifyToken, getFeed);
 

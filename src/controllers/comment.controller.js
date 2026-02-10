@@ -224,9 +224,6 @@ exports.deleteComment = async (req, res) => {
 exports.getComments = async (req, res) => {
   try {
     const { postId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
 
     // Check if post exists (optional, but good practice)
     // const post = await Post.findById(postId);
@@ -237,18 +234,9 @@ exports.getComments = async (req, res) => {
     const query = { post_id: postId, parent_id: null };
 
     const comments = await Comment.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+      .sort({ createdAt: -1 });
 
-    const total = await Comment.countDocuments(query);
-
-    res.json({
-      page,
-      limit,
-      total,
-      comments
-    });
+    res.json(comments);
   } catch (error) {
     console.error('Get comments error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -263,25 +251,13 @@ exports.getComments = async (req, res) => {
 exports.getReplies = async (req, res) => {
   try {
     const { commentId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
 
     const query = { parent_id: commentId };
 
     const replies = await Comment.find(query)
-      .sort({ createdAt: 1 }) // Oldest first for replies
-      .skip(skip)
-      .limit(limit);
+      .sort({ createdAt: 1 });
 
-    const total = await Comment.countDocuments(query);
-
-    res.json({
-      page,
-      limit,
-      total,
-      replies
-    });
+    res.json(replies);
   } catch (error) {
     console.error('Get replies error:', error);
     res.status(500).json({ message: 'Server error' });

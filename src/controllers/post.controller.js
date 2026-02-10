@@ -76,26 +76,14 @@ exports.createPost = async (req, res) => {
 // @access  Private
 exports.getFeed = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const total = await Post.countDocuments();
     const posts = await Post.find()
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
       .populate('user_id', 'username full_name avatar_url');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const transformedPosts = posts.map(post => transformPost(post, baseUrl));
 
-    res.json({
-      page,
-      limit,
-      total,
-      posts: transformedPosts
-    });
+    res.json(transformedPosts);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });

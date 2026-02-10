@@ -96,34 +96,15 @@ const { addComment, getComments, deleteComment, likeComment, unlikeComment, getR
  *         required: true
  *         schema:
  *           type: string
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
  *     responses:
  *       200:
  *         description: List of comments
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *                 total:
- *                   type: integer
- *                 comments:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Comment'
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Comment'
  *       404:
  *         description: Post not found
  *
@@ -215,34 +196,15 @@ const { addComment, getComments, deleteComment, likeComment, unlikeComment, getR
  *         required: true
  *         schema:
  *           type: string
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
  *     responses:
  *       200:
  *         description: List of replies
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *                 total:
- *                   type: integer
- *                 replies:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Comment'
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Comment'
  *       500:
  *         description: Server error
  */
