@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, updateUser, deleteUser } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 
 /**
@@ -37,6 +37,35 @@ const auth = require('../middleware/auth');
  *         description: Server error
  */
 router.get('/:id', getUserById);
+
+/**
+ * @swagger
+ * /api/users/{id}/posts:
+ *   get:
+ *     summary: Get user's posts with comments and likes
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: List of posts with comments and likes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Post'
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/:id/posts', getUserPostsDetails);
 
 /**
  * @swagger

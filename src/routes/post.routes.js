@@ -64,6 +64,8 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *     Post:
  *       type: object
  *       properties:
+ *         post_id:
+ *           type: string
  *         _id:
  *           type: string
  *         user_id:
@@ -109,6 +111,8 @@ const { likePost, unlikePost, getPostLikes } = require('../controllers/like.cont
  *           items:
  *             type: object
  *             properties:
+ *               comment_id:
+ *                 type: string
  *               _id:
  *                 type: string
  *               text:

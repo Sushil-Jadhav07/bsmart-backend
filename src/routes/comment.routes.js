@@ -10,6 +10,8 @@ const { addComment, getComments, deleteComment, likeComment, unlikeComment, getR
  *     Comment:
  *       type: object
  *       properties:
+ *         comment_id:
+ *           type: string
  *         _id:
  *           type: string
  *         post_id:

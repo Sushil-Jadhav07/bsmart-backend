@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
+const Comment = require('../models/Comment');
 
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
@@ -15,16 +16,41 @@ const transformPost = (post, baseUrl) => {
   return postObj;
 };
 
-// @desc    Get all users (without pagination & search)
-// @route   GET /api/users
-// @access  Public
+// @desc    Get all users with their posts, comments, and likes
+// @route   GET /api/auth/users
+// @access  Private
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find()
       .select('-password')
       .sort({ createdAt: -1 });
 
-    res.json(users);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const result = [];
+    for (const user of users) {
+      const posts = await Post.find({ user_id: user._id })
+        .sort({ createdAt: -1 });
+
+      const enrichedPosts = [];
+      for (const post of posts) {
+        const transformed = transformPost(post, baseUrl);
+        const commentsRaw = await Comment.find({ post_id: post._id }).sort({ createdAt: -1 });
+        transformed.comments = commentsRaw.map(c => {
+          const obj = c.toObject ? c.toObject() : c;
+          obj.comment_id = obj._id;
+          return obj;
+        });
+        enrichedPosts.push(transformed);
+      }
+
+      result.push({
+        ...user.toObject(),
+        posts: enrichedPosts
+      });
+    }
+
+    res.json(result);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -56,6 +82,26 @@ exports.getUserById = async (req, res) => {
   }
 };
 
+exports.getUserPostsDetails = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const posts = await Post.find({ user_id: userId })
+      .sort({ createdAt: -1 })
+      .populate('user_id', 'username full_name avatar_url');
+    const enriched = [];
+    for (const post of posts) {
+      const p = transformPost(post, baseUrl);
+      const comments = await Comment.find({ post_id: post._id }).sort({ createdAt: -1 });
+      p.comments = comments;
+      enriched.push(p);
+    }
+    res.json(enriched);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 // @desc    Update user details
 // @route   PUT /api/users/:id
 // @access  Private

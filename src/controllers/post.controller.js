@@ -6,6 +6,7 @@ const Comment = require('../models/Comment');
 const transformPost = (post, baseUrl, currentUserId = null) => {
   const postObj = post.toObject ? post.toObject() : post;
   
+  postObj.post_id = postObj._id;
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => ({
       ...item,
@@ -103,14 +104,17 @@ exports.getPost = async (req, res) => {
     }
 
     // Fetch comments for the post
-    const comments = await Comment.find({ post_id: req.params.id })
+    const commentsRaw = await Comment.find({ post_id: req.params.id })
       .sort({ createdAt: -1 });
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const transformedPost = transformPost(post, baseUrl, req.userId);
     
-    // Attach comments
-    transformedPost.comments = comments;
+    transformedPost.comments = commentsRaw.map(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      obj.comment_id = obj._id;
+      return obj;
+    });
 
     res.json(transformedPost);
   } catch (error) {

@@ -233,9 +233,14 @@ exports.getComments = async (req, res) => {
 
     const query = { post_id: postId, parent_id: null };
 
-    const comments = await Comment.find(query)
+    const commentsRaw = await Comment.find(query)
       .sort({ createdAt: -1 });
 
+    const comments = commentsRaw.map(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      obj.comment_id = obj._id;
+      return obj;
+    });
     res.json(comments);
   } catch (error) {
     console.error('Get comments error:', error);
@@ -254,9 +259,14 @@ exports.getReplies = async (req, res) => {
 
     const query = { parent_id: commentId };
 
-    const replies = await Comment.find(query)
+    const repliesRaw = await Comment.find(query)
       .sort({ createdAt: 1 });
 
+    const replies = repliesRaw.map(r => {
+      const obj = r.toObject ? r.toObject() : r;
+      obj.comment_id = obj._id;
+      return obj;
+    });
     res.json(replies);
   } catch (error) {
     console.error('Get replies error:', error);

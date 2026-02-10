@@ -135,19 +135,19 @@ router.get('/me', auth, getMe);
  * @swagger
  * /api/auth/users:
  *   get:
- *     summary: Get all users
+ *     summary: Get all users with their posts, comments and likes
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: List of users
+ *         description: List of users with embedded posts
  *         content:
  *           application/json:
  *             schema:
  *               type: array
  *               items:
- *                 $ref: '#/components/schemas/User'
+ *                 $ref: '#/components/schemas/UserWithPosts'
  *       500:
  *         description: Server error
  */
@@ -236,6 +236,15 @@ router.get(
  *         updatedAt:
  *           type: string
  *           format: date-time
+ *     UserWithPosts:
+ *       allOf:
+ *         - $ref: '#/components/schemas/User'
+ *         - type: object
+ *           properties:
+ *             posts:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Post'
  */
 
 module.exports = router;
