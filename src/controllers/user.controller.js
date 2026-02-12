@@ -152,7 +152,7 @@ exports.deleteUser = async (req, res) => {
     const userId = req.params.id;
 
     // Check if user is authorized (deleting own profile or admin)
-    if (req.user.id !== userId && req.user.role !== 'admin') {
+    if (req.userId.toString() !== userId.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to delete this profile' });
     }
 

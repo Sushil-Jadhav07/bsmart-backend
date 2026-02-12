@@ -138,7 +138,7 @@ exports.deletePost = async (req, res) => {
     }
 
     // Check ownership
-    if (post.user_id.toString() !== req.userId) {
+    if (post.user_id.toString() !== req.userId.toString()) {
       return res.status(403).json({ message: 'Not authorized to delete this post' });
     }
 

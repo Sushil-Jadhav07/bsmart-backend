@@ -195,8 +195,8 @@ exports.deleteComment = async (req, res) => {
     const post = await Post.findById(comment.post_id);
 
     // Check permission: Comment author OR Post author can delete
-    const isCommentAuthor = comment.user.id.toString() === userId;
-    const isPostAuthor = post && post.user_id.toString() === userId;
+    const isCommentAuthor = comment.user.id.toString() === userId.toString();
+    const isPostAuthor = post && post.user_id.toString() === userId.toString();
 
     if (!isCommentAuthor && !isPostAuthor) {
       return res.status(403).json({ message: 'Not authorized to delete this comment' });
