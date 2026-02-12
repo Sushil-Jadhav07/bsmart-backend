@@ -58,7 +58,7 @@ exports.unlikePost = async (req, res) => {
     }
 
     // Remove like
-    post.likes = post.likes.filter(id => id.toString() !== userId);
+    post.likes = post.likes.filter(id => id.toString() !== userId.toString());
     post.likes_count = post.likes.length;
     await post.save();
 

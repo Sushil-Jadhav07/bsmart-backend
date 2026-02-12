@@ -98,6 +98,18 @@ const postSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  views_count: {
+    type: Number,
+    default: 0
+  },
+  unique_views_count: {
+    type: Number,
+    default: 0
+  },
+  completed_views_count: {
+    type: Number,
+    default: 0
+  },
   latest_comments: {
     type: [{
       _id: mongoose.Schema.Types.ObjectId,

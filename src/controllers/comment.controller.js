@@ -165,7 +165,7 @@ exports.unlikeComment = async (req, res) => {
     }
 
     // Remove user from likes
-    comment.likes = comment.likes.filter(id => id.toString() !== userId);
+    comment.likes = comment.likes.filter(id => id.toString() !== userId.toString());
     comment.likes_count = comment.likes.length;
     await comment.save();
 
