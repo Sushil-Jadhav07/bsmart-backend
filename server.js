@@ -13,6 +13,7 @@ const uploadRoutes = require('./src/routes/upload.routes');
 const userRoutes = require('./src/routes/user.routes');
 const commentRoutes = require('./src/routes/comment.routes');
 const viewRoutes = require('./src/routes/view.routes');
+const storyRoutes = require('./src/routes/story.routes');
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api', commentRoutes);
 app.use('/api/views', viewRoutes);
+app.use('/api/stories', storyRoutes);
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
