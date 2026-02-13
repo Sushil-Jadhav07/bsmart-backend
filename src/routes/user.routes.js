@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 
 /**
@@ -10,6 +10,47 @@ const auth = require('../middleware/auth');
  *   description: User management
  */
 
+
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: Get list of user profiles with posts, comments, likes, and views
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of user profiles with aggregated data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   user:
+ *                     $ref: '#/components/schemas/User'
+ *                   summary:
+ *                     type: object
+ *                     properties:
+ *                       posts_count: { type: number }
+ *                       reels_count: { type: number }
+ *                       likes_count_total: { type: number }
+ *                       comments_count_total: { type: number }
+ *                       views_count_total: { type: number }
+ *                       unique_views_count_total: { type: number }
+ *                       completed_views_count_total: { type: number }
+ *                   posts:
+ *                     type: array
+ *                     items:
+ *                       $ref: '#/components/schemas/Post'
+ *       401:
+ *         description: Not authorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/', auth, listUsersProfiles);
 
 /**
  * @swagger

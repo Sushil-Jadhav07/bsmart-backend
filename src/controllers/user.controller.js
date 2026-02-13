@@ -102,6 +102,50 @@ exports.getUserPostsDetails = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// @desc    List user profiles (basic info)
+// @route   GET /api/users
+// @access  Private
+exports.listUsersProfiles = async (req, res) => {
+  try {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const users = await User.find({})
+      .select('_id username full_name avatar_url phone role createdAt updatedAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    const results = [];
+    for (const u of users) {
+      const posts = await Post.find({ user_id: u._id })
+        .sort({ createdAt: -1 })
+        .populate('user_id', 'username full_name avatar_url');
+      const enrichedPosts = posts.map(p => {
+        const tp = transformPost(p, baseUrl);
+        return {
+          ...tp,
+          comments: tp.latest_comments || []
+        };
+      });
+      const summary = {
+        posts_count: enrichedPosts.length,
+        reels_count: enrichedPosts.filter(p => p.type === 'reel').length,
+        likes_count_total: enrichedPosts.reduce((acc, p) => acc + (p.likes_count || 0), 0),
+        comments_count_total: enrichedPosts.reduce((acc, p) => acc + (p.comments_count || 0), 0),
+        views_count_total: enrichedPosts.reduce((acc, p) => acc + (p.views_count || 0), 0),
+        unique_views_count_total: enrichedPosts.reduce((acc, p) => acc + (p.unique_views_count || 0), 0),
+        completed_views_count_total: enrichedPosts.reduce((acc, p) => acc + (p.completed_views_count || 0), 0)
+      };
+      results.push({
+        user: u,
+        summary,
+        posts: enrichedPosts
+      });
+    }
+    res.json(results);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 // @desc    Update user details
 // @route   PUT /api/users/:id
 // @access  Private
