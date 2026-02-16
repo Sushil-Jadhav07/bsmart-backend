@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
+const Member = require('../models/Member');
 
 // Helper to generate JWT
 const generateToken = (id) => {
@@ -60,6 +61,9 @@ exports.register = async (req, res) => {
       user_id: user._id,
       balance: initialBalance
     });
+    if (userRole === 'member') {
+      await Member.create({ user_id: user._id });
+    }
 
     // 6. Return response
     res.status(201).json({
@@ -72,6 +76,8 @@ exports.register = async (req, res) => {
         avatar_url: user.avatar_url,
         phone: user.phone,
         role: user.role,
+        followers_count: user.followers_count,
+        following_count: user.following_count,
         wallet: wallet
       }
     });
@@ -117,6 +123,8 @@ exports.login = async (req, res) => {
         avatar_url: user.avatar_url,
         phone: user.phone,
         role: user.role,
+        followers_count: user.followers_count,
+        following_count: user.following_count,
         wallet: wallet
       }
     });

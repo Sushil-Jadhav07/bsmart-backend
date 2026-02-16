@@ -88,7 +88,7 @@ exports.getUserPostsDetails = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const posts = await Post.find({ user_id: userId })
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url');
+      .populate('user_id', 'username full_name avatar_url followers_count following_count');
     const enriched = [];
     for (const post of posts) {
       const p = transformPost(post, baseUrl);
@@ -110,14 +110,14 @@ exports.listUsersProfiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const users = await User.find({})
-      .select('_id username full_name avatar_url phone role createdAt updatedAt')
+      .select('_id username full_name avatar_url phone role followers_count following_count createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean();
     const results = [];
     for (const u of users) {
       const posts = await Post.find({ user_id: u._id })
         .sort({ createdAt: -1 })
-        .populate('user_id', 'username full_name avatar_url');
+        .populate('user_id', 'username full_name avatar_url followers_count following_count');
       const enrichedPosts = posts.map(p => {
         const tp = transformPost(p, baseUrl);
         return {

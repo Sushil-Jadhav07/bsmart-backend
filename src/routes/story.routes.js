@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { createStory, getStoriesFeed, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory } = require('../controllers/story.controller');
+const upload = require('../config/multer');
 
 /**
  * @swagger
@@ -143,6 +144,73 @@ router.post('/items/:itemId/view', verifyToken, viewStoryItem);
  *         description: Story not found
  */
 router.get('/:storyId/views', verifyToken, getStoryViews);
+
+/**
+ * @swagger
+ * /api/stories/upload:
+ *   post:
+ *     summary: Upload a file for stories and return media payload
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Story file uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 fileName:
+ *                   type: string
+ *                 fileUrl:
+ *                   type: string
+ *                 media:
+ *                   type: object
+ *                   properties:
+ *                     url:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                       enum: [image, reel]
+ *       400:
+ *         description: No file uploaded or invalid file type
+ *       401:
+ *         description: Not authorized
+ */
+router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Please upload a file' });
+    }
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    const ext = (req.file.originalname || req.file.filename).toLowerCase();
+    const isImage = ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.gif') || ext.endsWith('.webp');
+    const mediaType = isImage ? 'image' : 'reel';
+    res.json({
+      fileName: req.file.filename,
+      fileUrl,
+      media: {
+        url: fileUrl,
+        type: mediaType
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 
 /**
  * @swagger

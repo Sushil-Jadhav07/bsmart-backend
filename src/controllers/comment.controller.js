@@ -1,6 +1,8 @@
 const Comment = require('../models/Comment');
 const Post = require('../models/Post');
 const User = require('../models/User');
+const Wallet = require('../models/Wallet');
+const WalletTransaction = require('../models/WalletTransaction');
 
 /**
  * Add a comment to a post
@@ -106,6 +108,40 @@ exports.addComment = async (req, res) => {
         );
       
       await Post.findByIdAndUpdate(postId, { $inc: { comments_count: 1 } });
+    }
+
+    // Reward/Deduct coins
+    try {
+      const actionType = parentCommentId ? 'REPLY' : 'COMMENT';
+      const ownerId = post.user_id.toString();
+      if (ownerId !== userId.toString()) {
+        try {
+          await new WalletTransaction({
+            user_id: userId,
+            post_id: postId,
+            type: actionType,
+            amount: 10,
+            status: 'SUCCESS'
+          }).save();
+          await Wallet.updateOne({ user_id: userId }, { $inc: { balance: 10 } }, { upsert: true });
+        } catch (e) {
+          if (e.code !== 11000) throw e;
+        }
+        try {
+          await new WalletTransaction({
+            user_id: ownerId,
+            post_id: postId,
+            type: actionType,
+            amount: -10,
+            status: 'SUCCESS'
+          }).save();
+          await Wallet.updateOne({ user_id: ownerId }, { $inc: { balance: -10 } }, { upsert: true });
+        } catch (e) {
+          if (e.code !== 11000) throw e;
+        }
+      }
+    } catch (err) {
+      console.error('Reward processing error:', err);
     }
 
     res.status(201).json(newComment);

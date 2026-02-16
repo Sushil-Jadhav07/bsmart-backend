@@ -89,7 +89,7 @@ exports.getStoriesFeed = async (req, res) => {
     const now = nowUtc();
     const stories = await Story.find({ expiresAt: { $gt: now }, isArchived: false, items_count: { $gt: 0 } })
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username avatar_url');
+      .populate('user_id', 'username avatar_url followers_count following_count');
 
     const results = [];
     for (const s of stories) {
@@ -172,7 +172,7 @@ exports.getStoryViews = async (req, res) => {
     }
     const views = await StoryView.find({ story_id: storyId })
       .sort({ viewedAt: -1 })
-      .populate('viewer_id', 'username avatar_url');
+      .populate('viewer_id', 'username avatar_url followers_count following_count');
     const unique = {};
     const result = [];
     for (const v of views) {

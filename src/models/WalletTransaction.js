@@ -15,17 +15,21 @@ const walletTransactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['REEL_VIEW_REWARD'],
+    enum: ['REEL_VIEW_REWARD', 'LIKE', 'COMMENT', 'REPLY', 'SAVE'],
     required: true
   },
   amount: {
     type: Number,
-    default: 20
+    default: 10
   },
   status: {
     type: String,
-    enum: ['SUCCESS'],
+    enum: ['SUCCESS', 'FAILED'],
     default: 'SUCCESS'
+  },
+  transactionDate: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true

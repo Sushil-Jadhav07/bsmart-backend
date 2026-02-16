@@ -3,6 +3,7 @@ const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { createPost, getFeed, getPost, deletePost } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
+const { savePost, unsavePost } = require('../controllers/saved.controller');
 
 /**
  * @swagger
@@ -372,5 +373,8 @@ router.post('/:id/unlike', verifyToken, unlikePost);
  *         description: Post not found
  */
 router.get('/:id/likes', verifyToken, getPostLikes);
+
+router.post('/:id/save', verifyToken, savePost);
+router.post('/:id/unsave', verifyToken, unsavePost);
 
 module.exports = router;

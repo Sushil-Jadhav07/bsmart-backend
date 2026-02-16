@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles } = require('../controllers/user.controller');
+const { getSavedPostsByUser } = require('../controllers/saved.controller');
+const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const auth = require('../middleware/auth');
 
 /**
@@ -107,6 +109,9 @@ router.get('/:id', getUserById);
  *         description: Server error
  */
 router.get('/:id/posts', getUserPostsDetails);
+router.get('/:id/followers', getFollowers);
+router.get('/:id/following', getFollowing);
+router.get('/:id/saved', auth, getSavedPostsByUser);
 
 /**
  * @swagger

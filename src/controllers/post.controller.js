@@ -62,7 +62,7 @@ exports.createPost = async (req, res) => {
     await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
 
     // Populate user info immediately for the response
-    const populatedPost = await post.populate('user_id', 'username full_name avatar_url');
+    const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.status(201).json(transformPost(populatedPost, baseUrl));
@@ -79,7 +79,7 @@ exports.getFeed = async (req, res) => {
   try {
     const posts = await Post.find()
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url');
+      .populate('user_id', 'username full_name avatar_url followers_count following_count');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const transformedPosts = posts.map(post => transformPost(post, baseUrl));
@@ -97,7 +97,7 @@ exports.getFeed = async (req, res) => {
 exports.getPost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id)
-      .populate('user_id', 'username full_name avatar_url');
+      .populate('user_id', 'username full_name avatar_url followers_count following_count');
 
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
