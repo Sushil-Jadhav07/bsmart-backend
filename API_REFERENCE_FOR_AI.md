@@ -110,3 +110,4 @@
 
 ### Upload (`/upload`)
 - `POST /` -> Multipart `file` -> Res: `{fileUrl}`
+- `POST /avatar` -> Multipart `file` -> Updates `user.avatar_url`, returns `{fileUrl, user}`

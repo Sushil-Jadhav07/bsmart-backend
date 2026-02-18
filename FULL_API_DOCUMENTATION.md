@@ -213,6 +213,7 @@ Visit: `http://localhost:5000/api-docs`
 | Method | Endpoint | Description | Auth |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/` | Upload file (multipart/form-data) | Bearer |
+| `POST` | `/avatar` | Upload avatar and update user | Bearer |
 
 **Response:**
 ```json
