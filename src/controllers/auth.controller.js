@@ -19,13 +19,8 @@ exports.register = async (req, res) => {
     const { email, password, username, full_name, phone, role } = req.body;
 
     // 0. Role Validation
-    if (role) {
-        if (role === 'admin') {
-            return res.status(400).json({ message: 'Cannot register as admin' });
-        }
-        if (!['member', 'vendor'].includes(role)) {
-            return res.status(400).json({ message: 'Invalid role. Allowed: member, vendor' });
-        }
+    if (role && !['member', 'vendor', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Allowed: member, vendor, admin' });
     }
 
     // 1. Manual Password Validation

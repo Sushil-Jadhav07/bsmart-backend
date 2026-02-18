@@ -59,7 +59,7 @@ Visit: `http://localhost:5000/api-docs`
 
 | Method | Endpoint | Description | Auth |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/register` | Register new user (member/vendor) | Public |
+| `POST` | `/register` | Register new user (member/vendor/admin) | Public |
 | `POST` | `/login` | Login and receive JWT | Public |
 | `GET` | `/me` | Get current user profile | Bearer |
 | `GET` | `/users` | List users with stats | Bearer |
@@ -72,7 +72,7 @@ Visit: `http://localhost:5000/api-docs`
   "username": "johndoe",
   "email": "john@example.com",
   "password": "securepassword",
-  "role": "vendor"
+  "role": "admin"
 }
 ```
 

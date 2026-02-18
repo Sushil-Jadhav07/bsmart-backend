@@ -45,9 +45,9 @@ const jwt = require('jsonwebtoken');
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [member, vendor]
+ *                 enum: [member, vendor, admin]
  *                 default: member
- *                 description: User role (cannot register as admin)
+ *                 description: User role
  *     responses:
  *       201:
  *         description: User registered successfully

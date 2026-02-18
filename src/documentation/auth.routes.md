@@ -1,6 +1,6 @@
 # Auth Routes
 
-- POST /api/auth/register — Register user (roles: member|vendor), auto wallet
+- POST /api/auth/register — Register user (roles: member|vendor|admin), auto wallet
 - POST /api/auth/login — Login and return token + user with wallet
 - GET /api/auth/me — Get current user profile (auth required)
 - GET /api/auth/users — List users with posts/comments/likes (auth required)
@@ -36,7 +36,7 @@ This is the API documentation for the authentication and user management system.
   "username": "string",
   "full_name": "string",
   "phone": "string",
-  "role": "member|vendor"
+  "role": "member|vendor|admin"
 }
 ```
 
