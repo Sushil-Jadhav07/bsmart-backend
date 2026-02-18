@@ -104,6 +104,8 @@
 ### Vendors (`/vendors`)
 - `POST /` -> Create vendor
 - `GET /me` -> Get my vendor profile
+- `GET /validate` -> List validated vendors (auth admin)
+- `GET /invalidate` -> List invalidated vendors (auth admin)
 
 ### Members (`/members`)
 - `GET /me` -> Get my member profile

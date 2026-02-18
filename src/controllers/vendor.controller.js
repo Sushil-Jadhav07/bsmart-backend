@@ -63,3 +63,33 @@ exports.getVendorByUserId = async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 };
+
+exports.listValidatedVendors = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    const vendors = await Vendor.find({ validated: true })
+      .populate('user_id', 'username full_name avatar_url role')
+      .sort({ createdAt: -1 });
+    return res.json(vendors);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.listInvalidatedVendors = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    const vendors = await Vendor.find({ $or: [{ validated: false }, { validated: { $exists: false } }] })
+      .populate('user_id', 'username full_name avatar_url role')
+      .sort({ createdAt: -1 });
+    return res.json(vendors);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};

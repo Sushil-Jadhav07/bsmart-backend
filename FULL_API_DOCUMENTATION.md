@@ -109,6 +109,8 @@ Visit: `http://localhost:5000/api-docs`
 | `POST` | `/` | Create vendor profile | Bearer |
 | `GET` | `/me` | Get my vendor profile | Bearer |
 | `GET` | `/users/{id}` | Get vendor by user ID | Public |
+| `GET` | `/validate` | List validated vendors | Bearer (admin) |
+| `GET` | `/invalidate` | List invalidated vendors | Bearer (admin) |
 
 ### Member Routes
 **Base URL:** `/api/members`
