@@ -1,55 +1,25 @@
 # Member Routes
 
-- GET /api/members/me — Get current member profile (auth)
-- GET /api/members/users/{id} — Get member profile by user id
+- GET /api/members/me — Get my member profile (auth)
+- GET /api/members/users/{id} — Get member by user ID
 
 
-# API Documentation for Member System
+## Get My Member
 
-## Member System
+**GET** `/api/members/me`
 
-This is the API documentation for the member system, allowing users to retrieve their own member data and data for specific users.
+Auth: Bearer
 
-### Swagger Documentation
-
-#### Get Current Logged-in User Member Details
-
-**GET** `/api/member/me`
-
-##### Responses
-
-- **200**: Successfully retrieved member data
-- **401**: Not authorized
-- **500**: Server error
+Responses
+- 200: Member object
+- 404: Member profile not found
 
 ---
 
-#### Get Member Details by User ID
+## Get Member by User ID
 
-**GET** `/api/users/{id}`
+**GET** `/api/members/users/{id}`
 
-##### Responses
-
-- **200**: Successfully retrieved member data
-- **404**: User not found
-- **500**: Server error
-
----
-
-## Components
-
-### Member
-
-```json
-{
-  "id": "string",
-  "username": "string",
-  "email": "string",
-  "full_name": "string",
-  "avatar_url": "string",
-  "phone": "string",
-  "createdAt": "string",
-  "updatedAt": "string"
-}
-```
-
+Responses
+- 200: Member object
+- 404: Member profile not found

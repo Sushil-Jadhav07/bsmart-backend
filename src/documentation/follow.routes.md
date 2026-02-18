@@ -2,88 +2,137 @@
 
 - POST /api/follow — Follow a user (auth)
 - POST /api/unfollow — Unfollow a user (auth)
+- POST /api/follows/{userId} — Follow by userId param (auth)
 - GET /api/users/{id}/followers — List followers of a user
-- GET /api/users/{id}/following — List following of a user
-
+- GET /api/users/{id}/following — List users the given user is following
+- GET /api/followers — List all follower relations (global)
+- GET /api/following — List all following relations (global)
 
 
 # API Documentation for Follow System
 
-## Follow System
-
-This is the API documentation for the follow system allowing users to follow/unfollow others and get followers/following details.
-
-### Swagger Documentation
-
-#### Follow a User
+## Follow a User
 
 **POST** `/api/follow`
 
-##### Request Body
+Auth: Bearer
 
+Request Body
 ```json
-{
-  "userId": "string"  // The ID of the user to follow
-}
+{ "followedUserId": "string" }
 ```
 
-##### Responses
-
-- **200**: Successfully followed the user
-- **400**: Already following the user or invalid user
-- **404**: User not found
+Responses
+- 200: `{ "followed": true, "alreadyFollowing": false }`
+- 400: Invalid request or self-follow
+- 404: User not found
 
 ---
 
-#### Unfollow a User
+## Unfollow a User
 
 **POST** `/api/unfollow`
 
-##### Request Body
+Auth: Bearer
 
+Request Body
 ```json
-{
-  "userId": "string"  // The ID of the user to unfollow
-}
+{ "followedUserId": "string" }
 ```
 
-##### Responses
-
-- **200**: Successfully unfollowed the user
-- **400**: Not following the user or invalid user
-- **404**: User not found
+Responses
+- 200: `{ "unfollowed": true, "alreadyNotFollowing": false }`
+- 404: Relationship not found
 
 ---
 
-#### Get Followers of a User
+## Follow by Path Param
+
+**POST** `/api/follows/{userId}`
+
+Auth: Bearer
+
+Path Params: `userId`
+
+Responses
+- 200:
+```json
+{
+  "success": true,
+  "follower": { "_id": "string", "username": "string", "email": "string", "role": "member|vendor|admin" },
+  "following": { "_id": "string", "username": "string", "email": "string", "role": "member|vendor|admin" },
+  "followingCount": 12,
+  "followersCount": 33
+}
+```
+- 400: Invalid ID or self-follow
+- 404: User not found
+- 409: Already following
+
+---
+
+## List Followers of a User
 
 **GET** `/api/users/{id}/followers`
 
-##### Responses
-
-- **200**: List of followers
-- **404**: User not found
-
----
-
-#### Get Users that the User is Following
-
-**GET** `/api/users/{id}/following`
-
-##### Responses
-
-- **200**: List of users being followed
-- **404**: User not found
-
----
-
-## Components
-
-### Follow Request
-
+Responses
+- 200:
 ```json
 {
-  "userId": "string"  // The ID of the user to follow/unfollow
+  "total": 2,
+  "users": [
+    { "_id": "string", "username": "string", "full_name": "string", "avatar_url": "string", "followers_count": 10, "following_count": 3 }
+  ]
 }
 ```
 
+---
+
+## List Following of a User
+
+**GET** `/api/users/{id}/following`
+
+Responses
+- 200:
+```json
+{
+  "total": 2,
+  "users": [
+    { "_id": "string", "username": "string", "full_name": "string", "avatar_url": "string", "followers_count": 10, "following_count": 3 }
+  ]
+}
+```
+
+---
+
+## Global Followers
+
+**GET** `/api/followers`
+
+Responses
+- 200:
+```json
+{
+  "total": 2,
+  "relations": [
+    { "follower": { "_id": "string", "username": "string" }, "followed": { "_id": "string", "username": "string" } }
+  ]
+}
+```
+
+---
+
+## Global Following
+
+**GET** `/api/following`
+
+Responses
+- 200:
+```json
+{
+  "total": 2,
+  "relations": [
+    { "follower": { "_id": "string", "username": "string" }, "followed": { "_id": "string", "username": "string" } }
+  ]
+}
+```

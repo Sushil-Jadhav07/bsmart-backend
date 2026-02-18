@@ -33,6 +33,8 @@ const upload = require('../config/multer');
  *                   type: string
  *                 fileUrl:
  *                   type: string
+ *       401:
+ *         description: Not authorized
  *       400:
  *         description: No file uploaded or invalid file type
  *       500:

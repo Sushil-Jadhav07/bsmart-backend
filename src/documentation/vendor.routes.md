@@ -1,80 +1,44 @@
 # Vendor Routes
 
-- POST /api/vendors — Create vendor profile and set role (auth)
-- GET /api/vendors/me — Get current vendor profile (auth)
-- GET /api/vendors/users/{id} — Get vendor profile by user id
+- POST /api/vendors — Create vendor profile (auth)
+- GET /api/vendors/me — Get my vendor profile (auth)
+- GET /api/vendors/users/{id} — Get vendor by user ID
 
 
-# API Documentation for Vendor System
-
-## Vendor System
-
-This is the API documentation for the vendor management system, including vendor profile creation and retrieval.
-
-### Swagger Documentation
-
-#### Create a Vendor Profile
+## Create Vendor
 
 **POST** `/api/vendors`
 
-##### Request Body
+Auth: Bearer
 
+Body
 ```json
-{
-  "company_name": "string",
-  "contact_person": "string",
-  "contact_email": "string",
-  "phone": "string",
-  "address": "string"
-}
+{ "business_name": "string", "description": "string", "category": "string", "phone": "string", "address": "string", "logo_url": "string" }
 ```
 
-##### Responses
-
-- **200**: Vendor created successfully
-- **400**: Invalid input
-- **500**: Server error
+Responses
+- 201: Vendor created with wallet credit (5000 coins)
+- 400: business_name required or vendor already exists
+- 500: Server error
 
 ---
 
-#### Get Current Logged-in User's Vendor Profile
+## Get My Vendor
 
 **GET** `/api/vendors/me`
 
-##### Responses
+Auth: Bearer
 
-- **200**: Vendor profile details
-- **401**: Not authorized
-- **500**: Server error
+Responses
+- 200: Vendor object with wallet
+- 404: Vendor not found
 
 ---
 
-#### Get Vendor Profile by User ID
+## Get Vendor by User ID
 
 **GET** `/api/vendors/users/{id}`
 
-##### Responses
-
-- **200**: Vendor profile details
-- **404**: Vendor not found
-- **500**: Server error
-
----
-
-## Components
-
-### Vendor
-
-```json
-{
-  "_id": "string",
-  "company_name": "string",
-  "contact_person": "string",
-  "contact_email": "string",
-  "phone": "string",
-  "address": "string",
-  "createdAt": "string",
-  "updatedAt": "string"
-}
-```
-
+Responses
+- 200: Vendor object with wallet
+- 404: Vendor not found

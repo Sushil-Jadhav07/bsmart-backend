@@ -1,25 +1,36 @@
 # B-Smart Backend API Documentation (Full Guide)
 
-This documentation provides a complete guide to the B-Smart Backend features, including Authentication, Roles, Wallet System, and Social Interactions (Posts, Comments, Replies, Likes).
+This documentation provides a complete guide to the B-Smart Backend features, including Authentication, User Management, Social Interactions (Posts, Comments, Stories), and Media Handling.
+
+---
+
+## Table of Contents
+
+1.  [Overview & Features](#1-overview--features)
+2.  [Getting Started](#2-getting-started)
+3.  [Authentication & Users](#3-authentication--users)
+    *   [Auth Routes](#auth-routes)
+    *   [User Routes](#user-routes)
+    *   [Vendor Routes](#vendor-routes)
+    *   [Member Routes](#member-routes)
+4.  [Social Core](#4-social-core)
+    *   [Post Routes](#post-routes)
+    *   [Comment Routes](#comment-routes)
+    *   [Follow Routes](#follow-routes)
+5.  [Media & Engagement](#5-media--engagement)
+    *   [Story Routes](#story-routes)
+    *   [Upload Routes](#upload-routes)
+    *   [View Routes](#view-routes)
+6.  [Troubleshooting](#6-troubleshooting)
 
 ---
 
 ## 1. Overview & Features
 
--   **Tech Stack:** Node.js, Express, MongoDB (Mongoose), JWT Auth.
--   **Authentication:** 
-    -   JWT-based (Access Tokens).
-    -   Roles: `member` (Default), `vendor`, `admin`.
-    -   Google OAuth support.
--   **Wallet System:**
-    -   **Separate Collection:** Wallets are stored in a dedicated `wallets` collection.
-    -   **Auto-Creation:** Wallets are created automatically on registration.
-    -   **Initial Balance:** `vendor` = 5000 Coins, `member` = 0 Coins.
--   **Social Features:**
-    -   **Posts:** Create, Read, Delete (with media support).
-    -   **Comments:** Top-level comments on posts.
-    -   **Replies:** Instagram-style one-level threading (replies to replies become siblings). *Note: The Post object includes `latest_comments` array which contains nested `replies` for efficient feed preview.*
-    -   **Likes:** Like/Unlike comments and replies.
+-   **Base URL:** `http://localhost:5000/api`
+-   **Authentication:** JWT Bearer Token (`Authorization: Bearer <TOKEN>`)
+-   **Roles:** `member` (Default), `vendor`, `admin`.
+-   **Wallet System:** Auto-created on registration. Vendors start with 5000 Coins.
 
 ---
 
@@ -41,182 +52,191 @@ Visit: `http://localhost:5000/api-docs`
 
 ---
 
-## 3. Detailed Feature Walkthrough (Step-by-Step)
+## 3. Authentication & Users
 
-This section mirrors the flow of our automated test script (`demo_full_flow.js`).
+### Auth Routes
+**Base URL:** `/api/auth`
 
-### Step 1: User Registration (Roles & Wallet)
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/register` | Register new user (member/vendor) | Public |
+| `POST` | `/login` | Login and receive JWT | Public |
+| `GET` | `/me` | Get current user profile | Bearer |
+| `GET` | `/users` | List users with stats | Bearer |
+| `GET` | `/google` | Google OAuth login | Public |
 
-You can register as a **Member** or a **Vendor**. The system assigns an initial wallet balance based on the role.
-
-**Endpoint:** `POST /api/auth/register`
-
-**Scenario A: Vendor Registration**
+#### Register Example
+`POST /api/auth/register`
 ```json
 {
-  "username": "vendor_user",
-  "email": "vendor@test.com",
-  "password": "password123",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "password": "securepassword",
   "role": "vendor"
 }
 ```
-**Result:**
--   User created with role `vendor`.
--   Wallet created with balance **5000**.
 
-**Scenario B: Member Registration**
-```json
-{
-  "username": "member_user",
-  "email": "member@test.com",
-  "password": "password123",
-  "role": "member"
-}
-```
-**Result:**
--   User created with role `member`.
--   Wallet created with balance **0**.
-
-### Step 2: Login & Data Persistence
-
-When you login, the backend fetches your wallet data from the `wallets` collection and merges it into the user object.
-
-**Endpoint:** `POST /api/auth/login`
-
-**Response:**
+#### Login Response Example
 ```json
 {
   "token": "eyJhbGciOiJIUzI1Ni...",
   "user": {
-    "id": "...",
-    "username": "vendor_user",
+    "id": "64f8c...",
+    "username": "johndoe",
     "role": "vendor",
-    "wallet": {
-      "balance": 5000,
-      "currency": "Coins"
-    }
+    "wallet": { "balance": 5000, "currency": "Coins" }
   }
 }
 ```
 
-### Step 3: Creating a Post
+### User Routes
+**Base URL:** `/api/users`
 
-Only authenticated users can create posts.
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/` | List user profiles with stats | Bearer |
+| `GET` | `/{id}` | Get user details | Public |
+| `GET` | `/{id}/posts` | Get user's posts | Public |
+| `GET` | `/{id}/saved` | Get user's saved posts | Bearer |
+| `PUT` | `/{id}` | Update user profile | Bearer |
+| `DELETE` | `/{id}` | Delete user account | Bearer |
 
-**Endpoint:** `POST /api/posts`
-**Headers:** `Authorization: Bearer <token>`
+### Vendor Routes
+**Base URL:** `/api/vendors`
 
-**Body:**
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/` | Create vendor profile | Bearer |
+| `GET` | `/me` | Get my vendor profile | Bearer |
+| `GET` | `/users/{id}` | Get vendor by user ID | Public |
+
+### Member Routes
+**Base URL:** `/api/members`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/me` | Get my member profile | Bearer |
+| `GET` | `/users/{id}` | Get member by user ID | Public |
+
+---
+
+## 4. Social Core
+
+### Post Routes
+**Base URL:** `/api/posts`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/` | Create a new post | Bearer |
+| `GET` | `/feed` | Get main feed | Bearer |
+| `GET` | `/saved` | Get all saved posts | Bearer |
+| `GET` | `/{id}` | Get single post | Bearer |
+| `DELETE` | `/{id}` | Delete a post | Bearer |
+| `POST` | `/{id}/like` | Like a post | Bearer |
+| `POST` | `/{id}/unlike` | Unlike a post | Bearer |
+| `POST` | `/{id}/save` | Save a post | Bearer |
+| `POST` | `/{id}/unsave` | Unsave a post | Bearer |
+
+#### Create Post Example
+`POST /api/posts`
 ```json
 {
-  "caption": "Check out my new product!",
-  "media": [{ "fileName": "image.jpg", "type": "image", "ratio": 1 }]
+  "caption": "My new product!",
+  "media": [{ "fileName": "img1.jpg", "type": "image" }],
+  "tags": ["product", "launch"]
 }
 ```
 
-### Step 4: Commenting (Top-Level)
+### Comment Routes
+**Base URL:** `/api` (Nested paths)
 
-Users can comment on posts.
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/posts/{postId}/comments` | Add comment/reply | Bearer |
+| `GET` | `/posts/{postId}/comments` | List comments | Public |
+| `DELETE` | `/comments/{id}` | Delete comment | Bearer |
+| `POST` | `/comments/{id}/like` | Like comment | Bearer |
+| `POST` | `/comments/{id}/unlike` | Unlike comment | Bearer |
+| `GET` | `/comments/{id}/replies` | Get replies | Public |
 
-**Endpoint:** `POST /api/posts/:postId/comments`
-**Headers:** `Authorization: Bearer <token>`
-
-**Body:**
+#### Add Reply Example
+`POST /api/posts/{postId}/comments`
 ```json
 {
-  "text": "How much is this?"
+  "text": "This is a reply",
+  "parent_id": "PARENT_COMMENT_ID"
 }
 ```
 
-### Step 5: Replying (One-Level Threading)
+### Follow Routes
+**Base URL:** `/api`
 
-Users can reply to a comment. **Note:** If you try to reply to a reply, the system will flatten it (Instagram style) or reject it depending on configuration. Currently, we support one level of nesting (Comment -> Reply).
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/follow` | Follow user (body: `{followedUserId}`) | Bearer |
+| `POST` | `/unfollow` | Unfollow user (body: `{followedUserId}`) | Bearer |
+| `GET` | `/users/{id}/followers` | List followers | Public |
+| `GET` | `/users/{id}/following` | List following | Public |
 
-**Endpoint:** `POST /api/posts/:postId/comments`
-**Headers:** `Authorization: Bearer <token>`
+---
 
-**Body:**
+## 5. Media & Engagement
+
+### Story Routes
+**Base URL:** `/api/stories`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/` | Create/append story | Bearer |
+| `GET` | `/feed` | Active stories feed | Bearer |
+| `GET` | `/{storyId}/items` | Get story items | Bearer |
+| `POST` | `/items/{itemId}/view` | Mark item viewed | Bearer |
+| `GET` | `/{storyId}/views` | Get viewers (owner only) | Bearer |
+| `POST` | `/upload` | Upload story media | Bearer |
+| `GET` | `/archive` | Get archived stories | Bearer |
+| `DELETE` | `/{storyId}` | Delete story | Bearer |
+
+#### Create Story Example
+`POST /api/stories`
 ```json
 {
-  "text": "It costs 50 coins.",
-  "parent_id": "ID_OF_THE_PARENT_COMMENT"
+  "items": [{
+    "media": { "url": "http://...", "type": "image" },
+    "transform": { "x": 0.5, "y": 0.5, "scale": 1 }
+  }]
 }
 ```
 
-### Step 6: Liking a Comment/Reply
+### Upload Routes
+**Base URL:** `/api/upload`
 
-Users can like comments or replies.
-
-**Endpoint:** `POST /api/comments/:commentId/like`
-**Headers:** `Authorization: Bearer <token>`
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/` | Upload file (multipart/form-data) | Bearer |
 
 **Response:**
 ```json
 {
-  "message": "Comment liked",
-  "likes_count": 1
+  "fileName": "file.jpg",
+  "fileUrl": "http://localhost:5000/uploads/file.jpg"
 }
 ```
 
-### Step 7: Fetching Replies
+### View Routes
+**Base URL:** `/api/views`
 
-To see the conversation thread.
-
-**Endpoint:** `GET /api/comments/:commentId/replies`
-**Query Params:** `?page=1&limit=10`
-
-**Response:**
-```json
-{
-  "replies": [
-    {
-      "_id": "...",
-      "text": "It costs 50 coins.",
-      "user": { "username": "vendor_user", ... },
-      "createdAt": "..."
-    }
-  ],
-  "pagination": { ... }
-}
-```
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/` | Record view start | Bearer |
+| `POST` | `/complete` | Complete view (reward) | Bearer |
 
 ---
 
-## 4. Automated Testing
-
-We have created a comprehensive test script that runs through this entire flow automatically to verify system health.
-
-### Running the Full Test
-```bash
-node demo_full_flow.js
-```
-
-**What it does:**
-1.  Registers a **Vendor** (Verifies 5000 balance).
-2.  Registers a **Member** (Verifies 0 balance).
-3.  **Vendor** creates a Post.
-4.  **Member** comments on the Post.
-5.  **Vendor** replies to the Member.
-6.  **Member** likes the Reply.
-7.  Fetches replies to verify the thread.
-
-**Expected Output:**
-```text
-=== B-Smart Full Feature End-to-End Test ===
-[STEP] Registering a VENDOR user...
-  ✓ Vendor registered: vendor_1770...
-  ✓ Vendor Wallet Balance verified: 5000 Coins
-...
-=== ALL TESTS PASSED SUCCESSFULLY ===
-```
-
----
-
-## 5. Troubleshooting Common Issues
+## 6. Troubleshooting
 
 1.  **"Wallet not found" in DB:**
     -   Ensure you are using the latest `auth.controller.js`. The wallet is now in a separate `wallets` collection, linked by `user_id`.
-    
+
 2.  **Login returns no wallet:**
     -   The `login` controller automatically performs a lookup in the `wallets` collection. If missing, check if the user was created before the wallet logic was added.
 

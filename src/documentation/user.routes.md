@@ -1,130 +1,99 @@
 # User Routes
 
-- GET /api/users — Aggregated users profiles + posts/comments/likes/views (auth)
+- GET /api/users — List user profiles with aggregated stats (auth)
 - GET /api/users/{id} — Get user details
-- GET /api/users/{id}/posts — Get user's posts with comments
-- GET /api/users/{id}/followers — List followers
-- GET /api/users/{id}/following — List following
-- GET /api/users/{id}/saved — List saved posts (auth)
-- PUT /api/users/{id} — Update user (auth; self/admin)
-- DELETE /api/users/{id} — Delete user (auth; self/admin)
+- GET /api/users/{id}/posts — Get user's posts with comments and likes
+- GET /api/users/{id}/followers — Get user's followers
+- GET /api/users/{id}/following — Get user's following
+- GET /api/users/{id}/saved — Get user's saved posts (auth)
+- PUT /api/users/{id} — Update user (auth)
+- DELETE /api/users/{id} — Delete user and posts (auth)
 
 
-
-# API Documentation for User System
-
-## User System
-
-This is the API documentation for the user management system, including user profile retrieval, user post management, and follow/unfollow functionality.
-
-### Swagger Documentation
-
-#### Get List of User Profiles with Posts, Comments, Likes, and Views
+## List Users
 
 **GET** `/api/users`
 
-##### Responses
+Auth: Bearer
 
-- **200**: List of user profiles with aggregated data
-- **401**: Not authorized
-- **500**: Server error
+Responses
+- 200: Array of profiles with summary and posts
+- 401: Not authorized
+- 500: Server error
 
 ---
 
-#### Get User Details
+## Get User
 
 **GET** `/api/users/{id}`
 
-##### Responses
-
-- **200**: User details
-- **404**: User not found
-- **500**: Server error
+Responses
+- 200: User object
+- 404: User not found
+- 500: Server error
 
 ---
 
-#### Get User's Posts with Comments and Likes
+## User's Posts
 
 **GET** `/api/users/{id}/posts`
 
-##### Responses
-
-- **200**: List of posts with comments and likes
-- **404**: User not found
-- **500**: Server error
+Responses
+- 200: Array of Post objects
+- 404: User not found
+- 500: Server error
 
 ---
 
-#### Update User Details
+## Followers / Following
+
+**GET** `/api/users/{id}/followers`
+
+**GET** `/api/users/{id}/following`
+
+Responses
+- 200: `{ "total": number, "users": [ { "_id": "...", "username": "...", "full_name": "...", "avatar_url": "...", "followers_count": 0, "following_count": 0 } ] }`
+
+---
+
+## Saved Posts (by user)
+
+**GET** `/api/users/{id}/saved`
+
+Auth: Bearer
+
+Responses
+- 200: Array of Post objects
+
+---
+
+## Update User
 
 **PUT** `/api/users/{id}`
 
-##### Request Body
+Auth: Bearer
 
+Body
 ```json
-{
-  "full_name": "string",
-  "bio": "string",
-  "avatar_url": "string",
-  "phone": "string",
-  "username": "string"
-}
+{ "full_name": "string", "bio": "string", "avatar_url": "string", "phone": "string", "username": "string" }
 ```
 
-##### Responses
-
-- **200**: User updated successfully
-- **403**: Not authorized
-- **404**: User not found
-- **500**: Server error
+Responses
+- 200: Updated User object
+- 403: Not authorized
+- 404: User not found
+- 500: Server error
 
 ---
 
-#### Delete User and Their Posts
+## Delete User
 
 **DELETE** `/api/users/{id}`
 
-##### Responses
+Auth: Bearer
 
-- **200**: User deleted successfully
-- **403**: Not authorized
-- **404**: User not found
-- **500**: Server error
-
----
-
-## Components
-
-### User
-
-```json
-{
-  "_id": "string",
-  "username": "string",
-  "full_name": "string",
-  "avatar_url": "string",
-  "phone": "string",
-  "bio": "string",
-  "createdAt": "string",
-  "updatedAt": "string"
-}
-```
-
-### Post
-
-```json
-{
-  "post_id": "string",
-  "_id": "string",
-  "user_id": { ... },  // User object
-  "caption": "string",
-  "location": "string",
-  "media": [ { ... } ],  // Media array
-  "tags": ["string"],
-  "likes_count": 0,
-  "is_liked_by_me": false,
-  "comments": [ ... ],  // Comments array
-  "createdAt": "string"
-}
-```
-
+Responses
+- 200: User deleted
+- 403: Not authorized
+- 404: User not found
+- 500: Server error

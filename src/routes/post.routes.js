@@ -3,7 +3,7 @@ const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { createPost, getFeed, getPost, deletePost } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
-const { savePost, unsavePost } = require('../controllers/saved.controller');
+const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved.controller');
 
 /**
  * @swagger
@@ -236,6 +236,8 @@ router.get('/feed', verifyToken, getFeed);
  *       404:
  *         description: Post not found
  */
+router.get('/saved', verifyToken, listMySavedPosts);
+
 router.get('/:id', verifyToken, getPost);
 
 /**
@@ -374,7 +376,104 @@ router.post('/:id/unlike', verifyToken, unlikePost);
  */
 router.get('/:id/likes', verifyToken, getPostLikes);
 
+/**
+ * @swagger
+ * /api/posts/{id}/save:
+ *   post:
+ *     summary: Save a post
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Post saved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 saved:
+ *                   type: boolean
+ *                 saved_count:
+ *                   type: number
+ *       400:
+ *         description: Invalid postId
+ *       404:
+ *         description: Post not found
+ *       409:
+ *         description: Already saved
+ */
 router.post('/:id/save', verifyToken, savePost);
+
+/**
+ * @swagger
+ * /api/posts/{id}/unsave:
+ *   post:
+ *     summary: Unsave a post
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Post unsaved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 saved:
+ *                   type: boolean
+ *                 saved_count:
+ *                   type: number
+ *       400:
+ *         description: Invalid postId or Not saved yet
+ *       404:
+ *         description: Post not found
+ */
 router.post('/:id/unsave', verifyToken, unsavePost);
+
+/**
+ * @swagger
+ * /api/posts/saved:
+ *   get:
+ *     summary: Get current user's saved posts
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All saved posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 posts:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Post'
+ */
 
 module.exports = router;

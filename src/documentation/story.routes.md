@@ -16,6 +16,13 @@
 
 This is the API documentation for the story system, including story creation, viewing, uploading media, and story management.
 
+### Base URL
+- All endpoints are mounted under `/api/stories`
+
+### Authorization
+- Use JWT bearer token for protected endpoints
+- Header: `Authorization: Bearer <TOKEN>`
+
 ### Swagger Documentation
 
 #### Create or Append Story Items
@@ -76,6 +83,25 @@ This is the API documentation for the story system, including story creation, vi
 - **400**: Bad request
 - **401**: Not authorized
 
+###### Example Response (200)
+```json
+{
+  "success": true,
+  "story": {
+    "_id": "string",
+    "user_id": "string",
+    "items_count": 3,
+    "views_count": 0,
+    "expiresAt": "string",
+    "isArchived": false,
+    "createdAt": "string"
+  },
+  "items": [
+    { "_id": "string", "order": 1, "media": { "url": "string", "type": "image" } }
+  ]
+}
+```
+
 ---
 
 #### Get Active Stories Feed
@@ -85,6 +111,20 @@ This is the API documentation for the story system, including story creation, vi
 ##### Responses
 
 - **200**: List of active stories
+
+###### Example Response (200)
+```json
+[
+  {
+    "_id": "string",
+    "user": { "username": "string", "avatar_url": "string" },
+    "items_count": 2,
+    "views_count": 10,
+    "preview_item": { "_id": "string", "order": 1, "media": { "url": "string", "type": "image" } },
+    "seen": false
+  }
+]
+```
 
 ---
 
@@ -97,6 +137,21 @@ This is the API documentation for the story system, including story creation, vi
 - **200**: List of story items
 - **404**: Story not found
 
+###### Example Response (200)
+```json
+[
+  {
+    "_id": "string",
+    "order": 1,
+    "media": { "url": "string", "type": "image" },
+    "transform": { "x": 0.5, "y": 0.5, "scale": 1, "rotation": 0 },
+    "texts": [],
+    "mentions": [],
+    "expiresAt": "string"
+  }
+]
+```
+
 ---
 
 #### Mark a Story Item as Viewed
@@ -107,6 +162,11 @@ This is the API documentation for the story system, including story creation, vi
 
 - **200**: View recorded successfully
 - **404**: Story item not found
+
+###### Example Response (200)
+```json
+{ "success": true }
+```
 
 ---
 
@@ -119,6 +179,17 @@ This is the API documentation for the story system, including story creation, vi
 - **200**: List of viewers
 - **403**: Forbidden
 - **404**: Story not found
+
+###### Example Response (200)
+```json
+{
+  "viewers": [
+    { "viewer": { "_id": "string", "username": "string", "avatar_url": "string" }, "viewedAt": "string" }
+  ],
+  "total_views": 12,
+  "unique_viewers": 10
+}
+```
 
 ---
 
@@ -140,6 +211,15 @@ This is the API documentation for the story system, including story creation, vi
 - **400**: No file uploaded or invalid file type
 - **401**: Not authorized
 
+###### Example Response (200)
+```json
+{
+  "fileName": "string",
+  "fileUrl": "http://localhost:5000/uploads/file.jpg",
+  "media": { "url": "http://localhost:5000/uploads/file.jpg", "type": "image" }
+}
+```
+
 ---
 
 #### Get Archived Stories
@@ -149,6 +229,15 @@ This is the API documentation for the story system, including story creation, vi
 ##### Responses
 
 - **200**: Archived stories
+
+###### Example Response (200)
+```json
+{
+  "stories": [
+    { "_id": "string", "items_count": 2, "isArchived": true, "archivedAt": "string" }
+  ]
+}
+```
 
 ---
 
@@ -162,6 +251,11 @@ This is the API documentation for the story system, including story creation, vi
 - **401**: Not authorized
 - **403**: Forbidden
 - **404**: Story not found
+
+###### Example Response (200)
+```json
+{ "message": "Story deleted successfully" }
+```
 
 ---
 
@@ -202,4 +296,3 @@ This is the API documentation for the story system, including story creation, vi
   "updatedAt": "string"
 }
 ```
-

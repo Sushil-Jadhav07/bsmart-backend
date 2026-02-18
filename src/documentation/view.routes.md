@@ -1,79 +1,39 @@
 # View Routes
 
-- POST /api/views — Add view for a reel (auth)
-- POST /api/views/complete — Complete view and reward user (auth)
+- POST /api/views — Add a view for a reel (auth)
+- POST /api/views/complete — Complete a view and reward (auth)
 
 
-
-# API Documentation for View System
-
-## View System
-
-This is the API documentation for the view system, including view tracking, completion, and rewards.
-
-### Swagger Documentation
-
-#### Add a View for a Reel
+## Add View
 
 **POST** `/api/views`
 
-##### Request Body
+Auth: Bearer
 
+Body
 ```json
-{
-  "postId": "string"
-}
+{ "postId": "string" }
 ```
 
-##### Responses
-
-- **200**: View recorded successfully
-- **400**: Invalid postId/type
-- **401**: Not authorized
+Responses
+- 200: `{ "success": true, "views_count": 10, "unique_views_count": 5 }`
+- 400: Invalid postId/type
+- 401: Not authorized
 
 ---
 
-#### Complete a View for a Reel and Reward User
+## Complete View
 
 **POST** `/api/views/complete`
 
-##### Request Body
+Auth: Bearer
 
+Body
 ```json
-{
-  "postId": "string",
-  "watchTimeMs": "number"
-}
+{ "postId": "string", "watchTimeMs": 12345 }
 ```
 
-##### Responses
-
-- **200**: Completion processed
-- **400**: Invalid postId/type
-- **401**: Not authorized
-
----
-
-## Components
-
-### View Response
-
-```json
-{
-  "success": true,
-  "views_count": 100,
-  "unique_views_count": 50
-}
-```
-
-### Completion Response
-
-```json
-{
-  "success": true,
-  "completed": true,
-  "rewarded": true,
-  "walletBalance": 100
-}
-```
-
+Responses
+- 200: `{ "success": true, "completed": true, "rewarded": true, "walletBalance": 5010 }`
+- 400: Invalid postId/type
+- 401: Not authorized

@@ -1,119 +1,80 @@
 # Comment Routes
 
-- POST /api/posts/{postId}/comments — Add comment or reply (auth)
-- GET /api/posts/{postId}/comments — List post comments
-- DELETE /api/comments/{id} — Delete comment (auth; author/post owner)
+- POST /api/posts/{postId}/comments — Add comment/reply (auth)
+- GET /api/posts/{postId}/comments — List comments for a post
+- DELETE /api/comments/{id} — Delete comment (auth)
 - POST /api/comments/{commentId}/like — Like comment (auth)
 - POST /api/comments/{commentId}/unlike — Unlike comment (auth)
 - GET /api/comments/{commentId}/replies — List replies for a comment
 
 
-
-# API Documentation for Comments
-
-## Comment Functionality
-
-This is the API documentation for the comment functionality in the post system.
-
-### Swagger Documentation
-
-#### Add a Comment to a Post
+## Add Comment / Reply
 
 **POST** `/api/posts/{postId}/comments`
 
-##### Request Body
+Auth: Bearer
 
+Body
 ```json
-{
-  "text": "This is a reply to your comment",
-  "parent_id": "64f8a1234567890abcdef123"  // Optional
-}
+{ "text": "string", "parent_id": "string|null" }
 ```
 
-##### Responses
-
-- **201**: Comment created successfully
-- **400**: Invalid input
-- **404**: Post or User not found
+Responses
+- 201: Comment created (Comment object)
+- 400: Invalid input
+- 404: Post or User not found
 
 ---
 
-#### Get Comments for a Post
+## Get Comments
 
 **GET** `/api/posts/{postId}/comments`
 
-##### Responses
-
-- **200**: List of comments
-- **404**: Post not found
+Responses
+- 200: Array of Comment objects
+- 404: Post not found
 
 ---
 
-#### Delete a Comment
+## Delete Comment
 
 **DELETE** `/api/comments/{id}`
 
-##### Responses
+Auth: Bearer
 
-- **200**: Comment deleted successfully
-- **403**: Not authorized
-- **404**: Comment not found
+Responses
+- 200: Comment deleted
+- 403: Not authorized
+- 404: Comment not found
 
 ---
 
-#### Like a Comment
+## Like / Unlike Comment
 
 **POST** `/api/comments/{commentId}/like`
 
-##### Responses
+Auth: Bearer
 
-- **200**: Comment liked successfully
-- **400**: Already liked
-- **404**: Comment not found
-
----
-
-#### Unlike a Comment
+Responses
+- 200: `{ "liked": true, "likes_count": 5 }`
+- 400: Already liked
+- 404: Comment not found
 
 **POST** `/api/comments/{commentId}/unlike`
 
-##### Responses
+Auth: Bearer
 
-- **200**: Comment unliked successfully
-- **400**: Not liked
-- **404**: Comment not found
+Responses
+- 200: `{ "liked": false, "likes_count": 4 }`
+- 400: Not liked
+- 404: Comment not found
 
 ---
 
-#### Get Replies for a Comment
+## Get Replies
 
 **GET** `/api/comments/{commentId}/replies`
 
-##### Responses
-
-- **200**: List of replies
-- **500**: Server error
-
----
-
-## Components
-
-### Comment
-
-```json
-{
-  "comment_id": "string",
-  "_id": "string",
-  "post_id": "string",
-  "parent_id": "string",
-  "user": {
-    "id": "string",
-    "username": "string",
-    "avatar_url": "string"
-  },
-  "text": "string",
-  "likes_count": "number",
-  "createdAt": "string"
-}
-```
-
+Responses
+- 200: Array of reply Comment objects
+- 500: Server error

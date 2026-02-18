@@ -21,6 +21,9 @@ exports.savePost = async (req, res) => {
   try {
     const userId = req.userId;
     const postId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid postId' });
+    }
     const post = await Post.findById(postId);
     if (!post) return res.status(404).json({ message: 'Post not found' });
     let created = false;
@@ -28,7 +31,10 @@ exports.savePost = async (req, res) => {
       await SavedPost.create({ user_id: userId, post_id: postId });
       created = true;
     } catch (e) {
-      if (e.code !== 11000) throw e;
+      if (e.code === 11000) {
+        return res.status(409).json({ message: 'Already saved' });
+      }
+      throw e;
     }
     if (created) {
       await User.findByIdAndUpdate(userId, { $inc: { saved_posts_count: 1 } }).catch(() => {});
@@ -60,7 +66,8 @@ exports.savePost = async (req, res) => {
         }
       }
     }
-    return res.json({ saved: true, alreadySaved: !created });
+    const saved_count = await SavedPost.countDocuments({ post_id: postId });
+    return res.json({ success: true, message: 'Post saved', saved: true, saved_count });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
@@ -71,13 +78,19 @@ exports.unsavePost = async (req, res) => {
   try {
     const userId = req.userId;
     const postId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'Invalid postId' });
+    }
+    const post = await Post.findById(postId);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
     const rel = await SavedPost.findOne({ user_id: userId, post_id: postId });
     if (!rel) {
-      return res.json({ unsaved: true, alreadyNotSaved: true });
+      return res.status(400).json({ message: 'Not saved yet' });
     }
     await SavedPost.deleteOne({ _id: rel._id });
     await User.findByIdAndUpdate(userId, { $inc: { saved_posts_count: -1 } }).catch(() => {});
-    return res.json({ unsaved: true });
+    const saved_count = await SavedPost.countDocuments({ post_id: postId });
+    return res.json({ success: true, message: 'Post unsaved', saved: false, saved_count });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
@@ -96,6 +109,23 @@ exports.getSavedPostsByUser = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const transformed = posts.map(p => transformPost(p, baseUrl));
     return res.json(transformed);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.listMySavedPosts = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const items = await SavedPost.find({ user_id: userId }).sort({ createdAt: -1 }).lean();
+    const ids = items.map(s => s.post_id);
+    const posts = await Post.find({ _id: { $in: ids } })
+      .sort({ createdAt: -1 })
+      .populate('user_id', 'username full_name avatar_url');
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const data = posts.map(p => transformPost(p, baseUrl));
+    return res.json({ success: true, posts: data });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
