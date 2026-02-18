@@ -30,7 +30,11 @@ exports.createStory = async (req, res) => {
     const docs = [];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const media = it.media || {};
+      const mediaArr = Array.isArray(it.media) ? it.media : (it.media ? [it.media] : []);
+      if (!mediaArr.length) {
+        return res.status(400).json({ message: 'media array with at least one item is required' });
+      }
+      const media = mediaArr[0] || {};
       if (!media.url || !media.type || !['image','reel'].includes(media.type)) {
         return res.status(400).json({ message: 'invalid media' });
       }
@@ -76,7 +80,13 @@ exports.createStory = async (req, res) => {
     story.items_count = currentCount + createdItems.length;
     await story.save();
 
-    res.json({ success: true, story, items: createdItems });
+    // Wrap media object into array for response compatibility
+    const itemsResponse = createdItems.map(it => {
+      const obj = it.toObject ? it.toObject() : it;
+      obj.media = obj.media ? [obj.media] : [];
+      return obj;
+    });
+    res.json({ success: true, story, items: itemsResponse });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -98,12 +108,16 @@ exports.getStoriesFeed = async (req, res) => {
       const ids = itemIds.map(i => i._id);
       const viewedCount = await StoryView.countDocuments({ story_item_id: { $in: ids }, viewer_id: userId });
       const seen = ids.length > 0 && viewedCount === ids.length;
+      const previewObj = preview ? (preview.toObject ? preview.toObject() : preview) : null;
+      if (previewObj && previewObj.media) {
+        previewObj.media = [previewObj.media];
+      }
       results.push({
         _id: s._id,
         user: s.user_id,
         items_count: s.items_count,
         views_count: s.views_count || 0,
-        preview_item: preview,
+        preview_item: previewObj,
         seen
       });
     }
@@ -127,7 +141,12 @@ exports.getStoryItems = async (req, res) => {
       await story.save();
     }
     const items = await StoryItem.find({ story_id: storyId, isDeleted: false }).sort({ order: 1 });
-    res.json(items);
+    const itemsResponse = items.map(it => {
+      const obj = it.toObject ? it.toObject() : it;
+      obj.media = obj.media ? [obj.media] : [];
+      return obj;
+    });
+    res.json(itemsResponse);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

@@ -282,15 +282,17 @@ router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
  *       required: [media]
  *       properties:
  *         media:
- *           type: object
- *           required: [url, type]
- *           properties:
- *             url: { type: string }
- *             type: { type: string, enum: [image, reel] }
- *             thumbnail: { type: string }
- *             durationSec: { type: number, description: 'If image omitted defaults to 15' }
- *             width: { type: number }
- *             height: { type: number }
+ *           type: array
+ *           items:
+ *             type: object
+ *             required: [url, type]
+ *             properties:
+ *               url: { type: string }
+ *               type: { type: string, enum: [image, reel] }
+ *               thumbnail: { type: string }
+ *               durationSec: { type: number, description: 'If image omitted defaults to 15' }
+ *               width: { type: number }
+ *               height: { type: number }
  *         transform:
  *           type: object
  *           properties:

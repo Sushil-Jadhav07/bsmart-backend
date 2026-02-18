@@ -35,10 +35,12 @@ This is the API documentation for the story system, including story creation, vi
 {
   "items": [
     {
-      "media": {
-        "url": "string",
-        "type": "image|reel"
-      },
+      "media": [
+        {
+          "url": "string",
+          "type": "image|reel"
+        }
+      ],
       "transform": {
         "x": 0.5,
         "y": 0.5,
@@ -120,7 +122,7 @@ This is the API documentation for the story system, including story creation, vi
     "user": { "username": "string", "avatar_url": "string" },
     "items_count": 2,
     "views_count": 10,
-    "preview_item": { "_id": "string", "order": 1, "media": { "url": "string", "type": "image" } },
+    "preview_item": { "_id": "string", "order": 1, "media": [{ "url": "string", "type": "image" }] },
     "seen": false
   }
 ]
@@ -143,7 +145,7 @@ This is the API documentation for the story system, including story creation, vi
   {
     "_id": "string",
     "order": 1,
-    "media": { "url": "string", "type": "image" },
+    "media": [{ "url": "string", "type": "image" }],
     "transform": { "x": 0.5, "y": 0.5, "scale": 1, "rotation": 0 },
     "texts": [],
     "mentions": [],
