@@ -14,6 +14,7 @@ const transformPost = (post, baseUrl) => {
       fileUrl: `${baseUrl}/uploads/${item.fileName}`
     }));
   }
+  obj.is_saved_by_me = true;
   return obj;
 };
 

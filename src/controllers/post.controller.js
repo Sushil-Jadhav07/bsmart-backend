@@ -2,8 +2,8 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const Comment = require('../models/Comment');
 
-// Helper to transform post with fileUrl and is_liked_by_me
-const transformPost = (post, baseUrl, currentUserId = null) => {
+// Helper to transform post with fileUrl, is_liked_by_me, is_saved_by_me
+const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => {
   const postObj = post.toObject ? post.toObject() : post;
   
   postObj.post_id = postObj._id;
@@ -18,6 +18,12 @@ const transformPost = (post, baseUrl, currentUserId = null) => {
     postObj.is_liked_by_me = postObj.likes.some(id => id.toString() === currentUserId.toString());
   } else {
     postObj.is_liked_by_me = false;
+  }
+  
+  if (savedSet && typeof postObj._id !== 'undefined') {
+    postObj.is_saved_by_me = savedSet.has(postObj._id.toString());
+  } else {
+    postObj.is_saved_by_me = false;
   }
   
   return postObj;
@@ -82,7 +88,11 @@ exports.getFeed = async (req, res) => {
       .populate('user_id', 'username full_name avatar_url followers_count following_count');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const transformedPosts = posts.map(post => transformPost(post, baseUrl));
+    // Prefetch saved post IDs for current user to compute is_saved_by_me
+    const SavedPost = require('../models/SavedPost');
+    const saved = await SavedPost.find({ user_id: req.userId }).select('post_id').lean();
+    const savedSet = new Set(saved.map(s => s.post_id.toString()));
+    const transformedPosts = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
 
     res.json(transformedPosts);
   } catch (error) {
@@ -108,7 +118,11 @@ exports.getPost = async (req, res) => {
       .sort({ createdAt: -1 });
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const transformedPost = transformPost(post, baseUrl, req.userId);
+    const SavedPost = require('../models/SavedPost');
+    const isSaved = await SavedPost.exists({ user_id: req.userId, post_id: post._id });
+    const savedSet = new Set();
+    if (isSaved) savedSet.add(post._id.toString());
+    const transformedPost = transformPost(post, baseUrl, req.userId, savedSet);
     
     transformedPost.comments = commentsRaw.map(c => {
       const obj = c.toObject ? c.toObject() : c;

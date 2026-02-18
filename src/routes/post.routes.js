@@ -107,6 +107,8 @@ const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved
  *           type: number
  *         is_liked_by_me:
  *           type: boolean
+ *         is_saved_by_me:
+ *           type: boolean
  *         comments:
  *           type: array
  *           items:
