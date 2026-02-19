@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles, updateUserStatus } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const auth = require('../middleware/auth');
@@ -160,6 +160,47 @@ router.get('/:id/saved', auth, getSavedPostsByUser);
  *         description: Server error
  */
 router.put('/:id', auth, updateUser);
+
+/**
+ * @swagger
+ * /api/users/{id}/status:
+ *   patch:
+ *     summary: Update user active status
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               admin_user_id:
+ *                 type: string
+ *                 description: Admin user ID performing this action
+ *               is_active:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: User status updated successfully
+ *       400:
+ *         description: Validation error
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/:id/status', auth, updateUserStatus);
 
 /**
  * @swagger

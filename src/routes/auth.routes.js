@@ -48,6 +48,39 @@ const jwt = require('jsonwebtoken');
  *                 enum: [member, vendor, admin]
  *                 default: member
  *                 description: User role
+ *               company_details:
+ *                 type: object
+ *                 description: Required when role is vendor
+ *                 properties:
+ *                   company_name:
+ *                     type: string
+ *                   legal_business_name:
+ *                     type: string
+ *                   industry:
+ *                     type: string
+ *                   website:
+ *                     type: string
+ *                   business_email:
+ *                     type: string
+ *                   business_phone:
+ *                     type: string
+ *                   country:
+ *                     type: string
+ *                   city:
+ *                     type: string
+ *                   note:
+ *                     type: string
+ *               credits:
+ *                 type: number
+ *                 description: Optional wallet credits for vendor, valid for 1 year
+ *               interests:
+ *                 type: string
+ *               target_people:
+ *                 type: string
+ *               location_target:
+ *                 type: string
+ *               campaign_idea:
+ *                 type: string
  *     responses:
  *       201:
  *         description: User registered successfully

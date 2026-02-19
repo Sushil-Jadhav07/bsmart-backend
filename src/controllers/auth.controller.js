@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const Member = require('../models/Member');
+const Vendor = require('../models/Vendor');
 
 // Helper to generate JWT
 const generateToken = (id) => {
@@ -11,12 +12,22 @@ const generateToken = (id) => {
   });
 };
 
-// @desc    Register a new user
-// @route   POST /api/auth/register
-// @access  Public
 exports.register = async (req, res) => {
   try {
-    const { email, password, username, full_name, phone, role } = req.body;
+    const {
+      email,
+      password,
+      username,
+      full_name,
+      phone,
+      role,
+      company_details,
+      credits,
+      interests,
+      target_people,
+      location_target,
+      campaign_idea
+    } = req.body;
 
     // 0. Role Validation
     if (role && !['member', 'vendor', 'admin'].includes(role)) {
@@ -38,9 +49,14 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 4. Create user
     const userRole = role || 'member';
-    
+
+    if (userRole === 'vendor') {
+      if (!company_details || !company_details.company_name) {
+        return res.status(400).json({ message: 'company_details.company_name is required for vendor role' });
+      }
+    }
+
     const user = await User.create({
       email,
       password: hashedPassword,
@@ -50,17 +66,44 @@ exports.register = async (req, res) => {
       role: userRole
     });
 
-    // 5. Create Wallet for user
-    const initialBalance = userRole === 'vendor' ? 5000 : 0;
+    const initialCredits =
+      userRole === 'vendor' && Number(credits) > 0 ? Number(credits) : 0;
+    const walletBalance = initialCredits;
     const wallet = await Wallet.create({
       user_id: user._id,
-      balance: initialBalance
+      balance: walletBalance
     });
+
     if (userRole === 'member') {
       await Member.create({ user_id: user._id });
+    } else if (userRole === 'vendor') {
+      const creditsExpiresAt = initialCredits > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null;
+      await Vendor.create({
+        user_id: user._id,
+        business_name: company_details.company_name,
+        description: company_details.note,
+        category: company_details.industry,
+        phone: company_details.business_phone || phone,
+        address: company_details.city || '',
+        logo_url: company_details.logo_url || '',
+        company_name: company_details.company_name,
+        legal_business_name: company_details.legal_business_name || '',
+        industry: company_details.industry || '',
+        website: company_details.website || '',
+        business_email: company_details.business_email || email,
+        business_phone: company_details.business_phone || '',
+        country: company_details.country || '',
+        city: company_details.city || '',
+        note: company_details.note || '',
+        interests: interests || '',
+        target_people: target_people || '',
+        location_target: location_target || '',
+        campaign_idea: campaign_idea || '',
+        credits: initialCredits,
+        credits_expires_at: creditsExpiresAt
+      });
     }
 
-    // 6. Return response
     res.status(201).json({
       token: generateToken(user._id),
       user: {
@@ -90,24 +133,51 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Check for email
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // 2. Check password
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // 3. Get Wallet
+    if (user.role === 'member' && user.is_active === false) {
+      return res.status(403).json({ message: 'Account is inactive' });
+    }
+
     const wallet = await Wallet.findOne({ user_id: user._id });
 
-    // 4. Return response
+    let vendorPayload = {};
+    if (user.role === 'vendor') {
+      const vendor = await Vendor.findOne({ user_id: user._id });
+      if (vendor) {
+        vendorPayload = {
+          company_details: {
+            company_name: vendor.company_name || '',
+            legal_business_name: vendor.legal_business_name || '',
+            industry: vendor.industry || '',
+            website: vendor.website || '',
+            business_email: vendor.business_email || '',
+            business_phone: vendor.business_phone || '',
+            country: vendor.country || '',
+            city: vendor.city || '',
+            note: vendor.note || ''
+          },
+          credits: vendor.credits || 0,
+          credits_expires_at: vendor.credits_expires_at || null,
+          interests: vendor.interests || '',
+          target_people: vendor.target_people || '',
+          location_target: vendor.location_target || '',
+          campaign_idea: vendor.campaign_idea || '',
+          vendor_validated: vendor.validated === true
+        };
+      }
+    }
+
     res.json({
       token: generateToken(user._id),
       user: {
@@ -120,7 +190,8 @@ exports.login = async (req, res) => {
         role: user.role,
         followers_count: user.followers_count,
         following_count: user.following_count,
-        wallet: wallet
+        wallet: wallet,
+        ...vendorPayload
       }
     });
 
@@ -144,10 +215,10 @@ exports.getMe = async (req, res) => {
 
     // Fetch wallet explicitly since it's not embedded anymore
     const wallet = await Wallet.findOne({ user_id: user._id });
-    
+
     const userData = user.toObject();
     if (wallet) {
-        userData.wallet = wallet;
+      userData.wallet = wallet;
     }
 
     res.json(userData);

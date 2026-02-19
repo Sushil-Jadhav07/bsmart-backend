@@ -64,6 +64,35 @@ exports.getVendorByUserId = async (req, res) => {
   }
 };
 
+exports.updateVendorValidation = async (req, res) => {
+  try {
+    const vendorId = req.params.id;
+    const { validated, admin_user_id } = req.body;
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to update vendor validation' });
+    }
+    if (!admin_user_id) {
+      return res.status(400).json({ message: 'admin_user_id is required' });
+    }
+    if (req.user._id.toString() !== admin_user_id.toString()) {
+      return res.status(403).json({ message: 'Admin user mismatch' });
+    }
+    if (typeof validated !== 'boolean') {
+      return res.status(400).json({ message: 'validated must be boolean' });
+    }
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+    vendor.validated = validated;
+    await vendor.save();
+    return res.json({ id: vendor._id, validated: vendor.validated });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.listValidatedVendors = async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'admin') {

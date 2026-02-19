@@ -5,14 +5,14 @@ const Comment = require('../models/Comment');
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
   const postObj = post.toObject ? post.toObject() : post;
-  
+
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => ({
       ...item,
       fileUrl: `${baseUrl}/uploads/${item.fileName}`
     }));
   }
-  
+
   return postObj;
 };
 
@@ -63,10 +63,10 @@ exports.getAllUsers = async (req, res) => {
 exports.getUserById = async (req, res) => {
   try {
     const userId = req.params.id;
-    
+
     // 1. Fetch User
     const user = await User.findById(userId).select('-password');
-    
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -146,9 +146,6 @@ exports.listUsersProfiles = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
-// @desc    Update user details
-// @route   PUT /api/users/:id
-// @access  Private
 exports.updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -161,7 +158,7 @@ exports.updateUser = async (req, res) => {
 
     // Update fields
     const { full_name, bio, avatar_url, phone, username } = req.body;
-    
+
     // Build update object
     const updateFields = {};
     if (full_name) updateFields.full_name = full_name;
@@ -182,6 +179,38 @@ exports.updateUser = async (req, res) => {
 
     res.json(user);
 
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateUserStatus = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { is_active, admin_user_id } = req.body;
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to update status' });
+    }
+    if (!admin_user_id) {
+      return res.status(400).json({ message: 'admin_user_id is required' });
+    }
+    if (req.user._id.toString() !== admin_user_id.toString()) {
+      return res.status(403).json({ message: 'Admin user mismatch' });
+    }
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ message: 'is_active must be boolean' });
+    }
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (user.role === 'admin' && is_active === false) {
+      return res.status(400).json({ message: 'Admin must remain active' });
+    }
+    user.is_active = is_active;
+    await user.save();
+    res.json({ id: user._id, is_active: user.is_active });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

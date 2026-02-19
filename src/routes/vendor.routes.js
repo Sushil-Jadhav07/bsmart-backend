@@ -1,11 +1,52 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { createVendor, getMyVendor, getVendorByUserId, listValidatedVendors, listInvalidatedVendors } = require('../controllers/vendor.controller');
+const { createVendor, getMyVendor, getVendorByUserId, listValidatedVendors, listInvalidatedVendors, updateVendorValidation } = require('../controllers/vendor.controller');
 
 router.post('/', auth, createVendor);
 router.get('/me', auth, getMyVendor);
 router.get('/users/:id', getVendorByUserId);
+
+/**
+ * @swagger
+ * /api/vendors/{id}/validation:
+ *   patch:
+ *     summary: Update vendor validation status
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Vendor ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               admin_user_id:
+ *                 type: string
+ *                 description: Admin user ID performing this action
+ *               validated:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Vendor validation updated successfully
+ *       400:
+ *         description: Validation error
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Vendor not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/:id/validation', auth, updateVendorValidation);
 /**
  * @swagger
  * /api/vendors/validate:
