@@ -16,6 +16,9 @@ const mediaSchema = new mongoose.Schema({
       enum: ["original", "1:1", "4:5", "16:9"],
       default: "original"
     },
+    aspect_ratio: {
+      type: String
+    },
     zoom: {
       type: Number,
       default: 1
@@ -46,7 +49,27 @@ const mediaSchema = new mongoose.Schema({
     temperature: { type: Number, default: 0 },
     fade: { type: Number, default: 0 },
     vignette: { type: Number, default: 0 }
-  }
+  },
+  videoLength: { type: Number },
+  finalLength: { type: Number },
+  finallength: { type: Number },
+  totalLength: { type: Number },
+  totalLenght: { type: Number },
+  timing: {
+    start: { type: Number },
+    end: { type: Number }
+  },
+  'thumbail-time': { type: Number },
+  'finalLength-start': { type: Number },
+  'finallength-end': { type: Number },
+  thumbnail: {
+    fileName: { type: String },
+    type: { type: String, default: 'image' }
+  },
+  thumbnails: [{
+    fileName: { type: String },
+    type: { type: String, default: 'image' }
+  }]
 }, { _id: false });
 
 const postSchema = new mongoose.Schema({

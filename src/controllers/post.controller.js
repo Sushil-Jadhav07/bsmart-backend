@@ -8,10 +8,26 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
   
   postObj.post_id = postObj._id;
   if (postObj.media && Array.isArray(postObj.media)) {
-    postObj.media = postObj.media.map(item => ({
-      ...item,
-      fileUrl: `${baseUrl}/uploads/${item.fileName}`
-    }));
+    postObj.media = postObj.media.map(item => {
+      const fileUrl = item.fileName ? `${baseUrl}/uploads/${item.fileName}` : item.fileUrl;
+      let thumbnailArray = [];
+      if (Array.isArray(item.thumbnails)) {
+        thumbnailArray = item.thumbnails.map(t => ({
+          ...t,
+          fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : t.fileUrl
+        }));
+      } else if (item.thumbnail && item.thumbnail.fileName) {
+        thumbnailArray = [{
+          ...item.thumbnail,
+          fileUrl: `${baseUrl}/uploads/${item.thumbnail.fileName}`
+        }];
+      }
+      return {
+        ...item,
+        fileUrl,
+        thumbnail: thumbnailArray
+      };
+    });
   }
 
   if (currentUserId && postObj.likes) {
@@ -166,6 +182,120 @@ exports.deletePost = async (req, res) => {
     console.error(error);
     if (error.kind === 'ObjectId') {
       return res.status(404).json({ message: 'Post not found' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.createReel = async (req, res) => {
+  try {
+    const { caption, location, media, tags, people_tags, hide_likes_count, turn_off_commenting } = req.body;
+
+    if (!media || media.length === 0) {
+      return res.status(400).json({ message: 'At least one media item is required' });
+    }
+
+    // Normalize incoming requested keys
+    const normalizedMedia = media.map(m => {
+      const nm = { ...m };
+      if (Array.isArray(nm.thumbnail)) {
+        nm.thumbnails = nm.thumbnail;
+        delete nm.thumbnail;
+      }
+      if (typeof nm['finalLength-start'] !== 'undefined') {
+        nm.finalLength_start = nm['finalLength-start'];
+      }
+      if (typeof nm['finallength-end'] !== 'undefined') {
+        nm.finalLength_end = nm['finallength-end'];
+      }
+      if (typeof nm['thumbail-time'] !== 'undefined') {
+        nm.thumbnail_time = nm['thumbail-time'];
+      }
+      if (typeof nm.totalLenght !== 'undefined') {
+        nm.totalLength = nm.totalLenght;
+      }
+      return nm;
+    });
+
+    const validCropModes = ["original", "1:1", "4:5", "16:9"];
+    for (const item of media) {
+      if (!item.fileName) {
+        return res.status(400).json({ message: 'Each media item must have a fileName' });
+      }
+      if (item.crop && item.crop.mode && !validCropModes.includes(item.crop.mode)) {
+        return res.status(400).json({ message: `Invalid crop mode: ${item.crop.mode}` });
+      }
+    }
+
+    const post = await Post.create({
+      user_id: req.userId,
+      caption,
+      location,
+      media: normalizedMedia,
+      tags,
+      people_tags,
+      hide_likes_count,
+      turn_off_commenting,
+      type: 'reel'
+    });
+
+    await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
+    const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count');
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    res.status(201).json(transformPost(populatedPost, baseUrl));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.listReels = async (req, res) => {
+  try {
+    const posts = await Post.find({ type: 'reel' })
+      .sort({ createdAt: -1 })
+      .populate('user_id', 'username full_name avatar_url followers_count following_count');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const SavedPost = require('../models/SavedPost');
+    const saved = await SavedPost.find({ user_id: req.userId }).select('post_id').lean();
+    const savedSet = new Set(saved.map(s => s.post_id.toString()));
+    const transformed = posts.map(p => transformPost(p, baseUrl, req.userId, savedSet));
+    res.json(transformed);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.getReelById = async (req, res) => {
+  try {
+    const post = await Post.findOne({ _id: req.params.id, type: 'reel' })
+      .populate('user_id', 'username full_name avatar_url followers_count following_count');
+
+    if (!post) {
+      return res.status(404).json({ message: 'Reel not found' });
+    }
+
+    const commentsRaw = await Comment.find({ post_id: req.params.id })
+      .sort({ createdAt: -1 });
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const SavedPost = require('../models/SavedPost');
+    const isSaved = await SavedPost.exists({ user_id: req.userId, post_id: post._id });
+    const savedSet = new Set();
+    if (isSaved) savedSet.add(post._id.toString());
+    const transformedPost = transformPost(post, baseUrl, req.userId, savedSet);
+    transformedPost.comments = commentsRaw.map(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      obj.comment_id = obj._id;
+      return obj;
+    });
+
+    res.json(transformedPost);
+  } catch (error) {
+    console.error(error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Reel not found' });
     }
     res.status(500).json({ message: 'Server error', error: error.message });
   }

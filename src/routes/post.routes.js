@@ -1,9 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
-const { createPost, getFeed, getPost, deletePost } = require('../controllers/post.controller');
+const { createPost, getFeed, getPost, deletePost, createReel, listReels, getReelById } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved.controller');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Reels
+ *   description: Reel management and viewing
+ */
 
 /**
  * @swagger
@@ -18,9 +25,91 @@ const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved
  *           type: string
  *           enum: [image, video]
  *           default: image
+ *         videoLength:
+ *           type: number
+ *           description: Original video length in milliseconds
+ *         finalLength:
+ *           type: number
+ *           description: Final video length after trim in milliseconds
+ *         finallength:
+ *           type: number
+ *           description: Alias for finalLength (accepted in requests)
  *         fileUrl:
  *           type: string
  *           description: Computed URL for the file (response only)
+ *         crop:
+ *           type: object
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: ["original", "1:1", "4:5", "16:9"]
+ *               default: "original"
+ *             aspect_ratio:
+ *               type: string
+ *             zoom:
+ *               type: number
+ *               default: 1
+ *             x:
+ *               type: number
+ *               default: 0
+ *             y:
+ *               type: number
+ *               default: 0
+ *         timing:
+ *           type: object
+ *           properties:
+ *             start:
+ *               type: number
+ *             end:
+ *               type: number
+ *         filter:
+ *           type: object
+ *           properties:
+ *             name:
+ *               type: string
+ *               default: "Original"
+ *             css:
+ *               type: string
+ *               default: ""
+ *               example: "contrast(1.1) saturate(1.25)"
+ *         thumbnail:
+ *           type: object
+ *           properties:
+ *             fileName:
+ *               type: string
+ *             type:
+ *               type: string
+ *               enum: [image]
+ *               default: image
+ *             fileUrl:
+ *               type: string
+ *               description: Computed URL for the thumbnail (response only)
+ *         adjustments:
+ *           type: object
+ *           properties:
+ *             brightness:
+ *               type: number
+ *             contrast:
+ *               type: number
+ *             saturation:
+ *               type: number
+ *             temperature:
+ *               type: number
+ *             fade:
+ *               type: number
+ *             vignette:
+ *               type: number
+ *     PostMediaItem:
+ *       type: object
+ *       properties:
+ *         fileName:
+ *           type: string
+ *         type:
+ *           type: string
+ *           enum: [image]
+ *           default: image
+ *         fileUrl:
+ *           type: string
  *         crop:
  *           type: object
  *           properties:
@@ -50,18 +139,62 @@ const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved
  *         adjustments:
  *           type: object
  *           properties:
- *             brightness:
+ *             brightness: { type: number }
+ *             contrast: { type: number }
+ *             saturation: { type: number }
+ *             temperature: { type: number }
+ *             fade: { type: number }
+ *             vignette: { type: number }
+ *     ReelMediaItem:
+ *       type: object
+ *       properties:
+ *         fileName:
+ *           type: string
+ *         type:
+ *           type: string
+ *           enum: [video]
+ *           default: video
+ *         videoLength: { type: number }
+ *         totalLenght: { type: number }
+ *         thumbail-time: { type: number }
+ *         finalLength-start: { type: number }
+ *         finallength-end: { type: number }
+ *         finalLength: { type: number }
+ *         finallength: { type: number }
+ *         fileUrl: { type: string }
+ *         crop:
+ *           type: object
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: ["original", "1:1", "4:5", "16:9"]
+ *               default: "original"
+ *             aspect_ratio:
+ *               type: string
+ *             zoom:
  *               type: number
- *             contrast:
+ *               default: 1
+ *             x:
  *               type: number
- *             saturation:
+ *               default: 0
+ *             y:
  *               type: number
- *             temperature:
+ *               default: 0
+ *         timing:
+ *           type: object
+ *           properties:
+ *             start:
  *               type: number
- *             fade:
+ *             end:
  *               type: number
- *             vignette:
- *               type: number
+ *         thumbnail:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               fileName: { type: string }
+ *               type: { type: string, enum: [image], default: image }
+ *               fileUrl: { type: string }
  *     Post:
  *       type: object
  *       properties:
@@ -159,7 +292,7 @@ const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved
  *               media:
  *                 type: array
  *                 items:
- *                   $ref: '#/components/schemas/MediaItem'
+ *                   $ref: '#/components/schemas/PostMediaItem'
  *               tags:
  *                 type: array
  *                 items:
@@ -213,6 +346,104 @@ router.post('/', verifyToken, createPost);
  *                 $ref: '#/components/schemas/Post'
  */
 router.get('/feed', verifyToken, getFeed);
+
+/**
+ * @swagger
+ * /api/posts/reels:
+ *   post:
+ *     summary: Create a new reel
+ *     tags: [Reels]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - media
+ *             properties:
+ *               caption:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               media:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/ReelMediaItem'
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               people_tags:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     user_id: { type: string }
+ *                     username: { type: string }
+ *                     x: { type: number }
+ *                     y: { type: number }
+ *               hide_likes_count:
+ *                 type: boolean
+ *               turn_off_commenting:
+ *                 type: boolean
+ *     responses:
+ *       201:
+ *         description: Reel created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Post'
+ */
+router.post('/reels', verifyToken, createReel);
+
+/**
+ * @swagger
+ * /api/posts/reels:
+ *   get:
+ *     summary: List all reels
+ *     tags: [Reels]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of reels
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Post'
+ */
+router.get('/reels', verifyToken, listReels);
+
+/**
+ * @swagger
+ * /api/posts/reels/{id}:
+ *   get:
+ *     summary: Get a reel by ID
+ *     tags: [Reels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Reel details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Post'
+ *       404:
+ *         description: Reel not found
+ */
+router.get('/reels/:id', verifyToken, getReelById);
 
 /**
  * @swagger
