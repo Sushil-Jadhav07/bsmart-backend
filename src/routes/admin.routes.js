@@ -22,8 +22,8 @@ const {
  * @swagger
  * /api/admin/posts/{id}:
  *   delete:
- *     summary: Admin deletes any post
- *     description: Soft delete a post by ID (isDeleted=true) and record deletedBy and deletedAt.
+ *     summary: Admin permanently deletes any post
+ *     description: Permanently delete a post by ID.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -47,8 +47,8 @@ router.delete('/posts/:id', requireAdmin, deletePostByAdmin);
  * @swagger
  * /api/admin/comments/{id}:
  *   delete:
- *     summary: Admin deletes any comment
- *     description: Soft delete a comment by ID and record deleted metadata.
+ *     summary: Admin permanently deletes any comment
+ *     description: Permanently delete a comment by ID.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -72,8 +72,8 @@ router.delete('/comments/:id', requireAdmin, deleteCommentByAdmin);
  * @swagger
  * /api/admin/replies/{id}:
  *   delete:
- *     summary: Admin deletes any reply
- *     description: Soft delete a reply (comment with parent_id) and record deleted metadata.
+ *     summary: Admin permanently deletes any reply
+ *     description: Permanently delete a reply (comment with parent_id).
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -97,8 +97,8 @@ router.delete('/replies/:id', requireAdmin, deleteReplyByAdmin);
  * @swagger
  * /api/admin/reels/{id}:
  *   delete:
- *     summary: Admin deletes any reel
- *     description: Soft delete a reel post by ID and record deleted metadata.
+ *     summary: Admin permanently deletes any reel
+ *     description: Permanently delete a reel post by ID.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -122,8 +122,8 @@ router.delete('/reels/:id', requireAdmin, deleteReelByAdmin);
  * @swagger
  * /api/admin/stories/{id}:
  *   delete:
- *     summary: Admin deletes any story
- *     description: Soft delete a story by ID and record deleted metadata.
+ *     summary: Admin permanently deletes any story
+ *     description: Permanently delete a story by ID (also removes items and views).
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -147,8 +147,8 @@ router.delete('/stories/:id', requireAdmin, deleteStoryByAdmin);
  * @swagger
  * /api/admin/users/{id}:
  *   delete:
- *     summary: Admin deletes any user (soft)
- *     description: Soft delete user, set is_active=false and record deleted metadata.
+ *     summary: Admin permanently deletes any user
+ *     description: Permanently delete user and related data (posts, comments, follows, saved posts).
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -172,8 +172,8 @@ router.delete('/users/:id', requireAdmin, deleteUserByAdmin);
  * @swagger
  * /api/admin/vendors/{id}:
  *   delete:
- *     summary: Admin deletes any vendor (soft)
- *     description: Soft delete vendor and optionally downgrade linked user role to member.
+ *     summary: Admin permanently deletes any vendor
+ *     description: Permanently delete vendor and optionally downgrade linked user role to member.
  *     tags: [Admin, Vendors]
  *     security:
  *       - bearerAuth: []

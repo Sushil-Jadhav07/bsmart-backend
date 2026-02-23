@@ -84,7 +84,7 @@ router.get('/:id', getVendorById);
  * @swagger
  * /api/vendors/{id}:
  *   delete:
- *     summary: Delete vendor (admin only, soft delete)
+ *     summary: Permanently delete vendor (admin only)
  *     tags: [Vendors]
  *     security:
  *       - bearerAuth: []
@@ -105,7 +105,7 @@ router.get('/:id', getVendorById);
  *                 type: boolean
  *     responses:
  *       200:
- *         description: Vendor deleted successfully
+ *         description: Vendor permanently deleted successfully
  *       403:
  *         description: Forbidden - Admin only
  *       404:
