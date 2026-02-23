@@ -16,6 +16,7 @@ const viewRoutes = require('./src/routes/view.routes');
 const storyRoutes = require('./src/routes/story.routes');
 const followRoutes = require('./src/routes/follow.routes');
 const vendorRoutes = require('./src/routes/vendor.routes');
+const adminRoutes = require('./src/routes/admin.routes');
 const memberRoutes = require('./src/routes/member.routes');
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/stories', storyRoutes);
 app.use('/api', followRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/members', memberRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/docs/full', (req, res) => {
   const path = require('path');

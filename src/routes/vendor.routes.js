@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const { createVendor, getMyVendor, getVendorByUserId, listValidatedVendors, listInvalidatedVendors, updateVendorValidation, listAllVendors, getVendorById } = require('../controllers/vendor.controller');
+const requireAdmin = require('../middleware/requireAdmin');
+const { deleteVendorByAdmin } = require('../controllers/admin.controller');
 
 router.post('/', auth, createVendor);
 router.get('/me', auth, getMyVendor);
@@ -78,6 +80,38 @@ router.get('/:id', getVendorById);
  *       404:
  *         description: Vendor not found
  */
+/**
+ * @swagger
+ * /api/vendors/{id}:
+ *   delete:
+ *     summary: Delete vendor (admin only, soft delete)
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               downgrade_user_to_member:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Vendor deleted successfully
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Vendor not found
+ */
+router.delete('/:id', requireAdmin, deleteVendorByAdmin);
 /**
  * @swagger
  * /api/vendors/{id}/validation:

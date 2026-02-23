@@ -72,7 +72,8 @@ Visit: `http://localhost:5000/api-docs`
   "username": "johndoe",
   "email": "john@example.com",
   "password": "securepassword",
-  "role": "admin"
+  "role": "vendor",
+  "company_details": { "company_name": "Acme Inc" }
 }
 ```
 
@@ -203,7 +204,7 @@ Visit: `http://localhost:5000/api-docs`
 ```json
 {
   "items": [{
-    "media": { "url": "http://...", "type": "image" },
+    "media": [{ "url": "http://...", "type": "image" }],
     "transform": { "x": 0.5, "y": 0.5, "scale": 1 }
   }]
 }

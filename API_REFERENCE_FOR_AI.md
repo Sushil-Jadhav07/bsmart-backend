@@ -51,7 +51,7 @@
 {
   "_id": "ObjectId",
   "user_id": "ObjectId",
-  "items": [{ "media": { "url": "string", "type": "image|reel" }, "viewed": boolean }],
+  "items": [{ "media": [{ "url": "string", "type": "image|reel" }], "viewed": boolean }],
   "expiresAt": "ISO Date"
 }
 ```
@@ -59,7 +59,7 @@
 ## API Reference
 
 ### Auth (`/auth`)
-- `POST /register` -> Body: `{username, email, password, role}` -> Res: `{token, user}`
+- `POST /register` -> Body: `{username, email, password, role}` (+ `company_details.company_name` when role=vendor) -> Res: `{token, user}`
 - `POST /login` -> Body: `{email, password}` -> Res: `{token, user}`
 - `GET /me` -> Res: `{user}`
 - `GET /users` -> Res: `[{user, posts: []}]`

@@ -23,7 +23,10 @@ const vendorSchema = new mongoose.Schema({
   location_target: { type: String },
   campaign_idea: { type: String },
   credits: { type: Number, default: 0 },
-  credits_expires_at: { type: Date }
+  credits_expires_at: { type: Date },
+  isDeleted: { type: Boolean, default: false },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  deletedAt: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Vendor', vendorSchema);

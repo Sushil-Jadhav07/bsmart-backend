@@ -41,6 +41,17 @@ const commentSchema = new mongoose.Schema({
   likes_count: {
     type: Number,
     default: 0
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  deletedAt: {
+    type: Date
   }
 }, {
   timestamps: true

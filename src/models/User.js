@@ -67,6 +67,17 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
     default: ''
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  deletedAt: {
+    type: Date
   }
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt

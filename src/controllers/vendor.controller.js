@@ -134,7 +134,7 @@ exports.listValidatedVendors = async (req, res) => {
     if (!req.user || req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized' });
     }
-    const vendors = await Vendor.find({ validated: true })
+    const vendors = await Vendor.find({ validated: true, isDeleted: { $ne: true } })
       .populate('user_id', 'username full_name avatar_url role')
       .sort({ createdAt: -1 });
     return res.json(vendors);
@@ -149,7 +149,7 @@ exports.listInvalidatedVendors = async (req, res) => {
     if (!req.user || req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized' });
     }
-    const vendors = await Vendor.find({ $or: [{ validated: false }, { validated: { $exists: false } }] })
+    const vendors = await Vendor.find({ $or: [{ validated: false }, { validated: { $exists: false } }], isDeleted: { $ne: true } })
       .populate('user_id', 'username full_name avatar_url role')
       .sort({ createdAt: -1 });
     return res.json(vendors);

@@ -170,6 +170,17 @@ const postSchema = new mongoose.Schema({
     type: String,
     enum: ['post', 'reel', 'promote', 'advertise'],
     default: 'post'
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  deletedAt: {
+    type: Date
   }
 }, {
   timestamps: true

@@ -36,7 +36,10 @@ This is the API documentation for the authentication and user management system.
   "username": "string",
   "full_name": "string",
   "phone": "string",
-  "role": "member|vendor|admin"
+  "role": "member|vendor|admin",
+  "company_details": {
+    "company_name": "string"
+  }
 }
 ```
 
