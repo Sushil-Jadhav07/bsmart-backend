@@ -2,6 +2,42 @@ const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 
+exports.listAllVendors = async (req, res) => {
+  try {
+    const vendors = await Vendor.find({})
+      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt')
+      .sort({ createdAt: -1 });
+    const result = vendors.map(v => ({
+      _id: v._id,
+      validated: !!v.validated,
+      business_name: v.business_name,
+      user: v.user_id
+    }));
+    return res.json(result);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getVendorById = async (req, res) => {
+  try {
+    const vendorId = req.params.id;
+    const vendor = await Vendor.findById(vendorId)
+      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt');
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+    const payload = {
+      _id: vendor._id,
+      validated: !!vendor.validated,
+      business_name: vendor.business_name,
+      user: vendor.user_id
+    };
+    return res.json(payload);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
 exports.createVendor = async (req, res) => {
   try {
     const userId = req.userId;

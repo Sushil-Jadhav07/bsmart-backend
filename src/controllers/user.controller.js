@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
+const Vendor = require('../models/Vendor');
 
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
@@ -71,7 +72,11 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json(user);
+    const vendor = await Vendor.findOne({ user_id: userId }).select('validated').lean();
+    const validated = vendor ? !!vendor.validated : false;
+    const obj = user.toObject ? user.toObject() : user;
+    obj.validated = validated;
+    res.json(obj);
 
   } catch (error) {
     console.error(error);
@@ -113,8 +118,12 @@ exports.listUsersProfiles = async (req, res) => {
       .select('_id username full_name avatar_url phone role followers_count following_count createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean();
+    const ids = users.map(u => u._id);
+    const vendors = await Vendor.find({ user_id: { $in: ids } }).select('user_id validated').lean();
+    const vmap = new Map(vendors.map(v => [v.user_id.toString(), !!v.validated]));
     const results = [];
     for (const u of users) {
+      u.validated = vmap.get(u._id.toString()) || false;
       const posts = await Post.find({ user_id: u._id })
         .sort({ createdAt: -1 })
         .populate('user_id', 'username full_name avatar_url followers_count following_count');

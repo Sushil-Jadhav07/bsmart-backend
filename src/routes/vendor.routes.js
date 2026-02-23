@@ -1,12 +1,83 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { createVendor, getMyVendor, getVendorByUserId, listValidatedVendors, listInvalidatedVendors, updateVendorValidation } = require('../controllers/vendor.controller');
+const { createVendor, getMyVendor, getVendorByUserId, listValidatedVendors, listInvalidatedVendors, updateVendorValidation, listAllVendors, getVendorById } = require('../controllers/vendor.controller');
 
 router.post('/', auth, createVendor);
 router.get('/me', auth, getMyVendor);
 router.get('/users/:id', getVendorByUserId);
+router.get('/', listAllVendors);
+router.get('/:id', getVendorById);
 
+/**
+ * @swagger
+ * /api/vendors:
+ *   get:
+ *     summary: List all vendors with validated status
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Array of vendors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id: { type: string }
+ *                   validated: { type: boolean }
+ *                   business_name: { type: string }
+ *                   user:
+ *                     type: object
+ *                     properties:
+ *                       _id: { type: string }
+ *                       username: { type: string }
+ *                       full_name: { type: string }
+ *                       avatar_url: { type: string }
+ *                       role: { type: string }
+ *                       phone: { type: string }
+ *       401:
+ *         description: Not authorized
+ *
+ * /api/vendors/{id}:
+ *   get:
+ *     summary: Get vendor details by vendor ID
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Vendor ID
+ *     responses:
+ *       200:
+ *         description: Vendor details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id: { type: string }
+ *                 validated: { type: boolean }
+ *                 business_name: { type: string }
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     _id: { type: string }
+ *                     username: { type: string }
+ *                     full_name: { type: string }
+ *                     avatar_url: { type: string }
+ *                     role: { type: string }
+ *                     phone: { type: string }
+ *       404:
+ *         description: Vendor not found
+ */
 /**
  * @swagger
  * /api/vendors/{id}/validation:

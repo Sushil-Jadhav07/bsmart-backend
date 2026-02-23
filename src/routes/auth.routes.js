@@ -256,6 +256,9 @@ router.get(
  *         role:
  *           type: string
  *           enum: [member, vendor, admin]
+ *         validated:
+ *           type: boolean
+ *           description: Vendor validation status (true if vendor is validated; false otherwise)
  *         wallet:
  *           type: object
  *           properties:
