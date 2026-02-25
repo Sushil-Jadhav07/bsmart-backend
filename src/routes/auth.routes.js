@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getMe } = require('../controllers/auth.controller');
+const { register, login, getMe, changePassword } = require('../controllers/auth.controller');
 const { getAllUsers } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 const passport = require('passport');
@@ -163,6 +163,39 @@ router.post('/login', login);
  *         description: Server error
  */
 router.get('/me', auth, getMe);
+
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   post:
+ *     summary: Change user password
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Password updated successfully
+ *       400:
+ *         description: Invalid password or new password too short
+ *       404:
+ *         description: User not found
+ */
+router.post('/change-password', auth, changePassword);
 
 /**
  * @swagger

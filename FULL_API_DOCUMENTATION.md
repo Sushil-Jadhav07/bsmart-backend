@@ -226,6 +226,61 @@ Visit: `http://localhost:5000/api-docs`
 }
 ```
 
+### Ads Routes
+**Base URL:** `/api/ads`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/categories` | Get all ad categories | Public |
+| `GET` | `/feed` | Get active ads feed for user | Bearer |
+| `GET` | `/{id}` | Get ad details | Bearer |
+| `POST` | `/` | Create a new ad (Vendor only) | Bearer |
+| `POST` | `/{id}/view` | Record ad view | Bearer |
+| `POST` | `/{id}/complete` | Complete ad view & claim reward | Bearer |
+| `POST` | `/{id}/like` | Like/Unlike an ad | Bearer |
+| `POST` | `/{id}/comments` | Add comment to ad | Bearer |
+| `GET` | `/{id}/comments` | Get comments for ad | Bearer |
+| `DELETE` | `/comments/{id}` | Delete ad comment | Bearer |
+
+#### Admin Ad Routes
+**Base URL:** `/api/admin/ads`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/` | List all ads (Admin dashboard) | Admin |
+| `PATCH` | `/{id}` | Update ad status (approve/reject) | Admin |
+| `DELETE` | `/{id}` | Soft delete ad | Admin |
+
+#### Create Ad Example
+`POST /api/ads`
+```json
+{
+  "title": "Summer Sale",
+  "video_url": "http://example.com/video.mp4",
+  "coins_reward": 50,
+  "category": "Electronics",
+  "duration_seconds": 30
+}
+```
+
+### Wallet Routes
+**Base URL:** `/api/wallet`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/me` | Get my balance & transactions | Bearer |
+| `GET` | `/` | Admin: Get all wallets/transactions | Admin |
+
+**Response Example:**
+```json
+{
+  "wallet": { "balance": 150, "currency": "Coins" },
+  "transactions": [
+    { "type": "AD_REWARD", "amount": 50, "status": "SUCCESS" }
+  ]
+}
+```
+
 ### View Routes
 **Base URL:** `/api/views`
 
