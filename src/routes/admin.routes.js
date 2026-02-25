@@ -10,6 +10,7 @@ const {
   deleteUserByAdmin,
   deleteVendorByAdmin
 } = require('../controllers/admin.controller');
+const { adminUpdateAdStatus, adminDeleteAd } = require('../controllers/ad.controller');
 
 /**
  * @swagger
@@ -98,7 +99,7 @@ router.delete('/replies/:id', requireAdmin, deleteReplyByAdmin);
  * /api/admin/reels/{id}:
  *   delete:
  *     summary: Admin permanently deletes any reel
- *     description: Permanently delete a reel post by ID.
+ *     description: Permanently delete a reel by ID.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -123,7 +124,7 @@ router.delete('/reels/:id', requireAdmin, deleteReelByAdmin);
  * /api/admin/stories/{id}:
  *   delete:
  *     summary: Admin permanently deletes any story
- *     description: Permanently delete a story by ID (also removes items and views).
+ *     description: Permanently delete a story by ID.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -147,8 +148,8 @@ router.delete('/stories/:id', requireAdmin, deleteStoryByAdmin);
  * @swagger
  * /api/admin/users/{id}:
  *   delete:
- *     summary: Admin permanently deletes any user
- *     description: Permanently delete user and related data (posts, comments, follows, saved posts).
+ *     summary: Admin permanently deletes (soft delete) any user
+ *     description: Soft delete a user by ID.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -172,9 +173,9 @@ router.delete('/users/:id', requireAdmin, deleteUserByAdmin);
  * @swagger
  * /api/admin/vendors/{id}:
  *   delete:
- *     summary: Admin permanently deletes any vendor
- *     description: Permanently delete vendor and optionally downgrade linked user role to member.
- *     tags: [Admin, Vendors]
+ *     summary: Admin permanently deletes (soft delete) any vendor
+ *     description: Soft delete a vendor by ID.
+ *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -183,15 +184,6 @@ router.delete('/users/:id', requireAdmin, deleteUserByAdmin);
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               downgrade_user_to_member:
- *                 type: boolean
  *     responses:
  *       200:
  *         description: Vendor deleted successfully
@@ -201,5 +193,67 @@ router.delete('/users/:id', requireAdmin, deleteUserByAdmin);
  *         description: Vendor not found
  */
 router.delete('/vendors/:id', requireAdmin, deleteVendorByAdmin);
+
+/**
+ * @swagger
+ * /api/admin/ads/{id}:
+ *   patch:
+ *     summary: Admin updates ad status (approve/reject/pause)
+ *     tags: [Admin, Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [active, paused, rejected]
+ *               rejection_reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Ad status updated
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Ad not found
+ */
+router.patch('/ads/:id', requireAdmin, adminUpdateAdStatus);
+
+/**
+ * @swagger
+ * /api/admin/ads/{id}:
+ *   delete:
+ *     summary: Admin permanently deletes (soft delete) an ad
+ *     tags: [Admin, Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Ad deleted successfully
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Ad not found
+ */
+router.delete('/ads/:id', requireAdmin, adminDeleteAd);
 
 module.exports = router;

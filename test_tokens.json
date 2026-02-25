@@ -1,0 +1,17 @@
+{
+  "vendorToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5OWVkMzJkNDE2YzIyOWE2Y2NiYzFlOSIsImlhdCI6MTc3MjAxNjQyOSwiZXhwIjoxNzc0NjA4NDI5fQ.o7qukwWOpyUK86UmRCAY-STY-8fU5a_fOA_aXUt6qK0",
+  "userToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5OWVkMzJkNDE2YzIyOWE2Y2NiYzFmNyIsImlhdCI6MTc3MjAxNjQyOSwiZXhwIjoxNzc0NjA4NDI5fQ.-rW2YNPwiCWP-FZZQjSOdaqIFzbCYWtwaiZxitsjVRE",
+  "vendorUser": {
+    "username": "vendor_1772016428900",
+    "email": "vendor_1772016428900@test.com",
+    "password": "password123",
+    "full_name": "Test Vendor User"
+  },
+  "regularUser": {
+    "username": "user_1772016428900",
+    "email": "user_1772016428900@test.com",
+    "password": "password123",
+    "full_name": "Test Regular User"
+  },
+  "adId": "699ed64564b2dc448da44323"
+}
