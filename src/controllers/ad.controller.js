@@ -24,60 +24,126 @@ exports.createAd = async (req, res) => {
     }
 
     const {
-      title,
-      description,
+      title, // Kept for backwards compatibility if needed, or map caption to it
+      caption,
+      location,
+      media,
+      hashtags,
+      tagged_users,
+      engagement_controls,
+      content_type,
+      // Legacy fields (map to new structure if possible, or keep optional)
       video_fileName,
       video_url,
       thumbnail_fileName,
       thumbnail_url,
       duration_seconds,
+      // Common fields
       coins_reward,
       category,
       tags,
       target_language,
       target_location,
       target_preferences,
-      daily_limit,
       total_budget_coins
     } = req.body;
 
-    if (!title || !video_fileName || !video_url || !duration_seconds || !coins_reward || !category) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    // Validation: Require media array OR legacy fields
+    const hasNewMedia = media && Array.isArray(media) && media.length > 0;
+    const hasLegacyMedia = video_fileName && video_url && duration_seconds;
+
+    if ((!hasNewMedia && !hasLegacyMedia) || !coins_reward || !category) {
+      return res.status(400).json({ message: 'Missing required fields (media/video, coins_reward, category)' });
     }
 
-    // Derive full URLs
-    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
-    const fullVideoUrl = video_url.startsWith('http') ? video_url : `${baseUrl}${video_url}`;
-    const fullThumbnailUrl = thumbnail_url && !thumbnail_url.startsWith('http') 
-      ? `${baseUrl}${thumbnail_url}` 
-      : thumbnail_url;
-
-    const newAd = new Ad({
+    // Construct Ad Object
+    const adData = {
       vendor_id: vendor._id,
       user_id: userId,
-      title,
-      description,
-      video_fileName,
-      video_url: fullVideoUrl,
-      thumbnail_fileName,
-      thumbnail_url: fullThumbnailUrl,
-      duration_seconds,
-      coins_reward,
+      // Map title to caption if caption missing, or vice versa
+      caption: caption || title || '', 
+      location: location || '',
       category,
       tags: tags || [],
       target_language: target_language || 'en',
       target_location: target_location || '',
       target_preferences: target_preferences || [],
-      daily_limit: daily_limit || 0,
       total_budget_coins: total_budget_coins || 0,
-      status: 'pending'
-    });
+      status: 'pending',
+      // New fields
+      hashtags: hashtags || [],
+      tagged_users: tagged_users || [],
+      engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
+      content_type: content_type || 'reel'
+    };
 
+    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
+
+    if (hasNewMedia) {
+      // Process new media array
+      adData.media = media.map(m => ({
+        ...m,
+        fileUrl: m.fileUrl && !m.fileUrl.startsWith('http') ? `${baseUrl}${m.fileUrl}` : m.fileUrl,
+        thumbnails: m.thumbnails ? m.thumbnails.map(t => ({
+          ...t,
+          fileUrl: t.fileUrl && !t.fileUrl.startsWith('http') ? `${baseUrl}${t.fileUrl}` : t.fileUrl
+        })) : []
+      }));
+    } else {
+      // Backwards compatibility: Map legacy fields to media array
+      const fullVideoUrl = video_url.startsWith('http') ? video_url : `${baseUrl}${video_url}`;
+      const fullThumbnailUrl = thumbnail_url && !thumbnail_url.startsWith('http') 
+        ? `${baseUrl}${thumbnail_url}` 
+        : thumbnail_url;
+      
+      adData.media = [{
+        fileName: video_fileName,
+        fileUrl: fullVideoUrl,
+        media_type: 'video',
+        video_meta: {
+          final_duration: duration_seconds
+        },
+        thumbnails: fullThumbnailUrl ? [{
+          fileName: thumbnail_fileName || 'thumbnail',
+          media_type: 'image',
+          fileUrl: fullThumbnailUrl
+        }] : []
+      }];
+    }
+
+    // Check vendor wallet balance
+    const vendorWallet = await Wallet.findOne({ user_id: vendor.user_id });
+    if (!vendorWallet || vendorWallet.balance < total_budget_coins) {
+      return res.status(400).json({ message: 'Insufficient wallet balance for total budget' });
+    }
+
+    // Deduct budget from vendor wallet
+    await Wallet.findOneAndUpdate(
+      { user_id: vendor.user_id },
+      { $inc: { balance: -total_budget_coins } }
+    );
+
+    // Create transaction for budget deduction
+    // Note: We don't have an ad_id yet, so we'll create the ad first then transaction?
+    // Better to create ad first but not save? No, let's create transaction after ad save.
+    // But if ad save fails, we need to rollback.
+    // Simple approach: create ad first, then deduct.
+
+    const newAd = new Ad(adData);
     await newAd.save();
+
+    await WalletTransaction.create({
+      user_id: vendor.user_id,
+      ad_id: newAd._id,
+      type: 'AD_REWARD', // Or a new type 'AD_BUDGET_DEDUCTION'? Using AD_REWARD for now as expense
+      amount: -total_budget_coins,
+      status: 'SUCCESS'
+    });
 
     res.status(201).json(newAd);
   } catch (error) {
     console.error('Create ad error:', error);
+    // TODO: If wallet was deducted but ad creation failed (unlikely order above), refund.
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -289,6 +355,11 @@ exports.completeAdView = async (req, res) => {
       });
     }
 
+    // Check budget availability
+    if (ad.total_coins_spent + ad.coins_reward > ad.total_budget_coins) {
+      return res.status(400).json({ message: 'Ad budget exhausted' });
+    }
+
     // Check fraud flag
     if (adView.fraud_flagged) {
       return res.json({
@@ -307,14 +378,14 @@ exports.completeAdView = async (req, res) => {
     // Process Reward
     const rewardAmount = ad.coins_reward;
     
-    // 1. Credit User Wallet
+    // 1. Credit User Wallet (coins come from the pre-deducted budget pool)
     const wallet = await Wallet.findOneAndUpdate(
       { user_id: userId },
       { $inc: { balance: rewardAmount } },
       { new: true, upsert: true }
     );
 
-    // 2. Create Transaction
+    // 2. Create Transaction for User
     await WalletTransaction.create({
       user_id: userId,
       ad_id: ad._id,

@@ -112,43 +112,138 @@ router.get('/', auth, requireAdmin, listAds);
  *           schema:
  *             type: object
  *             required:
- *               - title
- *               - video_fileName
- *               - video_url
- *               - duration_seconds
- *               - coins_reward
+ *               - media
  *               - category
+ *               - coins_reward
  *             properties:
- *               title:
+ *               caption:
  *                 type: string
- *               description:
+ *               location:
  *                 type: string
- *               video_fileName:
+ *               media:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - fileName
+ *                   properties:
+ *                     fileName:
+ *                       type: string
+ *                     media_type:
+ *                       type: string
+ *                       enum: [image, video]
+ *                     video_meta:
+ *                       type: object
+ *                       properties:
+ *                         original_length_seconds:
+ *                           type: number
+ *                         selected_start:
+ *                           type: number
+ *                         selected_end:
+ *                           type: number
+ *                         final_duration:
+ *                           type: number
+ *                         thumbnail_time:
+ *                           type: number
+ *                     image_editing:
+ *                       type: object
+ *                       properties:
+ *                         filter:
+ *                           type: object
+ *                           properties:
+ *                             name:
+ *                               type: string
+ *                             css:
+ *                               type: string
+ *                         adjustments:
+ *                           type: object
+ *                           properties:
+ *                             brightness:
+ *                               type: number
+ *                             contrast:
+ *                               type: number
+ *                             saturation:
+ *                               type: number
+ *                             temperature:
+ *                               type: number
+ *                             fade:
+ *                               type: number
+ *                             vignette:
+ *                               type: number
+ *                     crop_settings:
+ *                       type: object
+ *                       properties:
+ *                         mode:
+ *                           type: string
+ *                           enum: [original, "1:1", "4:5", "16:9", "9:16"]
+ *                         aspect_ratio:
+ *                           type: string
+ *                         zoom:
+ *                           type: number
+ *                         x:
+ *                           type: number
+ *                         y:
+ *                           type: number
+ *                     timing_window:
+ *                       type: object
+ *                       properties:
+ *                         start:
+ *                           type: number
+ *                         end:
+ *                           type: number
+ *                     thumbnails:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           fileName:
+ *                             type: string
+ *                           media_type:
+ *                             type: string
+ *               hashtags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               tagged_users:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     user_id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     position_x:
+ *                       type: number
+ *                     position_y:
+ *                       type: number
+ *               engagement_controls:
+ *                 type: object
+ *                 properties:
+ *                   hide_likes_count:
+ *                     type: boolean
+ *                   disable_comments:
+ *                     type: boolean
+ *               content_type:
  *                 type: string
- *               video_url:
- *                 type: string
- *               thumbnail_fileName:
- *                 type: string
- *               thumbnail_url:
- *                 type: string
- *               duration_seconds:
- *                 type: number
- *               coins_reward:
- *                 type: number
+ *                 enum: [post, reel]
  *               category:
  *                 type: string
+ *                 description: Must match a value from GET /api/ads/categories
  *               tags:
  *                 type: array
  *                 items:
  *                   type: string
+ *                 description: Ad targeting tags, different from hashtags
  *               target_language:
  *                 type: string
  *               target_location:
  *                 type: string
- *               daily_limit:
- *                 type: number
  *               total_budget_coins:
  *                 type: number
+ *               coins_reward:
+ *                 type: number
+ *                 description: Coins user earns for completing this ad, minimum 1
  *     responses:
  *       201:
  *         description: Ad created successfully
