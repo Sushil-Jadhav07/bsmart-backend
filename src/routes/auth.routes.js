@@ -292,6 +292,9 @@ router.get(
  *         validated:
  *           type: boolean
  *           description: Vendor validation status (true if vendor is validated; false otherwise)
+ *         vendor_id:
+ *           type: string
+ *           description: The ID of the vendor profile if the user is a vendor
  *         wallet:
  *           type: object
  *           properties:

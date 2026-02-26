@@ -72,10 +72,13 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const vendor = await Vendor.findOne({ user_id: userId }).select('validated').lean();
+    const vendor = await Vendor.findOne({ user_id: userId }).select('validated _id').lean();
     const validated = vendor ? !!vendor.validated : false;
     const obj = user.toObject ? user.toObject() : user;
     obj.validated = validated;
+    if (vendor) {
+      obj.vendor_id = vendor._id;
+    }
     res.json(obj);
 
   } catch (error) {
@@ -119,11 +122,15 @@ exports.listUsersProfiles = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
     const ids = users.map(u => u._id);
-    const vendors = await Vendor.find({ user_id: { $in: ids } }).select('user_id validated').lean();
-    const vmap = new Map(vendors.map(v => [v.user_id.toString(), !!v.validated]));
+    const vendors = await Vendor.find({ user_id: { $in: ids } }).select('user_id validated _id').lean();
+    const vmap = new Map(vendors.map(v => [v.user_id.toString(), v]));
     const results = [];
     for (const u of users) {
-      u.validated = vmap.get(u._id.toString()) || false;
+      const vendor = vmap.get(u._id.toString());
+      u.validated = vendor ? !!vendor.validated : false;
+      if (vendor) {
+        u.vendor_id = vendor._id;
+      }
       const posts = await Post.find({ user_id: u._id })
         .sort({ createdAt: -1 })
         .populate('user_id', 'username full_name avatar_url followers_count following_count');
