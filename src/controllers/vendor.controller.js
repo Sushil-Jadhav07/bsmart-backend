@@ -26,11 +26,13 @@ exports.getVendorById = async (req, res) => {
     const vendor = await Vendor.findById(vendorId)
       .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt');
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+    const wallet = await Wallet.findOne({ user_id: vendor.user_id });
     const payload = {
       _id: vendor._id,
       validated: !!vendor.validated,
       business_name: vendor.business_name,
-      user: vendor.user_id
+      user: vendor.user_id,
+      wallet: wallet ? { balance: wallet.balance, currency: wallet.currency } : null
     };
     return res.json(payload);
   } catch (error) {
@@ -120,8 +122,21 @@ exports.updateVendorValidation = async (req, res) => {
     if (!vendor) {
       return res.status(404).json({ message: 'Vendor not found' });
     }
+
+    // Check if validating for the first time
+    const wasNotValidated = !vendor.validated;
     vendor.validated = validated;
     await vendor.save();
+
+    // Credit 5000 coins if validated for the first time
+    if (validated && wasNotValidated) {
+      await Wallet.updateOne(
+        { user_id: vendor.user_id },
+        { $inc: { balance: 5000 } },
+        { upsert: true }
+      );
+    }
+
     return res.json({ id: vendor._id, validated: vendor.validated });
   } catch (error) {
     console.error(error);
