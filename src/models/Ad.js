@@ -69,6 +69,13 @@ const adSchema = new mongoose.Schema({
   target_language: { type: String, default: 'en' },
   target_location: { type: String, default: '' },
   target_preferences: { type: [String], default: [] },
+  product: {
+    product_id: { type: String },
+    title: { type: String },
+    description: { type: String },
+    price: { type: Number },
+    link: { type: String }
+  },
   coins_reward: { type: Number, required: true, min: 1 },
   total_budget_coins: { type: Number, default: 0 },
   total_coins_spent: { type: Number, default: 0 },

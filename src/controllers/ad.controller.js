@@ -45,7 +45,8 @@ exports.createAd = async (req, res) => {
       target_language,
       target_location,
       target_preferences,
-      total_budget_coins
+      total_budget_coins,
+      product
     } = req.body;
 
     // Validation: Require media array OR legacy fields
@@ -74,7 +75,8 @@ exports.createAd = async (req, res) => {
       hashtags: hashtags || [],
       tagged_users: tagged_users || [],
       engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
-      content_type: content_type || 'reel'
+      content_type: content_type || 'reel',
+      product: product || {}
     };
 
     const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;

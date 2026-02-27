@@ -239,6 +239,19 @@ router.get('/', auth, requireAdmin, listAds);
  *                 type: string
  *               target_location:
  *                 type: string
+ *               product:
+ *                 type: object
+ *                 properties:
+ *                   product_id:
+ *                     type: string
+ *                   title:
+ *                     type: string
+ *                   description:
+ *                     type: string
+ *                   price:
+ *                     type: number
+ *                   link:
+ *                     type: string
  *               total_budget_coins:
  *                 type: number
  *               coins_reward:
