@@ -66,8 +66,8 @@ const adSchema = new mongoose.Schema({
   content_type: { type: String, enum: ['post', 'reel'], default: 'reel' },
   category: { type: String, required: true },
   tags: { type: [String], default: [] },
-  target_language: { type: String, default: 'en' },
-  target_location: { type: String, default: '' },
+  target_language: { type: [String], default: [] },
+  target_location: { type: [String], default: [] },
   target_preferences: { type: [String], default: [] },
   product: {
     product_id: { type: String },
@@ -76,7 +76,15 @@ const adSchema = new mongoose.Schema({
     price: { type: Number },
     link: { type: String }
   },
-  coins_reward: { type: Number, required: true, min: 1 },
+  product_offer: [{
+    id: { type: String },
+    title: { type: String },
+    description: { type: String },
+    price: { type: Number, default: 0 },
+    link: { type: String },
+    type: { type: String, enum: ['product', 'offer'] }
+  }],
+  coins_reward: { type: Number, default: 0, min: 0 },
   total_budget_coins: { type: Number, default: 0 },
   total_coins_spent: { type: Number, default: 0 },
   status: { type: String, enum: ['pending', 'active', 'paused', 'rejected'], default: 'pending' },

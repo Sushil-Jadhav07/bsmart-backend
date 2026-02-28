@@ -114,8 +114,10 @@ router.get('/', auth, requireAdmin, listAds);
  *             required:
  *               - media
  *               - category
- *               - coins_reward
  *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [ads]
  *               caption:
  *                 type: string
  *               location:
@@ -236,27 +238,33 @@ router.get('/', auth, requireAdmin, listAds);
  *                   type: string
  *                 description: Ad targeting tags, different from hashtags
  *               target_language:
- *                 type: string
+ *                 type: array
+ *                 items:
+ *                   type: string
  *               target_location:
- *                 type: string
- *               product:
- *                 type: object
- *                 properties:
- *                   product_id:
- *                     type: string
- *                   title:
- *                     type: string
- *                   description:
- *                     type: string
- *                   price:
- *                     type: number
- *                   link:
- *                     type: string
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               product_offer:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     price:
+ *                       type: number
+ *                     link:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                       enum: [product, offer]
  *               total_budget_coins:
  *                 type: number
- *               coins_reward:
- *                 type: number
- *                 description: Coins user earns for completing this ad, minimum 1
  *     responses:
  *       201:
  *         description: Ad created successfully

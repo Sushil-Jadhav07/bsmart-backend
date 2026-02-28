@@ -46,15 +46,15 @@ exports.createAd = async (req, res) => {
       target_location,
       target_preferences,
       total_budget_coins,
-      product
+      product_offer
     } = req.body;
 
     // Validation: Require media array OR legacy fields
     const hasNewMedia = media && Array.isArray(media) && media.length > 0;
     const hasLegacyMedia = video_fileName && video_url && duration_seconds;
 
-    if ((!hasNewMedia && !hasLegacyMedia) || !coins_reward || !category) {
-      return res.status(400).json({ message: 'Missing required fields (media/video, coins_reward, category)' });
+    if ((!hasNewMedia && !hasLegacyMedia) || !category) {
+      return res.status(400).json({ message: 'Missing required fields (media/video, category)' });
     }
 
     // Construct Ad Object
@@ -66,8 +66,8 @@ exports.createAd = async (req, res) => {
       location: location || '',
       category,
       tags: tags || [],
-      target_language: target_language || 'en',
-      target_location: target_location || '',
+      target_language: Array.isArray(target_language) ? target_language : (target_language ? [target_language] : []),
+      target_location: Array.isArray(target_location) ? target_location : (target_location ? [target_location] : []),
       target_preferences: target_preferences || [],
       total_budget_coins: total_budget_coins || 0,
       status: 'pending',
@@ -76,7 +76,7 @@ exports.createAd = async (req, res) => {
       tagged_users: tagged_users || [],
       engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
       content_type: content_type || 'reel',
-      product: product || {}
+      product_offer: Array.isArray(product_offer) ? product_offer : []
     };
 
     const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
