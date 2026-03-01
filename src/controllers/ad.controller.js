@@ -140,14 +140,14 @@ exports.createAd = async (req, res) => {
     const newAd = new Ad(adData);
     await newAd.save();
 
-    await WalletTransaction.create({
-      user_id: vendor.user_id,
-      ad_id: newAd._id,
-      type: 'AD_REWARD', // Or a new type 'AD_BUDGET_DEDUCTION'? Using AD_REWARD for now as expense
-      amount: -total_budget_coins,
-      status: 'SUCCESS'
-    });
-
+   await WalletTransaction.create({
+  user_id: vendor.user_id,
+  ad_id: newAd._id,
+  // Vendor spend when creating an ad
+  type: 'AD_BUDGET_DEDUCTION',
+  amount: -total_budget_coins,
+  status: 'SUCCESS'
+});
     res.status(201).json(newAd);
   } catch (error) {
     console.error('Create ad error:', error);

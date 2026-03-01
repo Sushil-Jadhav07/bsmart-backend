@@ -21,7 +21,9 @@ const walletTransactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['REEL_VIEW_REWARD', 'LIKE', 'COMMENT', 'REPLY', 'SAVE', 'AD_REWARD'],
+    // AD_REWARD: coins rewarded to a user for engaging with/viewing an ad (minting)
+    // AD_BUDGET_DEDUCTION: coins deducted from vendor wallet when creating an ad (spend)
+    enum: ['REEL_VIEW_REWARD', 'LIKE', 'COMMENT', 'REPLY', 'SAVE', 'AD_REWARD', 'AD_BUDGET_DEDUCTION'],
     required: true
   },
   amount: {
@@ -41,10 +43,42 @@ const walletTransactionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Remove unique constraint to allow multiple rewards over time
-// walletTransactionSchema.index({ user_id: 1, post_id: 1, type: 1 }, { unique: true });
+/**
+ * IMPORTANT (MongoDB index notes)
+ *
+ * Your production DB previously had a UNIQUE index on { user_id, post_id, type }.
+ * That breaks ad transactions because ads don't always have post_id (null), causing
+ * E11000 duplicate key errors.
+ *
+ * Fix strategy:
+ * - Keep uniqueness for post-related actions ONLY when post_id exists.
+ * - Keep uniqueness for ad-related actions ONLY when ad_id exists.
+ *
+ * This allows:
+ * - One LIKE/COMMENT/etc per user per post (if you use it that way)
+ * - One AD_REWARD per user per ad (reward once)
+ * - One AD_BUDGET_DEDUCTION per vendor per ad (deduct once)
+ */
 
-// New index for fetching user history efficiently
+// Unique for post-based transactions (only when post_id is present)
+walletTransactionSchema.index(
+  { user_id: 1, post_id: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { post_id: { $type: 'objectId' } }
+  }
+);
+
+// Unique for ad-based transactions (only when ad_id is present)
+walletTransactionSchema.index(
+  { user_id: 1, ad_id: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { ad_id: { $type: 'objectId' } }
+  }
+);
+
+// For fetching user history efficiently
 walletTransactionSchema.index({ user_id: 1, createdAt: -1 });
 
 module.exports = mongoose.model('WalletTransaction', walletTransactionSchema);
