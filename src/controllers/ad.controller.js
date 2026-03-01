@@ -78,7 +78,10 @@ exports.createAd = async (req, res) => {
       tagged_users: tagged_users || [],
       engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
       content_type: content_type || 'reel',
-      product_offer: Array.isArray(product_offer) ? product_offer : []
+      product_offer: Array.isArray(product_offer) ? product_offer.map(offer => ({
+        ...offer,
+        id: new mongoose.Types.ObjectId().toString()
+      })) : []
     };
 
     const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
