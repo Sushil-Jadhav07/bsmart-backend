@@ -3,6 +3,8 @@ const AdView = require('../models/AdView');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const Vendor = require('../models/Vendor');
+const User = require('../models/User');
+const AdComment = require('../models/AdComment');
 const adCategories = require('../data/adCategories');
 
 /**
@@ -228,6 +230,53 @@ exports.getAdsFeed = async (req, res) => {
 };
 
 /**
+ * Get all ads for a specific user (Vendor only) with comments
+ * @route GET /api/ads/user/:userId
+ * @access Public (or Private)
+ */
+exports.getUserAdsWithComments = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // check if user exists and is a vendor
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.role !== 'vendor') {
+      return res.status(403).json({ message: 'User is not a vendor' });
+    }
+
+    // Fetch ads regardless of status (active, pending, rejected)
+    // Only exclude deleted ads
+    const ads = await Ad.find({ user_id: userId, isDeleted: false })
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Fetch comments for each ad
+    const adsWithComments = await Promise.all(ads.map(async (ad) => {
+      const comments = await AdComment.find({ ad_id: ad._id, isDeleted: false })
+        .populate('user_id', 'username full_name avatar_url')
+        .sort({ createdAt: -1 })
+        .lean();
+      
+      return {
+        ...ad,
+        comments
+      };
+    }));
+
+    res.json(adsWithComments);
+  } catch (error) {
+    console.error('Get user ads error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
  * Get single ad by ID
  * @route GET /api/ads/:id
  * @access Private
@@ -300,27 +349,22 @@ exports.recordAdView = async (req, res) => {
 
     await adView.save();
 
-    // Update Ad stats
+    // Update ad statistics
     const update = { $inc: { views_count: 1 } };
     if (isUnique) {
       update.$inc.unique_views_count = 1;
     }
-    
-    const updatedAd = await Ad.findByIdAndUpdate(adId, update, { new: true });
+    await Ad.findByIdAndUpdate(adId, update);
 
-    res.json({
-      success: true,
-      views_count: updatedAd.views_count,
-      unique_views_count: updatedAd.unique_views_count
-    });
+    res.json({ message: 'View recorded', view_count: adView.view_count });
   } catch (error) {
-    console.error('Record view error:', error);
+    console.error('Record ad view error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
 /**
- * Complete ad view and claim reward
+ * Complete an ad view (reward)
  * @route POST /api/ads/:id/complete
  * @access Private
  */
@@ -328,98 +372,60 @@ exports.completeAdView = async (req, res) => {
   try {
     const userId = req.userId;
     const adId = req.params.id;
-    const { watchTimeMs } = req.body;
 
     const ad = await Ad.findById(adId);
     if (!ad || ad.status !== 'active' || ad.isDeleted) {
       return res.status(404).json({ message: 'Ad not available' });
     }
 
-    let adView = await AdView.findOne({ ad_id: adId, user_id: userId });
+    const adView = await AdView.findOne({ ad_id: adId, user_id: userId });
     
     if (!adView) {
-      // Should normally exist from recordAdView, but create if missing
-      adView = new AdView({
-        ad_id: adId,
-        user_id: userId
-      });
+      return res.status(400).json({ message: 'View not recorded first' });
     }
 
-    // Check if already rewarded
     if (adView.rewarded) {
-      const wallet = await Wallet.findOne({ user_id: userId });
-      return res.json({
-        success: true,
-        completed: true,
-        rewarded: false,
-        already_rewarded: true,
-        walletBalance: wallet ? wallet.balance : 0
-      });
+      return res.status(400).json({ message: 'Already rewarded for this ad' });
     }
 
-    // Check budget availability
+    // Check budget
     if (ad.total_coins_spent + ad.coins_reward > ad.total_budget_coins) {
       return res.status(400).json({ message: 'Ad budget exhausted' });
     }
 
-    // Check fraud flag
-    if (adView.fraud_flagged) {
-      return res.json({
-        success: true,
-        completed: true,
-        rewarded: false,
-        fraud_flagged: true
-      });
-    }
-
-    // Update completion status
-    adView.completed = true;
-    adView.completed_at = new Date();
-    if (watchTimeMs) adView.watch_time_ms = watchTimeMs;
-
-    // Process Reward
-    const rewardAmount = ad.coins_reward;
-    
-    // 1. Credit User Wallet (coins come from the pre-deducted budget pool)
-    const wallet = await Wallet.findOneAndUpdate(
-      { user_id: userId },
-      { $inc: { balance: rewardAmount } },
-      { new: true, upsert: true }
-    );
-
-    // 2. Create Transaction for User
-    await WalletTransaction.create({
-      user_id: userId,
-      ad_id: ad._id,
-      type: 'AD_REWARD',
-      amount: rewardAmount,
-      status: 'SUCCESS'
-    });
-
-    // 3. Update AdView
+    // Update AdView
     adView.rewarded = true;
-    adView.rewarded_at = new Date();
-    adView.coins_rewarded = rewardAmount;
+    adView.completed_at = new Date();
     await adView.save();
 
-    // 4. Update Ad stats
+    // Update Ad stats
     await Ad.findByIdAndUpdate(adId, {
       $inc: { 
         completed_views_count: 1,
-        total_coins_spent: rewardAmount
+        total_coins_spent: ad.coins_reward 
       }
     });
 
-    res.json({
-      success: true,
-      completed: true,
-      rewarded: true,
-      coins_earned: rewardAmount,
-      walletBalance: wallet.balance
-    });
+    // Reward User
+    if (ad.coins_reward > 0) {
+      await Wallet.findOneAndUpdate(
+        { user_id: userId },
+        { $inc: { balance: ad.coins_reward } },
+        { upsert: true }
+      );
 
+      await WalletTransaction.create({
+        user_id: userId,
+        ad_id: adId,
+        type: 'AD_VIEW_REWARD',
+        amount: ad.coins_reward,
+        status: 'SUCCESS'
+      });
+    }
+
+    res.json({ message: 'Ad completed and rewarded', reward: ad.coins_reward });
   } catch (error) {
-    console.error('Complete ad error:', error);
+    console.error('Complete ad view error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -432,27 +438,26 @@ exports.completeAdView = async (req, res) => {
 exports.likeAd = async (req, res) => {
   try {
     const ad = await Ad.findById(req.params.id);
-    if (!ad || ad.isDeleted) {
+    if (!ad) {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
-    const userId = req.userId;
-    const isLiked = ad.likes.includes(userId);
-
-    if (isLiked) {
-      ad.likes.pull(userId);
+    // Check if ad has already been liked
+    if (ad.likes.filter(like => like.toString() === req.userId).length > 0) {
+      // Unlike
+      const index = ad.likes.map(like => like.toString()).indexOf(req.userId);
+      ad.likes.splice(index, 1);
       ad.likes_count = Math.max(0, ad.likes_count - 1);
-    } else {
-      ad.likes.push(userId);
-      ad.likes_count += 1;
+      await ad.save();
+      return res.json({ likes_count: ad.likes_count, is_liked: false });
     }
 
+    // Like
+    ad.likes.unshift(req.userId);
+    ad.likes_count += 1;
     await ad.save();
 
-    res.json({
-      liked: !isLiked,
-      likes_count: ad.likes_count
-    });
+    res.json({ likes_count: ad.likes_count, is_liked: true });
   } catch (error) {
     console.error('Like ad error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -460,61 +465,52 @@ exports.likeAd = async (req, res) => {
 };
 
 /**
- * Admin: Update Ad Status
+ * Admin update ad status
  * @route PATCH /api/admin/ads/:id
  * @access Private (Admin)
  */
 exports.adminUpdateAdStatus = async (req, res) => {
   try {
     const { status, rejection_reason } = req.body;
-    
-    if (!['active', 'paused', 'rejected'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-
-    const updateData = { status };
-    if (status === 'rejected' && rejection_reason) {
-      updateData.rejection_reason = rejection_reason;
-    }
-
-    const ad = await Ad.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true }
-    );
+    const ad = await Ad.findById(req.params.id);
 
     if (!ad) {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
+    if (status) ad.status = status;
+    if (rejection_reason !== undefined) ad.rejection_reason = rejection_reason;
+
+    await ad.save();
     res.json(ad);
   } catch (error) {
-    console.error('Admin update status error:', error);
+    console.error('Admin update ad status error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
 /**
- * Admin: Delete Ad (Soft delete)
+ * Admin delete ad (soft delete)
  * @route DELETE /api/admin/ads/:id
  * @access Private (Admin)
  */
 exports.adminDeleteAd = async (req, res) => {
   try {
-    const ad = await Ad.findByIdAndUpdate(
-      req.params.id,
-      {
-        isDeleted: true,
-        deletedBy: req.userId,
-        deletedAt: new Date()
-      },
-      { new: true }
-    );
+    const ad = await Ad.findById(req.params.id);
 
     if (!ad) {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
+    ad.isDeleted = true;
+    ad.deletedBy = req.userId;
+    ad.deletedAt = new Date();
+    
+    // Also set status to rejected or paused? Or just leave it?
+    // Usually soft delete implies it's gone from feed.
+    // Our feed query checks isDeleted: false, so this is enough.
+
+    await ad.save();
     res.json({ message: 'Ad deleted successfully' });
   } catch (error) {
     console.error('Admin delete ad error:', error);

@@ -6,6 +6,7 @@ const {
   createAd,
   listAds,
   getAdsFeed,
+  getUserAdsWithComments,
   getAdById,
   getAdCategories,
   recordAdView,
@@ -65,6 +66,24 @@ router.get('/categories', getAdCategories);
  *         description: List of active ads with user status
  */
 router.get('/feed', auth, getAdsFeed);
+
+/**
+ * @swagger
+ * /api/ads/user/{userId}:
+ *   get:
+ *     summary: Get all ads for a specific vendor with comments
+ *     tags: [Ads]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of ads with comments
+ */
+router.get('/user/:userId', getUserAdsWithComments);
 
 /**
  * @swagger
