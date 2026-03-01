@@ -269,8 +269,6 @@ router.get('/', auth, requireAdmin, listAds);
  *                 items:
  *                   type: object
  *                   properties:
- *                     id:
- *                       type: string
  *                     title:
  *                       type: string
  *                     description:

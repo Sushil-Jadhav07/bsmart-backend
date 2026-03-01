@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Ad = require('../models/Ad');
 const AdView = require('../models/AdView');
 const Wallet = require('../models/Wallet');
