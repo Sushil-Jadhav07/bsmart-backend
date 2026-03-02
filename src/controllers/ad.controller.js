@@ -469,6 +469,40 @@ exports.likeAd = async (req, res) => {
 };
 
 /**
+ * Dislike/Undislike an ad
+ * @route POST /api/ads/:id/dislike
+ * @access Private
+ */
+exports.dislikeAd = async (req, res) => {
+  try {
+    const ad = await Ad.findById(req.params.id);
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    // Check if ad has already been disliked
+    if (ad.dislikes.filter(dislike => dislike.toString() === req.userId).length > 0) {
+      // Undislike
+      const index = ad.dislikes.map(dislike => dislike.toString()).indexOf(req.userId);
+      ad.dislikes.splice(index, 1);
+      ad.dislikes_count = Math.max(0, ad.dislikes_count - 1);
+      await ad.save();
+      return res.json({ dislikes_count: ad.dislikes_count, is_disliked: false });
+    }
+
+    // Dislike
+    ad.dislikes.unshift(req.userId);
+    ad.dislikes_count += 1;
+    await ad.save();
+
+    res.json({ dislikes_count: ad.dislikes_count, is_disliked: true });
+  } catch (error) {
+    console.error('Dislike ad error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
  * Admin update ad status
  * @route PATCH /api/admin/ads/:id
  * @access Private (Admin)

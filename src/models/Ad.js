@@ -95,6 +95,8 @@ const adSchema = new mongoose.Schema({
   likes_count: { type: Number, default: 0 },
   comments_count: { type: Number, default: 0 },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  dislikes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  dislikes_count: { type: Number, default: 0 },
   isDeleted: { type: Boolean, default: false },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   deletedAt: { type: Date }

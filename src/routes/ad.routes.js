@@ -11,12 +11,16 @@ const {
   getAdCategories,
   recordAdView,
   completeAdView,
-  likeAd
+  likeAd,
+  dislikeAd
 } = require('../controllers/ad.controller');
 const {
   addAdComment,
   getAdComments,
-  deleteAdComment
+  deleteAdComment,
+  likeAdComment,
+  dislikeAdComment,
+  getAdCommentReplies
 } = require('../controllers/adComment.controller');
 
 /**
@@ -380,6 +384,26 @@ router.post('/:id/like', auth, likeAd);
 
 /**
  * @swagger
+ * /api/ads/{id}/dislike:
+ *   post:
+ *     summary: Dislike or undislike an ad
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dislike toggled
+ */
+router.post('/:id/dislike', auth, dislikeAd);
+
+/**
+ * @swagger
  * /api/ads/{id}/comments:
  *   post:
  *     summary: Add a comment to an ad
@@ -403,6 +427,9 @@ router.post('/:id/like', auth, likeAd);
  *             properties:
  *               text:
  *                 type: string
+ *               parent_id:
+ *                 type: string
+ *                 description: Optional ID of the parent comment (for replies)
  *     responses:
  *       201:
  *         description: Comment added
@@ -431,6 +458,26 @@ router.get('/:id/comments', auth, getAdComments);
 
 /**
  * @swagger
+ * /api/ads/comments/{commentId}/replies:
+ *   get:
+ *     summary: Get replies for an ad comment
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of replies
+ */
+router.get('/comments/:commentId/replies', auth, getAdCommentReplies);
+
+/**
+ * @swagger
  * /api/ads/comments/{commentId}:
  *   delete:
  *     summary: Delete a comment
@@ -448,5 +495,45 @@ router.get('/:id/comments', auth, getAdComments);
  *         description: Comment deleted
  */
 router.delete('/comments/:commentId', auth, deleteAdComment);
+
+/**
+ * @swagger
+ * /api/ads/comments/{id}/like:
+ *   post:
+ *     summary: Like or unlike a comment
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Like toggled
+ */
+router.post('/comments/:id/like', auth, likeAdComment);
+
+/**
+ * @swagger
+ * /api/ads/comments/{id}/dislike:
+ *   post:
+ *     summary: Dislike or undislike a comment
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dislike toggled
+ */
+router.post('/comments/:id/dislike', auth, dislikeAdComment);
 
 module.exports = router;
