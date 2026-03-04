@@ -324,8 +324,10 @@ exports.getMe = async (req, res) => {
  */
 exports.changePassword = async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.userId; // Provided by auth middleware
+    const { currentPassword, newPassword, user_id } = req.body;
+    
+    // If user_id is provided in body, use it; otherwise fallback to req.userId (authenticated user)
+    const targetUserId = user_id || req.userId;
 
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ message: 'Please provide both current and new passwords' });
@@ -336,7 +338,7 @@ exports.changePassword = async (req, res) => {
     }
 
     // Get user with password field
-    const user = await User.findById(userId).select('+password');
+    const user = await User.findById(targetUserId).select('+password');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }

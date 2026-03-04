@@ -241,6 +241,9 @@ router.get('/me', auth, getMe);
  *               newPassword:
  *                 type: string
  *                 minLength: 6
+ *               user_id:
+ *                 type: string
+ *                 description: Optional user ID to change password for (if not provided, uses logged-in user)
  *     responses:
  *       200:
  *         description: Password updated successfully
