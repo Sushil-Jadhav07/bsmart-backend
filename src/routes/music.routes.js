@@ -112,24 +112,36 @@ router.get('/search', async (req, res) => {
 router.get('/tracks/search', async (req, res) => {
   try {
     const { name, limit = 10 } = req.query;
-    if (!name) return res.status(400).json({ message: 'Query parameter "name" is required' });
-
-    const client = await spotifyClient();
-    const response = await client.get('/search', {
-      params: { q: name, type: 'track', limit }
-    });
     
-    // Format duration and ensure preview_url is present (Spotify may return null)
-    if (response.data.tracks && response.data.tracks.items) {
-      response.data.tracks.items.forEach(track => {
-        track.duration_formatted = msToMinutes(track.duration_ms);
-        // Note: Spotify deprecated 30s preview_url for many tracks in 2024. 
-        // If it's null, we can't do much without a premium user token context or using an alternative source.
-        // We will pass it through as is (null or string).
-      });
+    if (!name) {
+      return res.status(400).json({ message: 'name parameter is required' });
     }
 
-    res.json(response.data.tracks);
+    const client = await spotifyClient();
+    
+    // Use /search with q= and type=track
+    const response = await client.get('/search', {
+      params: { 
+        q: name,
+        type: 'track', 
+        limit: Math.min(Number(limit), 50) 
+      }
+    });
+
+    const tracks = response.data.tracks.items.map(t => ({
+      id: t.id,
+      name: t.name,
+      artists: t.artists.map(a => a.name).join(', '),
+      album: t.album.name,
+      duration: msToMinutes(t.duration_ms),
+      popularity: t.popularity,
+      preview_url: t.preview_url,
+      image: t.album.images[0]?.url || null,
+      external_url: t.external_urls.spotify
+    }));
+
+    res.json({ success: true, total: response.data.tracks.total, tracks });
+
   } catch (error) {
     handleError(res, error);
   }
