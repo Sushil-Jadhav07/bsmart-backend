@@ -20,6 +20,7 @@ const adminRoutes = require('./src/routes/admin.routes');
 const memberRoutes = require('./src/routes/member.routes');
 const adRoutes = require('./src/routes/ad.routes');
 const walletRoutes = require('./src/routes/wallet.routes');
+const musicRoutes = require('./src/routes/music.routes');
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/api/members', memberRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ads', adRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/music', musicRoutes);
 
 app.get('/api/docs/full', (req, res) => {
   const path = require('path');

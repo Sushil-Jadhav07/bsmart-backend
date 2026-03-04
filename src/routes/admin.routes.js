@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const {
   deletePostByAdmin,
@@ -42,7 +43,7 @@ const { adminUpdateAdStatus, adminDeleteAd } = require('../controllers/ad.contro
  *       404:
  *         description: Post not found
  */
-router.delete('/posts/:id', requireAdmin, deletePostByAdmin);
+router.delete('/posts/:id', auth, requireAdmin, deletePostByAdmin);
 
 /**
  * @swagger
@@ -67,7 +68,7 @@ router.delete('/posts/:id', requireAdmin, deletePostByAdmin);
  *       404:
  *         description: Comment not found
  */
-router.delete('/comments/:id', requireAdmin, deleteCommentByAdmin);
+router.delete('/comments/:id', auth, requireAdmin, deleteCommentByAdmin);
 
 /**
  * @swagger
@@ -92,7 +93,7 @@ router.delete('/comments/:id', requireAdmin, deleteCommentByAdmin);
  *       404:
  *         description: Reply not found
  */
-router.delete('/replies/:id', requireAdmin, deleteReplyByAdmin);
+router.delete('/replies/:id', auth, requireAdmin, deleteReplyByAdmin);
 
 /**
  * @swagger
@@ -117,7 +118,7 @@ router.delete('/replies/:id', requireAdmin, deleteReplyByAdmin);
  *       404:
  *         description: Reel not found
  */
-router.delete('/reels/:id', requireAdmin, deleteReelByAdmin);
+router.delete('/reels/:id', auth, requireAdmin, deleteReelByAdmin);
 
 /**
  * @swagger
@@ -142,7 +143,7 @@ router.delete('/reels/:id', requireAdmin, deleteReelByAdmin);
  *       404:
  *         description: Story not found
  */
-router.delete('/stories/:id', requireAdmin, deleteStoryByAdmin);
+router.delete('/stories/:id', auth, requireAdmin, deleteStoryByAdmin);
 
 /**
  * @swagger
@@ -167,7 +168,7 @@ router.delete('/stories/:id', requireAdmin, deleteStoryByAdmin);
  *       404:
  *         description: User not found
  */
-router.delete('/users/:id', requireAdmin, deleteUserByAdmin);
+router.delete('/users/:id', auth, requireAdmin, deleteUserByAdmin);
 
 /**
  * @swagger
@@ -192,7 +193,7 @@ router.delete('/users/:id', requireAdmin, deleteUserByAdmin);
  *       404:
  *         description: Vendor not found
  */
-router.delete('/vendors/:id', requireAdmin, deleteVendorByAdmin);
+router.delete('/vendors/:id', auth, requireAdmin, deleteVendorByAdmin);
 
 /**
  * @swagger
@@ -230,7 +231,7 @@ router.delete('/vendors/:id', requireAdmin, deleteVendorByAdmin);
  *       404:
  *         description: Ad not found
  */
-router.patch('/ads/:id', requireAdmin, adminUpdateAdStatus);
+router.patch('/ads/:id', auth, requireAdmin, adminUpdateAdStatus);
 
 /**
  * @swagger
@@ -254,6 +255,6 @@ router.patch('/ads/:id', requireAdmin, adminUpdateAdStatus);
  *       404:
  *         description: Ad not found
  */
-router.delete('/ads/:id', requireAdmin, adminDeleteAd);
+router.delete('/ads/:id', auth, requireAdmin, adminDeleteAd);
 
 module.exports = router;
