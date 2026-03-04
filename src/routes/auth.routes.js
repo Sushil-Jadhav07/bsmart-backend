@@ -73,14 +73,6 @@ const jwt = require('jsonwebtoken');
  *               credits:
  *                 type: number
  *                 description: Optional wallet credits for vendor, valid for 1 year
- *               interests:
- *                 type: string
- *               target_people:
- *                 type: string
- *               location_target:
- *                 type: string
- *               campaign_idea:
- *                 type: string
  *     responses:
  *       201:
  *         description: User registered successfully

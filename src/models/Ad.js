@@ -76,14 +76,6 @@ const adSchema = new mongoose.Schema({
     price: { type: Number },
     link: { type: String }
   },
-  product_offer: [{
-    id: { type: String },
-    title: { type: String },
-    description: { type: String },
-    price: { type: Number, default: 0 },
-    link: { type: String },
-    type: { type: String, enum: ['product', 'offer'] }
-  }],
   coins_reward: { type: Number, default: 0, min: 0 },
   total_budget_coins: { type: Number, default: 0 },
   total_coins_spent: { type: Number, default: 0 },

@@ -49,8 +49,7 @@ exports.createAd = async (req, res) => {
       target_language,
       target_location,
       target_preferences,
-      total_budget_coins,
-      product_offer
+      total_budget_coins
     } = req.body;
 
     // Validation: Require media array OR legacy fields
@@ -79,11 +78,7 @@ exports.createAd = async (req, res) => {
       hashtags: hashtags || [],
       tagged_users: tagged_users || [],
       engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
-      content_type: content_type || 'reel',
-      product_offer: Array.isArray(product_offer) ? product_offer.map(offer => ({
-        ...offer,
-        id: new mongoose.Types.ObjectId().toString()
-      })) : []
+      content_type: content_type || 'reel'
     };
 
     const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
@@ -235,6 +230,7 @@ exports.getAdsFeed = async (req, res) => {
 exports.getUserAdsWithComments = async (req, res) => {
   try {
     const { userId } = req.params;
+    const { category } = req.query;
 
     // check if user exists and is a vendor
     const user = await User.findById(userId);
@@ -246,9 +242,16 @@ exports.getUserAdsWithComments = async (req, res) => {
       return res.status(403).json({ message: 'User is not a vendor' });
     }
 
+    const filter = { user_id: userId, isDeleted: false };
+    
+    // Add category filter if provided and not empty
+    if (category && category.trim() !== '' && category !== 'All') {
+      filter.category = category;
+    }
+
     // Fetch ads regardless of status (active, pending, rejected)
     // Only exclude deleted ads
-    const ads = await Ad.find({ user_id: userId, isDeleted: false })
+    const ads = await Ad.find(filter)
       .populate('vendor_id', 'business_name logo_url validated')
       .populate('user_id', 'username full_name avatar_url')
       .sort({ createdAt: -1 })

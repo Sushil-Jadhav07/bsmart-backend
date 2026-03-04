@@ -111,6 +111,11 @@ router.get('/feed', auth, getAdsFeed);
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Filter by category
  *     responses:
  *       200:
  *         description: List of ads with comments
@@ -279,22 +284,6 @@ router.get('/', auth, requireAdmin, listAds);
  *                 type: array
  *                 items:
  *                   type: string
- *               product_offer:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     title:
- *                       type: string
- *                     description:
- *                       type: string
- *                     price:
- *                       type: number
- *                     link:
- *                       type: string
- *                     type:
- *                       type: string
- *                       enum: [product, offer]
  *               total_budget_coins:
  *                 type: number
  *     responses:

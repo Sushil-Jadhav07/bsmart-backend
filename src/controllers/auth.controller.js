@@ -24,11 +24,7 @@ exports.register = async (req, res) => {
       phone,
       role,
       company_details,
-      credits,
-      interests,
-      target_people,
-      location_target,
-      campaign_idea
+      credits
     } = req.body;
 
     // 0. Role Validation
@@ -97,10 +93,6 @@ exports.register = async (req, res) => {
         country: company_details.country || '',
         city: company_details.city || '',
         note: company_details.note || '',
-        interests: interests || '',
-        target_people: target_people || '',
-        location_target: location_target || '',
-        campaign_idea: campaign_idea || '',
         credits: initialCredits,
         credits_expires_at: creditsExpiresAt
       });
@@ -258,10 +250,6 @@ exports.login = async (req, res) => {
           },
           credits: vendor.credits || 0,
           credits_expires_at: vendor.credits_expires_at || null,
-          interests: vendor.interests || '',
-          target_people: vendor.target_people || '',
-          location_target: vendor.location_target || '',
-          campaign_idea: vendor.campaign_idea || '',
           vendor_validated: vendor.validated === true
         };
       }
