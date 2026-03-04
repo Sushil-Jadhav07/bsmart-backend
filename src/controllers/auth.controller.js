@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const Member = require('../models/Member');
@@ -123,6 +124,93 @@ exports.register = async (req, res) => {
 
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+/**
+ * Google Login
+ * @route POST /api/auth/google/token
+ * @access Public
+ */
+exports.googleLogin = async (req, res) => {
+  try {
+    const { id_token } = req.body;
+    if (!id_token) {
+      return res.status(400).json({ message: 'id_token is required' });
+    }
+
+    const client = new OAuth2Client();
+    let ticket;
+    try {
+      // Verify the token. 
+      // If you have specific CLIENT_IDs to allow, pass them in audience: [CLIENT_ID_1, CLIENT_ID_2]
+      ticket = await client.verifyIdToken({
+        idToken: id_token,
+        // audience: process.env.GOOGLE_CLIENT_ID 
+      });
+    } catch (e) {
+      console.error('Google token verification failed:', e.message);
+      return res.status(401).json({ message: 'Invalid Google token' });
+    }
+
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub: googleId } = payload;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Google token does not contain email' });
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create new user
+      // Since Google doesn't provide username, we generate one or use email prefix
+      // And we generate a random password since they use Google login
+      const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+      
+      const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
+
+      user = await User.create({
+        email,
+        username,
+        full_name: name,
+        avatar_url: picture,
+        password: hashedPassword,
+        role: 'member' // Default role for Google signups
+      });
+
+      // Initialize Wallet
+      await Wallet.create({
+        user_id: user._id,
+        balance: 0
+      });
+
+      // Initialize Member profile
+      await Member.create({ user_id: user._id });
+    }
+
+    // Generate JWT
+    const token = generateToken(user._id);
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        role: user.role,
+        createdAt: user.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Google login error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

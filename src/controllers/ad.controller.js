@@ -7,6 +7,7 @@ const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const AdComment = require('../models/AdComment');
 const adCategories = require('../data/adCategories');
+const AdCategory = require('../models/AdCategory');
 
 /**
  * Create a new ad (Vendor only)
@@ -163,26 +164,19 @@ exports.createAd = async (req, res) => {
  */
 exports.listAds = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, category } = req.query;
-    const skip = (page - 1) * limit;
-
     const filter = { isDeleted: false };
-    if (status) filter.status = status;
-    if (category && category !== 'All') filter.category = category;
-
-    const total = await Ad.countDocuments(filter);
     const ads = await Ad.find(filter)
       .populate('vendor_id', 'business_name logo_url validated')
       .populate('user_id', 'username full_name avatar_url')
-      .sort({ createdAt: -1 })
-      .skip(parseInt(skip))
-      .limit(parseInt(limit));
+      .sort({ createdAt: -1 });
+
+    const total = ads.length;
 
     res.json({
       total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      totalPages: Math.ceil(total / limit),
+      page: 1,
+      limit: total,
+      totalPages: total ? 1 : 0,
       ads
     });
   } catch (error) {
@@ -318,8 +312,55 @@ exports.getAdById = async (req, res) => {
  * @route GET /api/ads/categories
  * @access Public
  */
-exports.getAdCategories = (req, res) => {
-  res.json({ categories: adCategories });
+exports.getAdCategories = async (req, res) => {
+  try {
+    let categories = await AdCategory.find({ isEnabled: true }).sort({ name: 1 });
+    
+    // Seed if empty
+    if (categories.length === 0) {
+      const seedData = adCategories.map(name => ({ name }));
+      try {
+        await AdCategory.insertMany(seedData);
+        categories = await AdCategory.find({ isEnabled: true }).sort({ name: 1 });
+      } catch (e) {
+        console.error('Failed to seed categories:', e);
+        // Fallback to static list if DB fails
+        return res.json({ categories: adCategories });
+      }
+    }
+
+    res.json({ categories: categories.map(c => c.name) });
+  } catch (error) {
+    console.error('Get categories error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Add a new ad category
+ * @route POST /api/ads/categories
+ * @access Private
+ */
+exports.addAdCategory = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+
+    const existing = await AdCategory.findOne({ name: name.trim() });
+    if (existing) {
+      return res.status(400).json({ message: 'Category already exists' });
+    }
+
+    const category = new AdCategory({ name: name.trim() });
+    await category.save();
+
+    res.status(201).json({ message: 'Category added', category: category.name });
+  } catch (error) {
+    console.error('Add category error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 };
 
 /**

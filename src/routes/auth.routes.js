@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getMe, changePassword } = require('../controllers/auth.controller');
+const { register, login, googleLogin, getMe, changePassword } = require('../controllers/auth.controller');
 const { getAllUsers } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 const passport = require('passport');
@@ -99,6 +99,60 @@ const jwt = require('jsonwebtoken');
  *         description: Server error
  */
 router.post('/register', register);
+
+/**
+ * @swagger
+ * /api/auth/google/token:
+ *   post:
+ *     summary: Login or Register with Google ID Token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - id_token
+ *             properties:
+ *               id_token:
+ *                 type: string
+ *                 description: Google ID Token
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     full_name:
+ *                       type: string
+ *                     avatar_url:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                     createdAt:
+ *                       type: string
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Invalid Google token
+ *       500:
+ *         description: Server error
+ */
+router.post('/google/token', googleLogin);
 
 /**
  * @swagger

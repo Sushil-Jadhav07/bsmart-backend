@@ -9,6 +9,7 @@ const {
   getUserAdsWithComments,
   getAdById,
   getAdCategories,
+  addAdCategory,
   recordAdView,
   completeAdView,
   likeAd,
@@ -50,6 +51,33 @@ const {
  *                     type: string
  */
 router.get('/categories', getAdCategories);
+
+/**
+ * @swagger
+ * /api/ads/categories:
+ *   post:
+ *     summary: Add a new ad category
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Category added successfully
+ *       400:
+ *         description: Invalid input or category exists
+ */
+router.post('/categories', auth, addAdCategory);
 
 /**
  * @swagger
@@ -97,26 +125,9 @@ router.get('/user/:userId', getUserAdsWithComments);
  *     tags: [Ads, Admin]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *       - in: query
- *         name: category
- *         schema:
- *           type: string
  *     responses:
  *       200:
- *         description: Paginated list of ads
+ *         description: List of ads (no pagination)
  */
 router.get('/', auth, requireAdmin, listAds);
 
