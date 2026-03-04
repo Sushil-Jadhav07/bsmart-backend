@@ -49,26 +49,9 @@ router.get('/me', auth, getMyWallet);
  *     tags: [Wallet, Admin]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *       - in: query
- *         name: type
- *         schema:
- *           type: string
- *       - in: query
- *         name: user_id
- *         schema:
- *           type: string
  *     responses:
  *       200:
- *         description: Paginated transactions and summary
+ *         description: All transactions and summary (no pagination)
  */
 router.get('/', auth, requireAdmin, getAllWallets);
 
