@@ -1,9 +1,211 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { createVendor, getMyVendor, getVendorByUserId, updateVendorValidation, listAllVendors, getVendorById } = require('../controllers/vendor.controller');
+const upload = require('../config/multer');
+const {
+  createVendor,
+  getMyVendor,
+  getVendorByUserId,
+  updateVendorValidation,
+  listAllVendors,
+  getVendorById,
+  getMyVendorProfile,
+  updateMyVendorProfile,
+  submitVendorProfileForVerification,
+  uploadVendorLogo,
+  listVendorProfiles,
+  getVendorProfileById,
+  updateVendorProfileApprovalStatus
+} = require('../controllers/vendor.controller');
 const requireAdmin = require('../middleware/requireAdmin');
 const { deleteVendorByAdmin } = require('../controllers/admin.controller');
+
+/**
+ * @swagger
+ * tags:
+ *   - name: Vendor Profile
+ *     description: Vendor profile completion and verification workflow
+ */
+
+/**
+ * @swagger
+ * /api/vendors/profiles:
+ *   get:
+ *     summary: List all vendor profiles
+ *     tags: [Vendor Profile]
+ *     responses:
+ *       200:
+ *         description: Array of vendor profiles
+ *
+ * /api/vendors/profile:
+ *   get:
+ *     summary: Get my vendor profile
+ *     tags: [Vendor Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Vendor profile
+ *       401:
+ *         description: Unauthorized
+ *   put:
+ *     summary: Edit/update my vendor profile
+ *     tags: [Vendor Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               company_name: { type: string }
+ *               legal_business_name: { type: string }
+ *               registration_number: { type: string }
+ *               tax_id_or_vat: { type: string }
+ *               year_established: { type: integer }
+ *               company_type: { type: string }
+ *               industry_category: { type: string }
+ *               business_nature: { type: string }
+ *               website: { type: string, format: uri }
+ *               business_email: { type: string, format: email }
+ *               business_phone: { type: string }
+ *               address: { type: string }
+ *               country: { type: string }
+ *               service_coverage: { type: string }
+ *               company_description: { type: string }
+ *               social_media_links:
+ *                 type: array
+ *                 items: { type: string, format: uri }
+ *               logo_url: { type: string, format: uri }
+ *               city: { type: string }
+ *               note: { type: string }
+ *     responses:
+ *       200:
+ *         description: Vendor profile updated
+ *
+ * /api/vendors/profile/me/submit:
+ *   patch:
+ *     summary: Submit vendor profile for verification
+ *     tags: [Vendor Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Submitted for verification
+ *       400:
+ *         description: Profile incomplete
+ *
+ * /api/vendors/profile/me/logo:
+ *   patch:
+ *     summary: Upload vendor logo
+ *     tags: [Vendor Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [logo]
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded
+ *
+ * /api/vendors/profile/{id}/approval:
+ *   patch:
+ *     summary: Admin approve/reject vendor profile
+ *     tags: [Vendor Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [action]
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [approve, reject]
+ *               rejection_reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Approval status updated
+ *       403:
+ *         description: Admin only
+ *
+ * /api/vendors/profile/{id}:
+ *   get:
+ *     summary: Get vendor profile by vendor ID
+ *     tags: [Vendor Profile]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor profile ID
+ *     responses:
+ *       200:
+ *         description: Vendor profile details
+ *       404:
+ *         description: Vendor profile not found
+ *   delete:
+ *     summary: Delete vendor profile (admin only)
+ *     tags: [Vendor Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor profile ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               downgrade_user_to_member:
+ *                 type: boolean
+ *                 description: If true, vendor user role will be set to member
+ *     responses:
+ *       200:
+ *         description: Vendor profile deleted successfully
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: Vendor profile not found
+ */
+
+router.get('/profiles', listVendorProfiles);
+router.get('/profile', auth, getMyVendorProfile);
+router.put('/profile', auth, updateMyVendorProfile);
+router.get('/profile/me', auth, getMyVendorProfile);
+router.put('/profile/me', auth, updateMyVendorProfile);
+router.get('/profile/:id', getVendorProfileById);
+router.patch('/profile/me/submit', auth, submitVendorProfileForVerification);
+router.patch('/profile/me/logo', auth, upload.single('logo'), uploadVendorLogo);
+router.patch('/profile/:id/approval', requireAdmin, updateVendorProfileApprovalStatus);
+router.delete('/profile/:id', requireAdmin, deleteVendorByAdmin);
 
 router.post('/', auth, createVendor);
 router.get('/me', auth, getMyVendor);

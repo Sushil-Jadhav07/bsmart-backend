@@ -93,6 +93,11 @@ exports.register = async (req, res) => {
         country: company_details.country || '',
         city: company_details.city || '',
         note: company_details.note || '',
+        industry_category: company_details.industry || '',
+        company_description: company_details.note || '',
+        social_media_links: [],
+        verification_status: 'draft',
+        profile_completion_percentage: 0,
         credits: initialCredits,
         credits_expires_at: creditsExpiresAt
       });
