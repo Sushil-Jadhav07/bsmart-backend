@@ -319,9 +319,23 @@ exports.getMe = async (req, res) => {
     // Fetch wallet explicitly since it's not embedded anymore
     const wallet = await Wallet.findOne({ user_id: user._id });
 
+    let vendorData = null;
+    if (user.role === 'vendor') {
+      const vendor = await Vendor.findOne({ user_id: user._id });
+      if (vendor) {
+        vendorData = {
+          profile_completion_percentage: vendor.profile_completion_percentage || 30,
+          vendor_validated: vendor.validated === true
+        };
+      }
+    }
+
     const userData = user.toObject();
     if (wallet) {
       userData.wallet = wallet;
+    }
+    if (vendorData) {
+      Object.assign(userData, vendorData);
     }
 
     res.json(userData);

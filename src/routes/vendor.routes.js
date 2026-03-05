@@ -10,7 +10,8 @@ const {
   updateVendorProfile,
   getVendorProfile,
   adminProcessVendorVerification,
-  getAllVendorsForAdmin
+  getAllVendorsForAdmin,
+  deleteVendorByUserId
 } = require('../controllers/vendor.controller');
 const requireAdmin = require('../middleware/requireAdmin');
 const { deleteVendorByAdmin } = require('../controllers/admin.controller');
@@ -152,5 +153,29 @@ router.post('/profile/:userId/admin-process', requireAdmin, adminProcessVendorVe
  *         description: Admin access required
  */
 router.get('/admin/all', requireAdmin, getAllVendorsForAdmin);
+
+/**
+ * @swagger
+ * /api/vendors/admin/user/{userId}:
+ *   delete:
+ *     summary: Delete vendor and associated user by User ID (Admin only)
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Vendor deleted successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Vendor not found
+ */
+router.delete('/admin/user/:userId', requireAdmin, deleteVendorByUserId);
 
 module.exports = router;
