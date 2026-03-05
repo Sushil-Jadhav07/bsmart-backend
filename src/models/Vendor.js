@@ -7,7 +7,6 @@ const vendorSchema = new mongoose.Schema({
   category: { type: String },
   phone: { type: String },
   address: { type: String },
-  logo_url: { type: String },
   validated: { type: Boolean, default: false },
   company_name: { type: String },
   legal_business_name: { type: String },

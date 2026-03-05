@@ -20,8 +20,7 @@ const calculateProfileCompletion = (vendor) => {
     'service_coverage',
     'company_description',
     'city',
-    'note',
-    'logo_url'
+    'note'
   ];
   
   let filledCount = 0;
@@ -60,7 +59,7 @@ exports.updateVendorProfileByUserId = async (req, res) => {
       'tax_id_or_vat', 'year_established', 'company_type', 'industry_category',
       'business_nature', 'website', 'business_email', 'business_phone',
       'address', 'country', 'service_coverage', 'company_description',
-      'social_media_links', 'city', 'note', 'logo_url'
+      'social_media_links', 'city', 'note'
     ];
 
     allowedFields.forEach(field => {
@@ -87,7 +86,6 @@ exports.updateVendorProfileByUserId = async (req, res) => {
     const userUpdates = {};
     if (updates.company_name) userUpdates.full_name = updates.company_name;
     if (updates.business_phone) userUpdates.phone = updates.business_phone;
-    if (updates.logo_url) userUpdates.avatar_url = updates.logo_url;
     
     // Add city and note to User if needed, though they aren't standard User fields.
     // Assuming user wants them synced if possible or just standard ones.

@@ -114,8 +114,6 @@ router.get('/profile/:userId', auth, getVendorProfileByUserId);
  *                 type: string
  *               note:
  *                 type: string
- *               logo_url:
- *                 type: string
  *     responses:
  *       200:
  *         description: Profile updated successfully
