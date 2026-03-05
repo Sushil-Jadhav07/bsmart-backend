@@ -54,21 +54,17 @@ const jwt = require('jsonwebtoken');
  *                 properties:
  *                   company_name:
  *                     type: string
- *                   legal_business_name:
+ *                   "Registered Name":
  *                     type: string
  *                   industry:
  *                     type: string
- *                   website:
+ *                   "Registration Number":
  *                     type: string
- *                   business_email:
+ *                   "Tax ID / VAT / GST":
  *                     type: string
- *                   business_phone:
+ *                   "Year Established":
  *                     type: string
- *                   country:
- *                     type: string
- *                   city:
- *                     type: string
- *                   note:
+ *                   "Company Type":
  *                     type: string
  *               credits:
  *                 type: number
