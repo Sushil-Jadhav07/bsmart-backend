@@ -246,6 +246,27 @@ exports.getVendorProfileByUserId = async (req, res) => {
   }
 };
 
+exports.listAllVendors = async (req, res) => {
+  try {
+    const vendors = await Vendor.find({})
+      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt')
+      .sort({ createdAt: -1 });
+
+    const result = vendors.map(vendor => {
+      const vendorObj = vendor.toObject();
+      return {
+        ...vendorObj,
+        user: vendor.user_id
+      };
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getVendorById = async (req, res) => {
   try {
     const vendorId = req.params.id;

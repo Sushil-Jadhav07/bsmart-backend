@@ -26,6 +26,17 @@ const { deleteVendorByAdmin } = require('../controllers/admin.controller');
 router.post('/', auth, createVendor);
 router.get('/me', auth, getMyVendor);
 router.get('/users/:id', getVendorByUserId);
+
+/**
+ * @swagger
+ * /api/vendors:
+ *   get:
+ *     summary: List all vendors with full details
+ *     tags: [Vendors]
+ *     responses:
+ *       200:
+ *         description: List of all vendors
+ */
 router.get('/', listAllVendors);
 
 /**
