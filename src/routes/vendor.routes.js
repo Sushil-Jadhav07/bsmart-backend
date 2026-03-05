@@ -37,54 +37,6 @@ const { deleteVendorByAdmin } = require('../controllers/admin.controller');
  *       200:
  *         description: Array of vendor profiles
  *
- * /api/vendors/profile:
- *   get:
- *     summary: Get my vendor profile
- *     tags: [Vendor Profile]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Vendor profile
- *       401:
- *         description: Unauthorized
- *   put:
- *     summary: Edit/update my vendor profile
- *     tags: [Vendor Profile]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               company_name: { type: string }
- *               legal_business_name: { type: string }
- *               registration_number: { type: string }
- *               tax_id_or_vat: { type: string }
- *               year_established: { type: integer }
- *               company_type: { type: string }
- *               industry_category: { type: string }
- *               business_nature: { type: string }
- *               website: { type: string, format: uri }
- *               business_email: { type: string, format: email }
- *               business_phone: { type: string }
- *               address: { type: string }
- *               country: { type: string }
- *               service_coverage: { type: string }
- *               company_description: { type: string }
- *               social_media_links:
- *                 type: array
- *                 items: { type: string, format: uri }
- *               logo_url: { type: string, format: uri }
- *               city: { type: string }
- *               note: { type: string }
- *     responses:
- *       200:
- *         description: Vendor profile updated
- *
  * /api/vendors/profile/me/submit:
  *   patch:
  *     summary: Submit vendor profile for verification
@@ -197,8 +149,6 @@ const { deleteVendorByAdmin } = require('../controllers/admin.controller');
  */
 
 router.get('/profiles', listVendorProfiles);
-router.get('/profile', auth, getMyVendorProfile);
-router.put('/profile', auth, updateMyVendorProfile);
 router.get('/profile/me', auth, getMyVendorProfile);
 router.put('/profile/me', auth, updateMyVendorProfile);
 router.get('/profile/:id', getVendorProfileById);
