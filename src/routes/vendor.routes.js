@@ -6,12 +6,11 @@ const {
   createVendor,
   getMyVendor,
   getVendorByUserId,
-  updateVendorValidation,
   listAllVendors,
-  getVendorProfileByUserId,
-  updateVendorProfileByUserId,
-  submitVendorVerificationByUserId,
-  adminProcessVendorVerification
+  updateVendorProfile,
+  getVendorProfile,
+  adminProcessVendorVerification,
+  getAllVendorsForAdmin
 } = require('../controllers/vendor.controller');
 const requireAdmin = require('../middleware/requireAdmin');
 const { deleteVendorByAdmin } = require('../controllers/admin.controller');
@@ -26,49 +25,31 @@ const { deleteVendorByAdmin } = require('../controllers/admin.controller');
 router.post('/', auth, createVendor);
 router.get('/me', auth, getMyVendor);
 router.get('/users/:id', getVendorByUserId);
-
-/**
- * @swagger
- * /api/vendors:
- *   get:
- *     summary: List all vendors with full details
- *     tags: [Vendors]
- *     responses:
- *       200:
- *         description: List of all vendors
- */
 router.get('/', listAllVendors);
 
 /**
  * @swagger
  * /api/vendors/profile/{userId}:
  *   get:
- *     summary: Get full vendor profile by User ID (only if role is vendor)
+ *     summary: Get vendor profile with percentage
  *     tags: [Vendors]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
  *         required: true
  *         schema:
  *           type: string
- *         description: The User ID of the vendor
  *     responses:
  *       200:
- *         description: Full vendor profile data
- *       404:
- *         description: User or Vendor profile not found
- *       400:
- *         description: User is not a vendor
+ *         description: Vendor profile
  */
-router.get('/profile/:userId', auth, getVendorProfileByUserId);
+router.get('/profile/:userId', getVendorProfile);
 
 /**
  * @swagger
  * /api/vendors/profile/{userId}:
- *   patch:
- *     summary: Update/Edit Vendor Profile (Save Draft)
+ *   post:
+ *     summary: Update vendor profile details by userId
  *     tags: [Vendors]
  *     security:
  *       - bearerAuth: []
@@ -84,74 +65,43 @@ router.get('/profile/:userId', auth, getVendorProfileByUserId);
  *         application/json:
  *           schema:
  *             type: object
- *             description: Update vendor profile fields
  *             properties:
- *               company_name:
- *                 type: string
- *               legal_business_name:
- *                 type: string
- *                 description: Registered Name
- *               registration_number:
- *                 type: string
- *               tax_id_or_vat:
- *                 type: string
- *               year_established:
- *                 type: integer
- *               company_type:
- *                 type: string
- *               industry_category:
- *                 type: string
- *               business_nature:
- *                 type: string
- *               website:
- *                 type: string
- *               business_email:
- *                 type: string
- *               business_phone:
- *                 type: string
- *               address:
- *                 type: string
- *               country:
- *                 type: string
- *               service_coverage:
- *                 type: string
+ *               business_details:
+ *                 type: object
+ *                 properties:
+ *                   industry_category: { type: string }
+ *                   business_nature: { type: string }
+ *                   service_coverage: { type: string }
+ *                   country: { type: string }
+ *               online_presence:
+ *                 type: object
+ *                 properties:
+ *                   website_url: { type: string }
+ *                   company_email: { type: string }
+ *                   phone_number: { type: string }
+ *                   address:
+ *                     type: object
+ *                     properties:
+ *                       address_line1: { type: string }
+ *                       address_line2: { type: string }
+ *                       city: { type: string }
+ *                       pincode: { type: string }
+ *                       state: { type: string }
+ *                       country: { type: string }
+ *               social_media_links:
+ *                 type: object
+ *                 properties:
+ *                   instagram: { type: string }
+ *                   facebook: { type: string }
+ *                   linkedin: { type: string }
+ *                   twitter: { type: string }
  *               company_description:
  *                 type: string
- *               social_media_links:
- *                 type: array
- *                 items:
- *                   type: string
- *               city:
- *                 type: string
- *               note:
- *                 type: string
  *     responses:
  *       200:
- *         description: Profile updated successfully
+ *         description: Profile updated
  */
-router.patch('/profile/:userId', auth, updateVendorProfileByUserId);
-
-/**
- * @swagger
- * /api/vendors/profile/{userId}/submit:
- *   post:
- *     summary: Submit Vendor Profile for Verification
- *     tags: [Vendors]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Submitted successfully
- *       400:
- *         description: Profile incomplete
- */
-router.post('/profile/:userId/submit', auth, submitVendorVerificationByUserId);
+router.post('/profile/:userId', auth, updateVendorProfile);
 
 /**
  * @swagger
@@ -189,36 +139,18 @@ router.post('/profile/:userId/admin-process', requireAdmin, adminProcessVendorVe
 
 /**
  * @swagger
- * /api/vendors:
+ * /api/vendors/admin/all:
  *   get:
- *     summary: List all vendors with validated status
+ *     summary: Get all vendors (Admin only)
  *     tags: [Vendors]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Array of vendors
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   _id: { type: string }
- *                   validated: { type: boolean }
- *                   business_name: { type: string }
- *                   user:
- *                     type: object
- *                     properties:
- *                       _id: { type: string }
- *                       username: { type: string }
- *                       full_name: { type: string }
- *                       avatar_url: { type: string }
- *                       role: { type: string }
- *                       phone: { type: string }
- *       401:
- *         description: Not authorized
+ *         description: List of all vendors
+ *       403:
+ *         description: Admin access required
  */
+router.get('/admin/all', requireAdmin, getAllVendorsForAdmin);
 
 module.exports = router;

@@ -2,50 +2,51 @@ const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 
-const calculateProfileCompletion = (vendor) => {
-  const fields = [
-    'company_name',
-    'legal_business_name',
-    'registration_number',
-    'tax_id_or_vat',
-    'year_established',
-    'company_type',
-    'industry_category',
-    'business_nature',
-    'website',
-    'business_email',
-    'business_phone',
-    'address',
-    'country',
-    'service_coverage',
-    'company_description',
-    'city',
-    'note'
-  ];
-  
-  let filledCount = 0;
-  fields.forEach(field => {
-    if (vendor[field] && String(vendor[field]).trim() !== '') {
-      filledCount++;
-    }
-  });
+const calculateProfilePercentage = (vendor) => {
+  let percentage = 30; // Base percentage for registered vendor
 
-  if (Array.isArray(vendor.social_media_links) && vendor.social_media_links.length > 0) {
-    filledCount++;
+  // Business Details - 30%
+  if (vendor.business_details) {
+    const { industry_category, business_nature, service_coverage, country } = vendor.business_details;
+    if (industry_category && business_nature && service_coverage && country) {
+      percentage += 30;
+    }
   }
 
-  // Total fields = list length + 1 (social_media_links)
-  return Math.round((filledCount / (fields.length + 1)) * 100);
+  // Online Presence - 20%
+  if (vendor.online_presence) {
+    const { website_url, company_email, phone_number, address } = vendor.online_presence;
+    if (website_url && company_email && phone_number && address && 
+        address.address_line1 && address.city && address.pincode && address.state && address.country) {
+      percentage += 20;
+    }
+  }
+
+  // Social Media - 10%
+  if (vendor.social_media_links) {
+    const { instagram, facebook, linkedin, twitter } = vendor.social_media_links;
+    if (instagram || facebook || linkedin || twitter) {
+      percentage += 10;
+    }
+  }
+
+  // Company Description - 10%
+  if (vendor.company_description && vendor.company_description.trim().length > 0) {
+    percentage += 10;
+  }
+
+  return Math.min(percentage, 100);
 };
 
-exports.updateVendorProfileByUserId = async (req, res) => {
+exports.updateVendorProfile = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId } = req.params; // Use userId from path parameter
     const updates = req.body;
+    const requesterId = req.userId; // Authenticated user ID
 
-    // Check authorization: User can only update their own profile unless admin
-    if (req.user._id.toString() !== userId && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized to update this profile' });
+    // Authorization check: User can only update their own profile unless admin
+    if (req.user.role !== 'admin' && requesterId.toString() !== userId.toString()) {
+        return res.status(403).json({ message: 'Not authorized to update this profile' });
     }
 
     let vendor = await Vendor.findOne({ user_id: userId });
@@ -53,58 +54,69 @@ exports.updateVendorProfileByUserId = async (req, res) => {
       return res.status(404).json({ message: 'Vendor profile not found' });
     }
 
-    // Apply updates
-    const allowedFields = [
-      'company_name', 'legal_business_name', 'registration_number',
-      'tax_id_or_vat', 'year_established', 'company_type', 'industry_category',
-      'business_nature', 'website', 'business_email', 'business_phone',
-      'address', 'country', 'service_coverage', 'company_description',
-      'social_media_links', 'city', 'note'
-    ];
-
-    allowedFields.forEach(field => {
-      if (updates[field] !== undefined) {
-        vendor[field] = updates[field];
-      }
-    });
-
-    // If verification status was approved, reset to draft on update (unless admin)
-    if (vendor.verification_status === 'approved' && req.user.role !== 'admin') {
-      vendor.verification_status = 'draft';
-      vendor.validated = false;
-    } else if (vendor.verification_status !== 'pending_verification') {
-      // Ensure it's draft if not pending/approved
-      vendor.verification_status = 'draft';
+    // Update fields
+    if (updates.business_details) vendor.business_details = { ...vendor.business_details, ...updates.business_details };
+    
+    // Handle online_presence deep merge carefully
+    if (updates.online_presence) {
+        vendor.online_presence = {
+            ...vendor.online_presence,
+            ...updates.online_presence,
+            address: { ...(vendor.online_presence?.address || {}), ...(updates.online_presence?.address || {}) }
+        };
     }
 
-    // Recalculate completion
-    vendor.profile_completion_percentage = calculateProfileCompletion(vendor);
+    if (updates.social_media_links) {
+        vendor.social_media_links = {
+            ...vendor.social_media_links,
+            ...updates.social_media_links
+        };
+    }
+    
+    if (updates.company_description) vendor.company_description = updates.company_description;
+    
+    // Sync company_details if provided
+    if (updates.company_details) vendor.company_details = { ...vendor.company_details, ...updates.company_details };
+
+    // Recalculate percentage
+    vendor.profile_completion_percentage = calculateProfilePercentage(vendor);
 
     await vendor.save();
 
-    // Update User model fields as requested ("saved in user_id also")
+    // Sync relevant fields to User model
     const userUpdates = {};
-    if (updates.company_name) userUpdates.full_name = updates.company_name;
-    if (updates.business_phone) userUpdates.phone = updates.business_phone;
-    
-    // Add city and note to User if needed, though they aren't standard User fields.
-    // Assuming user wants them synced if possible or just standard ones.
-    // Based on "saved in user_id also", it likely means syncing common profile fields.
-    
+    if (vendor.online_presence?.phone_number) userUpdates.phone = vendor.online_presence.phone_number;
+    if (vendor.company_details?.company_name) userUpdates.full_name = vendor.company_details.company_name;
+
     if (Object.keys(userUpdates).length > 0) {
       await User.findByIdAndUpdate(userId, userUpdates);
     }
 
-
-
-    return res.json({
+    res.json({
       message: 'Profile updated successfully',
-      vendor_details: vendor
+      vendor
     });
-
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Server error' });
+    console.error('Update vendor profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getVendorProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const vendor = await Vendor.findOne({ user_id: userId })
+      .populate('user_id', 'username full_name avatar_url email phone role');
+      
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+
+    res.json(vendor);
+  } catch (error) {
+    console.error('Get vendor profile error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -193,17 +205,26 @@ exports.adminProcessVendorVerification = async (req, res) => {
 exports.listAllVendors = async (req, res) => {
   try {
     const vendors = await Vendor.find({})
-      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt')
+      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt')
       .sort({ createdAt: -1 });
-    const result = vendors.map(v => ({
-      _id: v._id,
-      validated: !!v.validated,
-      business_name: v.business_name,
-      user: v.user_id
-    }));
-    return res.json(result);
+    
+    // Return full vendor object with user details embedded
+    return res.json(vendors);
   } catch (error) {
     console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getAllVendorsForAdmin = async (req, res) => {
+  try {
+    const vendors = await Vendor.find({})
+      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt')
+      .sort({ createdAt: -1 });
+    
+    return res.json(vendors);
+  } catch (error) {
+    console.error('Get all vendors for admin error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

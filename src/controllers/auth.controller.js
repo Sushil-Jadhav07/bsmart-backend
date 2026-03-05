@@ -113,10 +113,24 @@ exports.register = async (req, res) => {
         logo_url: details.logo_url || '',
         social_media_links: [],
         verification_status: 'draft',
-        profile_completion_percentage: 0,
+        profile_completion_percentage: 30, // Default 30% for registration
         credits: initialCredits,
         credits_expires_at: creditsExpiresAt
       });
+    }
+
+    // Fetch the created vendor to return in response if role is vendor
+    let vendorData = null;
+    if (userRole === 'vendor') {
+      const vendor = await Vendor.findOne({ user_id: user._id });
+      if (vendor) {
+        vendorData = {
+          company_details: vendor.company_details || {},
+          credits: vendor.credits || 0,
+          profile_completion_percentage: vendor.profile_completion_percentage || 30,
+          vendor_validated: vendor.validated === true
+        };
+      }
     }
 
     res.status(201).json({
@@ -131,7 +145,8 @@ exports.register = async (req, res) => {
         role: user.role,
         followers_count: user.followers_count,
         following_count: user.following_count,
-        wallet: wallet
+        wallet: wallet,
+        ...(vendorData || {})
       }
     });
 
@@ -258,19 +273,9 @@ exports.login = async (req, res) => {
       const vendor = await Vendor.findOne({ user_id: user._id });
       if (vendor) {
         vendorPayload = {
-          company_details: {
-            company_name: vendor.company_name || '',
-            legal_business_name: vendor.legal_business_name || '',
-            industry: vendor.industry || '',
-            website: vendor.website || '',
-            business_email: vendor.business_email || '',
-            business_phone: vendor.business_phone || '',
-            country: vendor.country || '',
-            city: vendor.city || '',
-            note: vendor.note || ''
-          },
+          company_details: vendor.company_details || {},
           credits: vendor.credits || 0,
-          credits_expires_at: vendor.credits_expires_at || null,
+          profile_completion_percentage: vendor.profile_completion_percentage || 0,
           vendor_validated: vendor.validated === true
         };
       }
