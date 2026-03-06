@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const Member = require('../models/Member');
 const Vendor = require('../models/Vendor');
+const sendNotification = require('../utils/sendNotification');
 
 // Helper to generate JWT
 const generateToken = (id) => {
@@ -276,6 +277,24 @@ exports.login = async (req, res) => {
     }
 
     const wallet = await Wallet.findOne({ user_id: user._id });
+
+    // Notify all admins when a user logs in
+    try {
+      const admins = await User.find({ role: 'admin' }).select('_id').lean();
+      for (const admin of admins) {
+        if (admin._id.toString() !== user._id.toString()) {
+          await sendNotification(req.app, {
+            recipient: admin._id,
+            sender: user._id,
+            type: 'login_alert',
+            message: `${user.username} (${user.role}) just logged in`,
+            link: `/admin/users/${user._id}`
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error('Login alert notification error:', notifErr);
+    }
 
     let vendorPayload = {};
     if (user.role === 'vendor') {

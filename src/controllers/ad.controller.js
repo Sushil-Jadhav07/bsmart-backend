@@ -8,6 +8,7 @@ const User = require('../models/User');
 const AdComment = require('../models/AdComment');
 const adCategories = require('../data/adCategories');
 const AdCategory = require('../models/AdCategory');
+const Notification = require('../models/notification.model');
 const sendNotification = require('../utils/sendNotification');
 
 /**
@@ -149,6 +150,40 @@ exports.createAd = async (req, res) => {
   } catch (error) {
     console.error('Create ad error:', error);
     // TODO: If wallet was deducted but ad creation failed (unlikely order above), refund.
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Vendor delete ad (soft delete)
+ * @route DELETE /api/ads/:id
+ * @access Private (Vendor)
+ */
+exports.deleteAd = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const adId = req.params.id;
+
+    const ad = await Ad.findById(adId);
+
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    // Check ownership
+    if (ad.user_id.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to delete this ad' });
+    }
+
+    ad.isDeleted = true;
+    ad.deletedBy = userId;
+    ad.deletedAt = new Date();
+    
+    await ad.save();
+
+    res.json({ message: 'Ad deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -506,6 +541,23 @@ exports.likeAd = async (req, res) => {
     ad.likes_count += 1;
     await ad.save();
 
+    try {
+      if (ad.user_id.toString() !== req.userId.toString()) {
+        const liker = await User.findById(req.userId).select('username').lean();
+        if (liker) {
+          await sendNotification(req.app, {
+            recipient: ad.user_id,
+            sender: req.userId,
+            type: 'ad_like',
+            message: `${liker.username} liked your ad`,
+            link: `/ads/${ad._id}`
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error('Ad like notification error:', notifErr);
+    }
+
     res.json({ likes_count: ad.likes_count, is_liked: true });
   } catch (error) {
     console.error('Like ad error:', error);
@@ -574,6 +626,20 @@ exports.adminUpdateAdStatus = async (req, res) => {
         message: 'Your ad has been approved and is now live!',
         link: `/ads/${ad._id}`
       });
+    }
+
+    if (status === 'rejected') {
+      try {
+        await sendNotification(req.app, {
+          recipient: ad.user_id,
+          sender: null,
+          type: 'ad_rejected',
+          message: 'Your ad has been rejected. Please review and resubmit.',
+          link: `/ads/${ad._id}`
+        });
+      } catch (notifErr) {
+        console.error('Ad rejected notification error:', notifErr);
+      }
     }
 
     res.json(ad);

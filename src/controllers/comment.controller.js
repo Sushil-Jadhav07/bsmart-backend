@@ -48,6 +48,20 @@ exports.addComment = async (req, res) => {
       }
 
       parentCommentId = parent_id;
+
+      try {
+        if (parentComment.user.id.toString() !== userId.toString()) {
+          await sendNotification(req.app, {
+            recipient: parentComment.user.id,
+            sender: userId,
+            type: 'comment_reply',
+            message: `${user.username} replied to your comment`,
+            link: `/posts/${post._id}`
+          });
+        }
+      } catch (notifErr) {
+        console.error('Reply notification error:', notifErr);
+      }
     }
 
     // Get user details
@@ -185,6 +199,23 @@ exports.likeComment = async (req, res) => {
     comment.likes.push(userId);
     comment.likes_count = comment.likes.length;
     await comment.save();
+
+    try {
+      if (comment.user.id.toString() !== userId.toString()) {
+        const liker = await User.findById(userId).select('username').lean();
+        if (liker) {
+          await sendNotification(req.app, {
+            recipient: comment.user.id,
+            sender: userId,
+            type: 'comment_like',
+            message: `${liker.username} liked your comment`,
+            link: `/posts/${comment.post_id}`
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error('Comment like notification error:', notifErr);
+    }
 
     res.json({ liked: true, likes_count: comment.likes_count });
   } catch (error) {

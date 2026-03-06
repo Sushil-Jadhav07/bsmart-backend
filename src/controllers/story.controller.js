@@ -2,6 +2,7 @@ const Story = require('../models/Story');
 const StoryItem = require('../models/StoryItem');
 const StoryView = require('../models/StoryView');
 const User = require('../models/User');
+const sendNotification = require('../utils/sendNotification');
 
 const nowUtc = () => new Date();
 const addHours = (date, h) => new Date(date.getTime() + h * 60 * 60 * 1000);
@@ -172,6 +173,24 @@ exports.viewStoryItem = async (req, res) => {
         viewedAt: nowUtc()
       });
       await Story.findByIdAndUpdate(story._id, { $inc: { views_count: 1 } });
+
+      try {
+        const storyDoc = await Story.findById(story._id).select('user_id').lean();
+        if (storyDoc && storyDoc.user_id.toString() !== userId.toString()) {
+          const viewer = await User.findById(userId).select('username').lean();
+          if (viewer) {
+            await sendNotification(req.app, {
+              recipient: storyDoc.user_id,
+              sender: userId,
+              type: 'story_view',
+              message: `${viewer.username} viewed your story`,
+              link: `/stories/${story._id}`
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error('Story view notification error:', notifErr);
+      }
     }
     res.json({ success: true });
   } catch (error) {

@@ -5,6 +5,70 @@ const verifyToken = require('../middleware/auth');
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     Notification:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c0d"
+ *         recipient:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c0d"
+ *         sender:
+ *           type: object
+ *           properties:
+ *             _id:
+ *               type: string
+ *             username:
+ *               type: string
+ *             full_name:
+ *               type: string
+ *             avatar_url:
+ *               type: string
+ *         type:
+ *           type: string
+ *           enum:
+ *             - like
+ *             - comment
+ *             - follow
+ *             - mention
+ *             - order
+ *             - payout
+ *             - admin
+ *             - vendor_approved
+ *             - ad_approved
+ *             - comment_like
+ *             - comment_reply
+ *             - post_save
+ *             - post_tag
+ *             - ad_comment
+ *             - ad_like
+ *             - ad_rejected
+ *             - vendor_rejected
+ *             - coins_credited
+ *             - coins_debited
+ *             - story_view
+ *             - login_alert
+ *           example: "like"
+ *         message:
+ *           type: string
+ *           example: "john_doe liked your post"
+ *         link:
+ *           type: string
+ *           example: "/posts/664f1a2b3c4d5e6f7a8b9c0d"
+ *         isRead:
+ *           type: boolean
+ *           example: false
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-03-06T10:30:00.000Z"
+ */
+
+/**
+ * @swagger
  * tags:
  *   name: Notifications
  *   description: Real-time notification management
@@ -21,6 +85,16 @@ const verifyToken = require('../middleware/auth');
  *     responses:
  *       200:
  *         description: List of notifications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Notification'
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -45,6 +119,18 @@ router.get('/', verifyToken, async (req, res) => {
  *     responses:
  *       200:
  *         description: Unread notifications count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: integer
+ *                   example: 5
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.get('/unread-count', verifyToken, async (req, res) => {
   try {
@@ -69,6 +155,18 @@ router.get('/unread-count', verifyToken, async (req, res) => {
  *     responses:
  *       200:
  *         description: All notifications marked as read
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "All notifications marked as read"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.patch('/mark-all-read', verifyToken, async (req, res) => {
   try {
@@ -96,9 +194,23 @@ router.patch('/mark-all-read', verifyToken, async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *         description: Notification ID
+ *         example: "664f1a2b3c4d5e6f7a8b9c0d"
  *     responses:
  *       200:
  *         description: Notification marked as read
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Notification marked as read"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.patch('/:id/read', verifyToken, async (req, res) => {
   try {
@@ -126,9 +238,23 @@ router.patch('/:id/read', verifyToken, async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *         description: Notification ID
+ *         example: "664f1a2b3c4d5e6f7a8b9c0d"
  *     responses:
  *       200:
  *         description: Notification deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Deleted"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.delete('/:id', verifyToken, async (req, res) => {
   try {

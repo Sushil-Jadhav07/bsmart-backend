@@ -1,5 +1,7 @@
 const AdComment = require('../models/AdComment');
 const Ad = require('../models/Ad');
+const User = require('../models/User');
+const sendNotification = require('../utils/sendNotification');
 
 /**
  * Add a comment to an ad
@@ -51,6 +53,23 @@ exports.addAdComment = async (req, res) => {
     });
 
     await newComment.save();
+
+    try {
+      if (ad.user_id.toString() !== userId.toString()) {
+        const commenter = await User.findById(userId).select('username').lean();
+        if (commenter) {
+          await sendNotification(req.app, {
+            recipient: ad.user_id,
+            sender: userId,
+            type: 'ad_comment',
+            message: `${commenter.username} commented on your ad`,
+            link: `/ads/${ad._id}`
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error('Ad comment notification error:', notifErr);
+    }
 
     // Increment comment count
     await Ad.findByIdAndUpdate(adId, { $inc: { comments_count: 1 } });

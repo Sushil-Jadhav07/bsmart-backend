@@ -1,6 +1,7 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
 const Comment = require('../models/Comment');
+const sendNotification = require('../utils/sendNotification');
 
 // Helper to transform post with fileUrl, is_liked_by_me, is_saved_by_me
 const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => {
@@ -82,6 +83,25 @@ exports.createPost = async (req, res) => {
 
     // Increment user posts_count
     await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
+
+    try {
+      if (Array.isArray(people_tags) && people_tags.length > 0) {
+        const creator = await User.findById(req.userId).select('username').lean();
+        for (const taggedUserId of people_tags) {
+          if (taggedUserId.toString() !== req.userId.toString()) {
+            await sendNotification(req.app, {
+              recipient: taggedUserId,
+              sender: req.userId,
+              type: 'post_tag',
+              message: `${creator.username} tagged you in a post`,
+              link: `/posts/${post._id}`
+            });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error('Tag notification error:', notifErr);
+    }
 
     // Populate user info immediately for the response
     const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count');

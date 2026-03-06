@@ -1,6 +1,7 @@
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const User = require('../models/User');
+const sendNotification = require('../utils/sendNotification');
 
 /**
  * Get my wallet balance and recent transactions
@@ -103,6 +104,66 @@ exports.getAllWallets = async (req, res) => {
     });
   } catch (error) {
     console.error('Get all wallets error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.updateWalletBalance = async (req, res) => {
+  try {
+    const { userId, amount, type, description } = req.body;
+
+    if (!userId || !amount || !type) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // Determine transaction type based on amount sign if not strictly provided
+    // Assuming 'type' is 'CREDIT' or 'DEBIT' from admin panel
+    // But transaction model uses specific enums like 'AD_REWARD', etc.
+    // Let's use 'ADMIN_ADJUSTMENT' for manual changes or stick to provided type.
+    
+    // Update wallet
+    const wallet = await Wallet.findOneAndUpdate(
+      { user_id: userId },
+      { $inc: { balance: Number(amount) } },
+      { new: true, upsert: true }
+    );
+
+    // Create transaction record
+    await WalletTransaction.create({
+      user_id: userId,
+      type: type || 'ADMIN_ADJUSTMENT',
+      amount: Number(amount),
+      status: 'SUCCESS',
+      description: description || 'Admin adjustment'
+    });
+
+    // Send Notification
+    try {
+      const numAmount = Number(amount);
+      if (numAmount > 0) {
+        await sendNotification(req.app, {
+          recipient: userId,
+          sender: null,
+          type: 'coins_credited',
+          message: `${numAmount} coins have been added to your wallet`,
+          link: '/wallet'
+        });
+      } else if (numAmount < 0) {
+        await sendNotification(req.app, {
+          recipient: userId,
+          sender: null,
+          type: 'coins_debited',
+          message: `${Math.abs(numAmount)} coins have been deducted from your wallet`,
+          link: '/wallet'
+        });
+      }
+    } catch (notifErr) {
+      console.error('Coins credited/debited notification error:', notifErr);
+    }
+
+    res.json({ message: 'Wallet updated successfully', balance: wallet.balance });
+  } catch (error) {
+    console.error('Update wallet error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

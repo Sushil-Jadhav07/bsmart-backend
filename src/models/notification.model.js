@@ -12,7 +12,15 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['like', 'comment', 'follow', 'mention', 'order', 'payout', 'admin', 'vendor_approved', 'ad_approved'],
+    enum: [
+      'like', 'comment', 'follow', 'mention', 'order', 'payout', 'admin',
+      'vendor_approved', 'ad_approved',
+      'comment_like', 'comment_reply', 'post_save', 'post_tag',
+      'ad_comment', 'ad_like', 'ad_rejected',
+      'vendor_rejected',
+      'coins_credited', 'coins_debited',
+      'story_view', 'login_alert'
+    ],
     required: true
   },
   message: { type: String, required: true },

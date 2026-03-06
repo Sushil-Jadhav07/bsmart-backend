@@ -4,6 +4,7 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
+const sendNotification = require('../utils/sendNotification');
 
 const transformPost = (post, baseUrl) => {
   const obj = post.toObject ? post.toObject() : post;
@@ -40,6 +41,24 @@ exports.savePost = async (req, res) => {
     if (created) {
       await User.findByIdAndUpdate(userId, { $inc: { saved_posts_count: 1 } }).catch(() => {});
       const ownerId = post.user_id.toString();
+
+      try {
+        if (ownerId !== userId.toString()) {
+          const saver = await User.findById(userId).select('username').lean();
+          if (saver) {
+            await sendNotification(req.app, {
+              recipient: post.user_id,
+              sender: userId,
+              type: 'post_save',
+              message: `${saver.username} saved your post`,
+              link: `/posts/${postId}`
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error('Post save notification error:', notifErr);
+      }
+
       if (ownerId !== userId.toString()) {
         try {
           await new WalletTransaction({

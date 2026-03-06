@@ -13,7 +13,8 @@ const {
   recordAdView,
   completeAdView,
   likeAd,
-  dislikeAd
+  dislikeAd,
+  deleteAd
 } = require('../controllers/ad.controller');
 const {
   addAdComment,
@@ -313,6 +314,30 @@ router.post('/', auth, createAd);
  *         description: Ad not found
  */
 router.get('/:id', auth, getAdById);
+
+/**
+ * @swagger
+ * /api/ads/{id}:
+ *   delete:
+ *     summary: Delete an ad (Vendor only)
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Ad deleted successfully
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Ad not found
+ */
+router.delete('/:id', auth, deleteAd);
 
 /**
  * @swagger

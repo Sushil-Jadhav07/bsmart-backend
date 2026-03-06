@@ -290,6 +290,18 @@ exports.adminProcessVendorVerification = async (req, res) => {
       vendor.rejection_reason = rejection_reason || 'Rejected by admin';
       vendor.approved_at = null;
       vendor.approved_by = null;
+
+      try {
+        await sendNotification(req.app, {
+          recipient: vendor.user_id,
+          sender: null,
+          type: 'vendor_rejected',
+          message: `Your vendor account has been rejected.${rejection_reason ? ' Reason: ' + rejection_reason : ' Please contact support for more details.'}`,
+          link: '/vendor/profile'
+        });
+      } catch (notifErr) {
+        console.error('Vendor rejected notification error:', notifErr);
+      }
     } else {
       return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject"' });
     }
