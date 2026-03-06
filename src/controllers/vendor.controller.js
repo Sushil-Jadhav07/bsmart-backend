@@ -113,7 +113,9 @@ exports.getVendorProfile = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    res.json(vendor);
+    const payload = vendor.toObject();
+    payload.company_details = payload.company_details || {};
+    res.json(payload);
   } catch (error) {
     console.error('Get vendor profile error:', error);
     res.status(500).json({ message: 'Server error' });

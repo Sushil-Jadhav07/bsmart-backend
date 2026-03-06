@@ -14,6 +14,37 @@ const generateToken = (id) => {
   });
 };
 
+// Normalize incoming company_details keys to a consistent structure
+const normalizeCompanyDetails = (raw = {}) => {
+  // Build a lookup by lowercased key with non-alphanumerics removed
+  const map = {};
+  Object.keys(raw || {}).forEach((k) => {
+    const norm = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+    map[norm] = raw[k];
+  });
+
+  const pick = (...aliases) => {
+    for (const a of aliases) {
+      const norm = a.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (map[norm] !== undefined && map[norm] !== null) return map[norm];
+    }
+    return '';
+  };
+
+  const yearRaw = pick('Year Established', 'year_established', 'yearEstablished');
+  const year_established = yearRaw !== '' ? String(yearRaw) : '';
+
+  return {
+    company_name: pick('company_name', 'companyName'),
+    registered_name: pick('Registered Name', 'registered_name', 'registeredName', 'legal_business_name', 'legalBusinessName'),
+    industry: pick('industry'),
+    registration_number: pick('Registration Number', 'registration_number', 'registrationNumber'),
+    tax_id: pick('Tax ID / VAT / GST', 'tax_id', 'taxId', 'tax_id_or_vat', 'taxIdOrVat'),
+    year_established,
+    company_type: pick('Company Type', 'company_type', 'companyType'),
+  };
+};
+
 exports.register = async (req, res) => {
   try {
     const {
@@ -77,43 +108,21 @@ exports.register = async (req, res) => {
     } else if (userRole === 'vendor') {
       const creditsExpiresAt = initialCredits > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null;
       
-      // Extract fields from company_details with support for custom keys
-      const details = company_details || {};
-      const legalName = details['Registered Name'] || details.legal_business_name || '';
-      const regNumber = details['Registration Number'] || details.registration_number || '';
-      const industry = details.industry || '';
-      
-      const taxId = details['Tax ID / VAT / GST'] || details.tax_id_or_vat || '';
-      let yearEst = details['Year Established'] || details.year_established;
-      if (yearEst) {
-        yearEst = parseInt(yearEst, 10);
-        if (isNaN(yearEst)) yearEst = null;
-      } else {
-        yearEst = null;
-      }
-      const compType = details['Company Type'] || details.company_type || '';
+      // Extract fields from company_details with support for custom keys/aliases
+      const normalizedCompanyDetails = normalizeCompanyDetails(company_details || {});
+
+      // Persist a snapshot on the User record as requested
+      await User.findByIdAndUpdate(user._id, { company_details: normalizedCompanyDetails });
 
       await Vendor.create({
         user_id: user._id,
-        business_name: details.company_name,
-        company_name: details.company_name,
-        legal_business_name: legalName,
-        registration_number: regNumber,
-        tax_id_or_vat: taxId,
-        year_established: yearEst,
-        company_type: compType,
-        industry: industry,
-        industry_category: industry,
-        business_email: email,
-        business_phone: phone,
-        
-        // Other defaults
-        website: details.website || '',
-        country: details.country || '',
-        logo_url: details.logo_url || '',
-        social_media_links: [],
-        verification_status: 'draft',
-        profile_completion_percentage: 30, // Default 30% for registration
+        business_name: normalizedCompanyDetails.company_name || username,
+        company_details: normalizedCompanyDetails,
+        business_details: {},
+        online_presence: { address: {} },
+        social_media_links: {},
+        validated: false,
+        profile_completion_percentage: 30,
         credits: initialCredits,
         credits_expires_at: creditsExpiresAt
       });
@@ -324,6 +333,7 @@ exports.getMe = async (req, res) => {
       const vendor = await Vendor.findOne({ user_id: user._id });
       if (vendor) {
         vendorData = {
+          company_details: vendor.company_details || {},
           profile_completion_percentage: vendor.profile_completion_percentage || 30,
           vendor_validated: vendor.validated === true
         };

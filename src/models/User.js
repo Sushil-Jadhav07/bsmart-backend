@@ -68,6 +68,16 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // For vendor users: store company details snapshot on the user
+  company_details: {
+    company_name: { type: String, default: '' },
+    registered_name: { type: String, default: '' },
+    industry: { type: String, default: '' },
+    registration_number: { type: String, default: '' },
+    tax_id: { type: String, default: '' },
+    year_established: { type: String, default: '' },
+    company_type: { type: String, default: '' }
+  },
   isDeleted: {
     type: Boolean,
     default: false
