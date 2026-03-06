@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO Notification Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .status { padding: 10px; margin-bottom: 20px; border-radius: 4px; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        #notifications { list-style: none; padding: 0; }
+        .notification { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #f9f9f9; }
+        .notification.unread { border-left: 4px solid #007bff; }
+        pre { background: #eee; padding: 10px; overflow-x: auto; }
+    </style>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Real-Time Notification Test</h1>
+        
+        <div id="connectionStatus" class="status disconnected">Disconnected</div>
+
+        <div>
+            <label for="userId">Enter User ID to Simulate:</label>
+            <input type="text" id="userId" placeholder="Enter your User ID (MongoDB _id)">
+            <button onclick="connect()">Connect & Register</button>
+        </div>
+
+        <h3>Incoming Notifications:</h3>
+        <ul id="notifications"></ul>
+    </div>
+
+    <script>
+        let socket;
+
+        function connect() {
+            const userId = document.getElementById('userId').value.trim();
+            if (!userId) return alert('Please enter a User ID');
+
+            if (socket) socket.disconnect();
+
+            // Connect to the backend server
+            // Assuming backend runs on localhost:5000 or similar. Adjust port if needed.
+            // Using window.location.hostname and assuming port 5000 based on typical express apps.
+            // If your server port is different (e.g., 3000 or 8000), change it here.
+            const SERVER_URL = 'http://localhost:5000'; 
+            
+            console.log('Connecting to:', SERVER_URL);
+            socket = io(SERVER_URL);
+
+            socket.on('connect', () => {
+                document.getElementById('connectionStatus').textContent = 'Connected! Socket ID: ' + socket.id;
+                document.getElementById('connectionStatus').className = 'status connected';
+                
+                // Register the user
+                console.log('Registering user:', userId);
+                socket.emit('register', userId);
+            });
+
+            socket.on('disconnect', () => {
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').className = 'status disconnected';
+            });
+
+            socket.on('new_notification', (data) => {
+                console.log('New Notification Received:', data);
+                const list = document.getElementById('notifications');
+                const item = document.createElement('li');
+                item.className = 'notification unread';
+                item.innerHTML = `
+                    <strong>Type:</strong> ${data.type}<br>
+                    <strong>Message:</strong> ${data.message}<br>
+                    <strong>Link:</strong> ${data.link}<br>
+                    <small>Time: ${new Date(data.createdAt).toLocaleTimeString()}</small>
+                `;
+                list.prepend(item);
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('Connection Error:', error);
+                document.getElementById('connectionStatus').textContent = 'Connection Error: ' + error.message;
+                document.getElementById('connectionStatus').className = 'status disconnected';
+            });
+        }
+    </script>
+</body>
+</html>

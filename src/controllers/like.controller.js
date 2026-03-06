@@ -1,6 +1,8 @@
 const Post = require('../models/Post');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
+const sendNotification = require('../utils/sendNotification');
+const User = require('../models/User'); // Need User model to get username
 
 // @desc    Like a post
 // @route   POST /api/posts/:id/like
@@ -25,6 +27,20 @@ exports.likePost = async (req, res) => {
     post.likes.push(userId);
     post.likes_count = post.likes.length;
     await post.save();
+
+    // Notify post owner when someone likes (skip if liker is owner)
+    if (post.user_id.toString() !== userId.toString()) {
+      const liker = await User.findById(userId);
+      if (liker) {
+        await sendNotification(req.app, {
+          recipient: post.user_id,
+          sender: userId,
+          type: 'like',
+          message: `${liker.username} liked your post`,
+          link: `/posts/${post._id}`
+        });
+      }
+    }
 
     const ownerId = post.user_id.toString();
     if (ownerId !== userId.toString()) {

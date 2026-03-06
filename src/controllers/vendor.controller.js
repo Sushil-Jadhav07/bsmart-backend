@@ -2,6 +2,7 @@ const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const VendorContact = require('../models/VendorContact');
+const sendNotification = require('../utils/sendNotification');
 
 const calculateProfilePercentage = (vendor) => {
   let percentage = 30; // Base percentage for registered vendor
@@ -272,6 +273,16 @@ exports.adminProcessVendorVerification = async (req, res) => {
       vendor.approved_by = req.user._id;
       vendor.rejection_reason = null;
       vendor.rejected_at = null;
+
+      // Notify vendor on approval
+      await sendNotification(req.app, {
+        recipient: vendor.user_id,
+        sender: null, // System notification
+        type: 'vendor_approved',
+        message: 'Your vendor account has been approved!',
+        link: '/vendor/dashboard'
+      });
+
     } else if (action === 'reject') {
       vendor.verification_status = 'rejected';
       vendor.validated = false;

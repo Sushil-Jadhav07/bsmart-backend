@@ -3,6 +3,7 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
+const sendNotification = require('../utils/sendNotification');
 
 /**
  * Add a comment to a post
@@ -68,6 +69,17 @@ exports.addComment = async (req, res) => {
     });
 
     await newComment.save();
+
+    // Notify post owner when someone comments (skip if commenter is owner)
+    if (post.user_id.toString() !== userId.toString()) {
+      await sendNotification(req.app, {
+        recipient: post.user_id,
+        sender: userId,
+        type: 'comment',
+        message: `${user.username} commented on your post`,
+        link: `/posts/${post._id}`
+      });
+    }
 
     // Increment post comments count
     // If it's a top-level comment, also add to latest_comments (preview)

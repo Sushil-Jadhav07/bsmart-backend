@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Follow = require('../models/Follow');
 const User = require('../models/User');
+const sendNotification = require('../utils/sendNotification');
 
 exports.followUser = async (req, res) => {
   try {
@@ -26,6 +27,17 @@ exports.followUser = async (req, res) => {
     if (created) {
       await User.findByIdAndUpdate(followerId, { $inc: { following_count: 1 } });
       await User.findByIdAndUpdate(followedUserId, { $inc: { followers_count: 1 } });
+
+      const follower = await User.findById(followerId);
+      if (follower) {
+        await sendNotification(req.app, {
+          recipient: followedUserId,
+          sender: followerId,
+          type: 'follow',
+          message: `${follower.username} started following you`,
+          link: `/users/${followerId}`
+        });
+      }
     }
     return res.json({ followed: true, alreadyFollowing: !created });
   } catch (error) {

@@ -8,6 +8,7 @@ const User = require('../models/User');
 const AdComment = require('../models/AdComment');
 const adCategories = require('../data/adCategories');
 const AdCategory = require('../models/AdCategory');
+const sendNotification = require('../utils/sendNotification');
 
 /**
  * Create a new ad (Vendor only)
@@ -564,6 +565,17 @@ exports.adminUpdateAdStatus = async (req, res) => {
     if (rejection_reason !== undefined) ad.rejection_reason = rejection_reason;
 
     await ad.save();
+
+    if (status === 'approved') {
+      await sendNotification(req.app, {
+        recipient: ad.user_id,
+        sender: null,
+        type: 'ad_approved',
+        message: 'Your ad has been approved and is now live!',
+        link: `/ads/${ad._id}`
+      });
+    }
+
     res.json(ad);
   } catch (error) {
     console.error('Admin update ad status error:', error);
