@@ -11,7 +11,11 @@ const {
   getVendorProfile,
   adminProcessVendorVerification,
   getAllVendorsForAdmin,
-  deleteVendorByUserId
+  deleteVendorByUserId,
+  addVendorContact,
+  getVendorContacts,
+  updateVendorContact,
+  deleteVendorContact
 } = require('../controllers/vendor.controller');
 const requireAdmin = require('../middleware/requireAdmin');
 const { deleteVendorByAdmin } = require('../controllers/admin.controller');
@@ -103,6 +107,120 @@ router.get('/profile/:userId', getVendorProfile);
  *         description: Profile updated
  */
 router.post('/profile/:userId', auth, updateVendorProfile);
+ 
+/**
+ * @swagger
+ * /api/vendors/{userId}/contacts:
+ *   post:
+ *     summary: Add a contact for a vendor
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               email: { type: string }
+ *               phone: { type: string }
+ *               position: { type: string }
+ *               notes: { type: string }
+ *     responses:
+ *       201:
+ *         description: Contact created
+ */
+router.post('/:userId/contacts', auth, addVendorContact);
+
+/**
+ * @swagger
+ * /api/vendors/{userId}/contacts:
+ *   get:
+ *     summary: Get all contacts for a vendor
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of contacts
+ */
+router.get('/:userId/contacts', auth, getVendorContacts);
+
+/**
+ * @swagger
+ * /api/vendors/{userId}/contacts/{contactId}:
+ *   post:
+ *     summary: Update a contact for a vendor
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: contactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               email: { type: string }
+ *               phone: { type: string }
+ *               position: { type: string }
+ *               notes: { type: string }
+ *     responses:
+ *       200:
+ *         description: Contact updated
+ */
+router.post('/:userId/contacts/:contactId', auth, updateVendorContact);
+
+/**
+ * @swagger
+ * /api/vendors/{userId}/contacts/{contactId}:
+ *   delete:
+ *     summary: Delete a contact for a vendor
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: contactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Contact deleted
+ */
+router.delete('/:userId/contacts/:contactId', auth, deleteVendorContact);
 
 /**
  * @swagger

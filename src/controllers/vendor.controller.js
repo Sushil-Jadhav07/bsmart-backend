@@ -1,6 +1,7 @@
 const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
+const VendorContact = require('../models/VendorContact');
 
 const calculateProfilePercentage = (vendor) => {
   let percentage = 30; // Base percentage for registered vendor
@@ -98,6 +99,97 @@ exports.updateVendorProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Update vendor profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.addVendorContact = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, phone, position, notes } = req.body || {};
+
+    if (!name) return res.status(400).json({ message: 'name is required' });
+
+    if (req.user.role !== 'admin' && req.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId });
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+    const contact = await VendorContact.create({
+      vendor_user_id: userId,
+      name,
+      email: email || '',
+      phone: phone || '',
+      position: position || '',
+      notes: notes || ''
+    });
+
+    res.status(201).json(contact);
+  } catch (error) {
+    console.error('Add vendor contact error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getVendorContacts = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (req.user.role !== 'admin' && req.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const contacts = await VendorContact.find({ vendor_user_id: userId, isDeleted: false }).sort({ createdAt: -1 });
+    res.json(contacts);
+  } catch (error) {
+    console.error('Get vendor contacts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateVendorContact = async (req, res) => {
+  try {
+    const { userId, contactId } = req.params;
+    const updates = req.body || {};
+
+    if (req.user.role !== 'admin' && req.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const contact = await VendorContact.findOne({ _id: contactId, vendor_user_id: userId, isDeleted: false });
+    if (!contact) return res.status(404).json({ message: 'Contact not found' });
+
+    if (updates.name !== undefined) contact.name = updates.name;
+    if (updates.email !== undefined) contact.email = updates.email;
+    if (updates.phone !== undefined) contact.phone = updates.phone;
+    if (updates.position !== undefined) contact.position = updates.position;
+    if (updates.notes !== undefined) contact.notes = updates.notes;
+
+    await contact.save();
+    res.json(contact);
+  } catch (error) {
+    console.error('Update vendor contact error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.deleteVendorContact = async (req, res) => {
+  try {
+    const { userId, contactId } = req.params;
+
+    if (req.user.role !== 'admin' && req.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const contact = await VendorContact.findOne({ _id: contactId, vendor_user_id: userId, isDeleted: false });
+    if (!contact) return res.status(404).json({ message: 'Contact not found' });
+
+    await VendorContact.deleteOne({ _id: contactId });
+    res.json({ message: 'Contact deleted' });
+  } catch (error) {
+    console.error('Delete vendor contact error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
