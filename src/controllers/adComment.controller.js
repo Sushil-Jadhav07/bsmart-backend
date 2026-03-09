@@ -133,17 +133,10 @@ exports.getAdCommentReplies = async (req, res) => {
 exports.deleteAdComment = async (req, res) => {
   try {
     const commentId = req.params.commentId;
-    const userId = req.userId;
-    const userRole = req.user?.role; // Assuming role is attached to req.user
 
     const comment = await AdComment.findById(commentId);
     if (!comment) {
       return res.status(404).json({ message: 'Comment not found' });
-    }
-
-    // Check ownership or admin role
-    if (comment.user_id.toString() !== userId && userRole !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized to delete this comment' });
     }
 
     comment.isDeleted = true;
