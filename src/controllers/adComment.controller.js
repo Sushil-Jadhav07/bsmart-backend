@@ -139,11 +139,18 @@ exports.deleteAdComment = async (req, res) => {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
+    if (comment.isDeleted) {
+      return res.json({ message: 'Comment already deleted' });
+    }
+
     comment.isDeleted = true;
     await comment.save();
 
-    // Decrement comment count
-    await Ad.findByIdAndUpdate(comment.ad_id, { $inc: { comments_count: -1 } });
+    // Decrement comment count once and prevent going below zero
+    await Ad.findOneAndUpdate(
+      { _id: comment.ad_id, comments_count: { $gt: 0 } },
+      { $inc: { comments_count: -1 } }
+    );
 
     res.json({ message: 'Comment deleted' });
   } catch (error) {
