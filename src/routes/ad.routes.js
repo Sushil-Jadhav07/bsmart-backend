@@ -14,7 +14,8 @@ const {
   completeAdView,
   likeAd,
   dislikeAd,
-  deleteAd
+  deleteAd,
+  searchAds
 } = require('../controllers/ad.controller');
 const {
   addAdComment,
@@ -292,6 +293,97 @@ router.get('/', auth, requireAdmin, listAds);
  *         description: Ad created successfully
  */
 router.post('/', auth, createAd);
+
+/**
+ * @swagger
+ * /api/ads/search:
+ *   get:
+ *     summary: Search ads by category, hashtag, user_id, caption, keyword
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: "Keyword to search in caption, hashtags, tags, location"
+ *         example: "summer sale"
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Exact category name (case-insensitive)
+ *         example: "Fashion"
+ *       - in: query
+ *         name: hashtag
+ *         schema:
+ *           type: string
+ *         description: Single hashtag to search (with or without #)
+ *         example: "sale"
+ *       - in: query
+ *         name: user_id
+ *         schema:
+ *           type: string
+ *         description: MongoDB ObjectId of the vendor/user who created the ad
+ *         example: "664f1a2b3c4d5e6f7a8b9c0d"
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, active, paused, rejected]
+ *         description: "Ad status filter - admin only (non-admins always see active only)"
+ *       - in: query
+ *         name: content_type
+ *         schema:
+ *           type: string
+ *           enum: [post, reel]
+ *         description: Filter by content type
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
+ *         description: Results per page (max 50)
+ *     responses:
+ *       200:
+ *         description: Search results with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   example: 42
+ *                 page:
+ *                   type: integer
+ *                   example: 1
+ *                 limit:
+ *                   type: integer
+ *                   example: 20
+ *                 totalPages:
+ *                   type: integer
+ *                   example: 3
+ *                 ads:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: Invalid user_id format
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/search', auth, searchAds);
 
 /**
  * @swagger

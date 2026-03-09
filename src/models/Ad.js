@@ -94,4 +94,12 @@ const adSchema = new mongoose.Schema({
   deletedAt: { type: Date }
 }, { timestamps: true });
 
+// Text index for fast keyword search on caption, hashtags, tags, location
+adSchema.index({
+  caption: 'text',
+  hashtags: 'text',
+  tags: 'text',
+  location: 'text'
+});
+
 module.exports = mongoose.model('Ad', adSchema);

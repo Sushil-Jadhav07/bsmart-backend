@@ -677,3 +677,147 @@ exports.adminDeleteAd = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+/**
+ * Unified ads search (Instagram Explore style)
+ * @route GET /api/ads/search
+ * @access Private
+ */
+exports.searchAds = async (req, res) => {
+  try {
+    const {
+      q,
+      category,
+      sort = 'latest',
+      status,
+      content_type,
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const andFilters = [{ isDeleted: false }];
+    const currentUserId = req.userId ? req.userId.toString() : null;
+
+    const isAdmin = req.user && req.user.role === 'admin';
+    if (!isAdmin) {
+      andFilters.push({ status: 'active' });
+    } else if (status) {
+      const validStatuses = ['pending', 'active', 'paused', 'rejected'];
+      if (validStatuses.includes(status)) {
+        andFilters.push({ status });
+      }
+    }
+
+    // Optional category chip filter from UI (exact, case-insensitive)
+    if (category && category.trim()) {
+      const safeCategory = escapeRegex(category.trim());
+      andFilters.push({ category: { $regex: new RegExp(`^${safeCategory}$`, 'i') } });
+    }
+
+    if (content_type && ['post', 'reel'].includes(content_type)) {
+      andFilters.push({ content_type });
+    }
+
+    // Unified intent detection from q
+    if (q && q.trim()) {
+      const query = q.trim();
+
+      // #hashtag intent
+      if (query.startsWith('#')) {
+        const hashtagTerm = query.slice(1).trim();
+        if (hashtagTerm) {
+          const hashtagRegex = new RegExp(escapeRegex(hashtagTerm), 'i');
+          andFilters.push({ hashtags: { $elemMatch: { $regex: hashtagRegex } } });
+        }
+      // @username intent
+      } else if (query.startsWith('@')) {
+        const usernameTerm = query.slice(1).trim();
+        if (usernameTerm) {
+          const usernameRegex = new RegExp(escapeRegex(usernameTerm), 'i');
+          const matchedUsers = await User.find({ username: { $regex: usernameRegex } })
+            .select('_id')
+            .lean();
+          const matchedUserIds = matchedUsers.map((u) => u._id);
+          if (matchedUserIds.length === 0) {
+            return res.json({ total: 0, page: 1, limit: Math.min(50, Math.max(1, parseInt(limit, 10) || 20)), totalPages: 0, ads: [] });
+          }
+          andFilters.push({ user_id: { $in: matchedUserIds } });
+        }
+      } else {
+        const safeQuery = escapeRegex(query);
+
+        // Exact category intent if q matches an AdCategory name
+        const exactCategory = await AdCategory.findOne({
+          name: { $regex: new RegExp(`^${safeQuery}$`, 'i') }
+        })
+          .select('name')
+          .lean();
+
+        if (exactCategory) {
+          andFilters.push({ category: { $regex: new RegExp(`^${escapeRegex(exactCategory.name)}$`, 'i') } });
+        } else {
+          // Generic keyword intent + users with matching usernames
+          const keywordRegex = new RegExp(safeQuery, 'i');
+          const matchedUsers = await User.find({ username: { $regex: keywordRegex } })
+            .select('_id')
+            .lean();
+          const matchedUserIds = matchedUsers.map((u) => u._id);
+
+          const orFilters = [
+            { caption: keywordRegex },
+            { location: keywordRegex },
+            { hashtags: keywordRegex },
+            { tags: keywordRegex }
+          ];
+
+          if (matchedUserIds.length > 0) {
+            orFilters.push({ user_id: { $in: matchedUserIds } });
+          }
+
+          andFilters.push({ $or: orFilters });
+        }
+      }
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+    const filter = andFilters.length === 1 ? andFilters[0] : { $and: andFilters };
+
+    let sortQuery = { createdAt: -1 };
+    if (sort === 'popular') {
+      sortQuery = { views_count: -1, likes_count: -1, createdAt: -1 };
+    } else if (sort === 'top') {
+      sortQuery = { likes_count: -1, completed_views_count: -1, views_count: -1, createdAt: -1 };
+    }
+
+    const [ads, total] = await Promise.all([
+      Ad.find(filter)
+        .populate('vendor_id', 'business_name logo_url validated')
+        .populate('user_id', 'username full_name avatar_url')
+        .sort(sortQuery)
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Ad.countDocuments(filter)
+    ]);
+
+    const adsWithInteractionFlags = ads.map((ad) => ({
+      ...ad,
+      is_liked_by_me: !!(currentUserId && ad.likes && ad.likes.some((id) => id.toString() === currentUserId)),
+      is_disliked_by_me: !!(currentUserId && ad.dislikes && ad.dislikes.some((id) => id.toString() === currentUserId))
+    }));
+
+    res.json({
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+      ads: adsWithInteractionFlags
+    });
+  } catch (error) {
+    console.error('Search ads error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
