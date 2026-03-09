@@ -139,20 +139,34 @@ exports.deleteAdComment = async (req, res) => {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
-    if (comment.isDeleted) {
-      return res.json({ message: 'Comment already deleted' });
+    let deletedCount = 1; // The comment itself
+
+    // If it's a top-level comment, also delete all its replies
+    if (!comment.parent_id) {
+      const repliesCount = await AdComment.countDocuments({ parent_id: commentId });
+      if (repliesCount > 0) {
+        await AdComment.deleteMany({ parent_id: commentId });
+        deletedCount += repliesCount;
+      }
     }
 
-    comment.isDeleted = true;
-    await comment.save();
+    // Delete the comment itself
+    await AdComment.findByIdAndDelete(commentId);
 
-    // Decrement comment count once and prevent going below zero
-    await Ad.findOneAndUpdate(
-      { _id: comment.ad_id, comments_count: { $gt: 0 } },
-      { $inc: { comments_count: -1 } }
+    // Update the comments count on the Ad
+    await Ad.findByIdAndUpdate(
+      comment.ad_id,
+      { $inc: { comments_count: -deletedCount } },
+      { new: true }
     );
 
-    res.json({ message: 'Comment deleted' });
+    // Ensure comment count doesn't go below zero
+    await Ad.findOneAndUpdate(
+      { _id: comment.ad_id, comments_count: { $lt: 0 } },
+      { $set: { comments_count: 0 } }
+    );
+
+    res.json({ message: 'Comment deleted successfully' });
   } catch (error) {
     console.error('Delete ad comment error:', error);
     res.status(500).json({ message: 'Server error' });
