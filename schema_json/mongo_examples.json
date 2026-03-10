@@ -1,0 +1,453 @@
+{
+  "User": {
+    "_id": "69b0754f32556f54fb1c2783",
+    "email": "member@example.com",
+    "password": "$2a$10$hashed_password_string",
+    "googleId": null,
+    "provider": "local",
+    "username": "member123",
+    "full_name": "Member Name",
+    "bio": "",
+    "posts_count": 0,
+    "followers_count": 0,
+    "following_count": 0,
+    "is_active": true,
+    "role": "member",
+    "avatar_url": "",
+    "phone": "+911234567890",
+    "gender": "male",
+    "location": "Mumbai, India",
+    "address": {
+      "address_line1": "Address line 1",
+      "address_line2": "Address line 2",
+      "pincode": "560001",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "country": "India"
+    },
+    "company_details": {
+      "company_name": "",
+      "registered_name": "",
+      "industry": "",
+      "registration_number": "",
+      "tax_id": "",
+      "year_established": "",
+      "company_type": ""
+    },
+    "isDeleted": false,
+    "deletedBy": null,
+    "deletedAt": null,
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "Member": {
+    "_id": "69b0754f32556f54fb1c2790",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "bio": "",
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "Vendor": {
+    "_id": "69b0754f32556f54fb1c2791",
+    "user_id": "69b0754f32556f54fb1c2784",
+    "business_name": "My Shop",
+    "logo_url": "https://cdn.example.com/vendor/logo.png",
+    "company_details": {
+      "company_name": "My Shop Pvt Ltd",
+      "registered_name": "My Shop Private Limited",
+      "industry": "Retail",
+      "registration_number": "REG-12345",
+      "tax_id": "GSTIN12345",
+      "year_established": "2015",
+      "company_type": "Private Limited"
+    },
+    "business_details": {
+      "industry_category": "Retail",
+      "business_nature": "B2C",
+      "service_coverage": "PAN India",
+      "country": "India"
+    },
+    "online_presence": {
+      "website_url": "https://myshop.example.com",
+      "company_email": "support@myshop.example.com",
+      "phone_number": "+919999999999",
+      "address": {
+        "address_line1": "Street 1",
+        "address_line2": "Near Landmark",
+        "city": "Delhi",
+        "pincode": "110001",
+        "state": "Delhi",
+        "country": "India"
+      }
+    },
+    "social_media_links": {
+      "instagram": "https://instagram.com/myshop",
+      "facebook": "https://facebook.com/myshop",
+      "linkedin": "https://linkedin.com/company/myshop",
+      "twitter": "https://x.com/myshop"
+    },
+    "company_description": "We sell products.",
+    "validated": false,
+    "profile_completion_percentage": 30,
+    "credits": 200000,
+    "credits_expires_at": "2027-03-11T10:00:00.000Z",
+    "description": "",
+    "category": "",
+    "phone": "",
+    "address": "",
+    "isDeleted": false,
+    "deletedBy": null,
+    "deletedAt": null,
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "Wallet": {
+    "_id": "69b0754f32556f54fb1c2792",
+    "user_id": "69b0754f32556f54fb1c2784",
+    "balance": 200000,
+    "currency": "Coins",
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "WalletTransaction": {
+    "_id": "69b0754f32556f54fb1c2793",
+    "user_id": "69b0754f32556f54fb1c2784",
+    "post_id": null,
+    "ad_id": null,
+    "type": "VENDOR_REGISTRATION_CREDIT",
+    "amount": 200000,
+    "description": "Initial credits added on vendor registration",
+    "status": "SUCCESS",
+    "transactionDate": "2026-03-11T10:00:01.000Z",
+    "createdAt": "2026-03-11T10:00:01.000Z",
+    "updatedAt": "2026-03-11T10:00:01.000Z"
+  },
+  "Post": {
+    "_id": "69b0754f32556f54fb1c2794",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "caption": "Hello world",
+    "location": "Mumbai, India",
+    "media": [
+      {
+        "fileName": "uploads/1710000000000-123.jpg",
+        "type": "image",
+        "crop": {
+          "mode": "original",
+          "aspect_ratio": "1:1",
+          "zoom": 1,
+          "x": 0,
+          "y": 0
+        },
+        "filter": {
+          "name": "Original",
+          "css": ""
+        },
+        "adjustments": {
+          "brightness": 0,
+          "contrast": 0,
+          "saturation": 0,
+          "temperature": 0,
+          "fade": 0,
+          "vignette": 0
+        },
+        "videoLength": null,
+        "finalLength": null,
+        "finallength": null,
+        "totalLength": null,
+        "totalLenght": null,
+        "timing": {
+          "start": null,
+          "end": null
+        },
+        "thumbail-time": null,
+        "finalLength-start": null,
+        "finallength-end": null,
+        "thumbnail": {
+          "fileName": "uploads/1710000000000-thumb.jpg",
+          "type": "image"
+        },
+        "thumbnails": [
+          { "fileName": "uploads/1710000000000-thumb-1.jpg", "type": "image" }
+        ]
+      }
+    ],
+    "tags": ["travel", "food"],
+    "people_tags": [
+      { "user_id": "69b0754f32556f54fb1c2785", "username": "friend1", "x": 0.4, "y": 0.5 }
+    ],
+    "hide_likes_count": false,
+    "turn_off_commenting": false,
+    "likes_count": 5,
+    "comments_count": 2,
+    "views_count": 0,
+    "unique_views_count": 0,
+    "completed_views_count": 0,
+    "latest_comments": [
+      {
+        "_id": "69b0754f32556f54fb1c2795",
+        "text": "Nice!",
+        "user": { "id": "69b0754f32556f54fb1c2785", "username": "friend1", "avatar_url": "" },
+        "createdAt": "2026-03-11T10:02:00.000Z",
+        "replies": [
+          {
+            "_id": "69b0754f32556f54fb1c2796",
+            "text": "Thanks",
+            "user": { "id": "69b0754f32556f54fb1c2783", "username": "member123", "avatar_url": "" },
+            "createdAt": "2026-03-11T10:03:00.000Z"
+          }
+        ]
+      }
+    ],
+    "likes": ["69b0754f32556f54fb1c2785"],
+    "type": "post",
+    "isDeleted": false,
+    "deletedBy": null,
+    "deletedAt": null,
+    "createdAt": "2026-03-11T10:01:00.000Z",
+    "updatedAt": "2026-03-11T10:03:30.000Z"
+  },
+  "Comment": {
+    "_id": "69b0754f32556f54fb1c2797",
+    "post_id": "69b0754f32556f54fb1c2794",
+    "parent_id": null,
+    "user": {
+      "id": "69b0754f32556f54fb1c2785",
+      "username": "friend1",
+      "avatar_url": ""
+    },
+    "text": "Nice post",
+    "likes": ["69b0754f32556f54fb1c2783"],
+    "likes_count": 1,
+    "isDeleted": false,
+    "deletedBy": null,
+    "deletedAt": null,
+    "createdAt": "2026-03-11T10:02:00.000Z",
+    "updatedAt": "2026-03-11T10:02:10.000Z"
+  },
+  "Follow": {
+    "_id": "69b0754f32556f54fb1c2798",
+    "follower_id": "69b0754f32556f54fb1c2783",
+    "followed_id": "69b0754f32556f54fb1c2785",
+    "createdAt": "2026-03-11T10:05:00.000Z",
+    "updatedAt": "2026-03-11T10:05:00.000Z"
+  },
+  "SavedPost": {
+    "_id": "69b0754f32556f54fb1c2799",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "post_id": "69b0754f32556f54fb1c2794",
+    "createdAt": "2026-03-11T10:06:00.000Z",
+    "updatedAt": "2026-03-11T10:06:00.000Z"
+  },
+  "Ad": {
+    "_id": "69b0754f32556f54fb1c27a0",
+    "vendor_id": "69b0754f32556f54fb1c2791",
+    "user_id": "69b0754f32556f54fb1c2784",
+    "caption": "Try our new product",
+    "location": "Delhi, India",
+    "media": [
+      {
+        "fileName": "uploads/1710000000000-ad.mp4",
+        "fileUrl": "https://cdn.example.com/uploads/1710000000000-ad.mp4",
+        "media_type": "video",
+        "video_meta": {
+          "original_length_seconds": 30,
+          "selected_start": 0,
+          "selected_end": 15,
+          "final_duration": 15,
+          "thumbnail_time": 2
+        },
+        "image_editing": {
+          "filter": { "name": "Original", "css": "" },
+          "adjustments": {
+            "brightness": 0,
+            "contrast": 0,
+            "saturation": 0,
+            "temperature": 0,
+            "fade": 0,
+            "vignette": 0
+          }
+        },
+        "crop_settings": {
+          "mode": "9:16",
+          "aspect_ratio": "9:16",
+          "zoom": 1,
+          "x": 0,
+          "y": 0
+        },
+        "timing_window": { "start": 0, "end": 15 },
+        "thumbnails": [
+          { "fileName": "uploads/1710000000000-ad-thumb.jpg", "media_type": "image", "fileUrl": "https://cdn.example.com/uploads/1710000000000-ad-thumb.jpg" }
+        ]
+      }
+    ],
+    "hashtags": ["sale", "new"],
+    "tagged_users": [
+      { "user_id": "69b0754f32556f54fb1c2785", "username": "friend1", "position_x": 0.3, "position_y": 0.2 }
+    ],
+    "engagement_controls": { "hide_likes_count": false, "disable_comments": false },
+    "content_type": "reel",
+    "category": "Retail",
+    "tags": ["fashion"],
+    "target_language": ["en"],
+    "target_location": ["India"],
+    "target_preferences": ["shopping"],
+    "product": {
+      "product_id": "SKU-123",
+      "title": "T-Shirt",
+      "description": "Cotton T-shirt",
+      "price": 499,
+      "link": "https://myshop.example.com/products/sku-123"
+    },
+    "coins_reward": 10,
+    "total_budget_coins": 1000,
+    "total_coins_spent": 50,
+    "status": "active",
+    "rejection_reason": "",
+    "views_count": 120,
+    "unique_views_count": 90,
+    "completed_views_count": 70,
+    "likes_count": 12,
+    "comments_count": 3,
+    "likes": ["69b0754f32556f54fb1c2783"],
+    "dislikes": [],
+    "dislikes_count": 0,
+    "isDeleted": false,
+    "deletedBy": null,
+    "deletedAt": null,
+    "createdAt": "2026-03-11T10:10:00.000Z",
+    "updatedAt": "2026-03-11T10:15:00.000Z"
+  },
+  "AdComment": {
+    "_id": "69b0754f32556f54fb1c27a1",
+    "ad_id": "69b0754f32556f54fb1c27a0",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "parent_id": null,
+    "text": "Looks good",
+    "likes": ["69b0754f32556f54fb1c2785"],
+    "dislikes": [],
+    "isDeleted": false,
+    "createdAt": "2026-03-11T10:16:00.000Z",
+    "updatedAt": "2026-03-11T10:16:10.000Z"
+  },
+  "AdView": {
+    "_id": "69b0754f32556f54fb1c27a2",
+    "ad_id": "69b0754f32556f54fb1c27a0",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "view_count": 1,
+    "completed": true,
+    "completed_at": "2026-03-11T10:17:00.000Z",
+    "rewarded": true,
+    "rewarded_at": "2026-03-11T10:17:00.000Z",
+    "coins_rewarded": 10,
+    "watch_time_ms": 15000,
+    "fraud_flagged": false,
+    "createdAt": "2026-03-11T10:17:00.000Z",
+    "updatedAt": "2026-03-11T10:17:00.000Z"
+  },
+  "PostView": {
+    "_id": "69b0754f32556f54fb1c27a3",
+    "post_id": "69b0754f32556f54fb1c2794",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "type": "reel",
+    "view_count": 2,
+    "completed": true,
+    "completed_at": "2026-03-11T10:20:00.000Z",
+    "rewarded": true,
+    "rewarded_at": "2026-03-11T10:20:00.000Z",
+    "watchTimeMs": 18000,
+    "createdAt": "2026-03-11T10:18:00.000Z",
+    "updatedAt": "2026-03-11T10:20:00.000Z"
+  },
+  "SavedAd": {
+    "_id": "69b0754f32556f54fb1c27a4",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "ad_id": "69b0754f32556f54fb1c27a0",
+    "createdAt": "2026-03-11T10:21:00.000Z",
+    "updatedAt": "2026-03-11T10:21:00.000Z"
+  },
+  "Story": {
+    "_id": "69b0754f32556f54fb1c27a5",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "items_count": 1,
+    "views_count": 10,
+    "expiresAt": "2026-03-12T10:00:00.000Z",
+    "isArchived": false,
+    "archivedAt": null,
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "StoryItem": {
+    "_id": "69b0754f32556f54fb1c27a6",
+    "story_id": "69b0754f32556f54fb1c27a5",
+    "user_id": "69b0754f32556f54fb1c2783",
+    "order": 1,
+    "media": {
+      "url": "https://cdn.example.com/story/1.jpg",
+      "type": "image",
+      "thumbnail": "https://cdn.example.com/story/1-thumb.jpg",
+      "durationSec": 5,
+      "width": 1080,
+      "height": 1920
+    },
+    "transform": { "x": 0.5, "y": 0.5, "scale": 1, "rotation": 0, "boxWidth": 1080, "boxHeight": 1920 },
+    "filter": { "name": "none", "intensity": 0 },
+    "texts": [
+      {
+        "content": "Hello",
+        "x": 0.5,
+        "y": 0.2,
+        "fontSize": 32,
+        "fontFamily": "classic",
+        "color": "#ffffff",
+        "align": "center",
+        "rotation": 0,
+        "background": { "enabled": false, "color": "#000000", "opacity": 0.5 }
+      }
+    ],
+    "mentions": [
+      { "user_id": "69b0754f32556f54fb1c2785", "username": "friend1", "x": 0.3, "y": 0.4 }
+    ],
+    "expiresAt": "2026-03-12T10:00:00.000Z",
+    "isDeleted": false,
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "StoryView": {
+    "_id": "69b0754f32556f54fb1c27a7",
+    "story_id": "69b0754f32556f54fb1c27a5",
+    "story_item_id": "69b0754f32556f54fb1c27a6",
+    "owner_id": "69b0754f32556f54fb1c2783",
+    "viewer_id": "69b0754f32556f54fb1c2785",
+    "viewedAt": "2026-03-11T10:30:00.000Z"
+  },
+  "VendorContact": {
+    "_id": "69b0754f32556f54fb1c27a8",
+    "vendor_user_id": "69b0754f32556f54fb1c2784",
+    "name": "Sales Manager",
+    "email": "sales@myshop.example.com",
+    "phone": "+919888888888",
+    "position": "Sales",
+    "notes": "Primary contact",
+    "isDeleted": false,
+    "createdAt": "2026-03-11T10:40:00.000Z",
+    "updatedAt": "2026-03-11T10:40:00.000Z"
+  },
+  "AdCategory": {
+    "_id": "69b0754f32556f54fb1c27a9",
+    "name": "Retail",
+    "isEnabled": true,
+    "createdAt": "2026-03-11T10:00:00.000Z",
+    "updatedAt": "2026-03-11T10:00:00.000Z"
+  },
+  "Notification": {
+    "_id": "69b0754f32556f54fb1c27aa",
+    "recipient": "69b0754f32556f54fb1c2783",
+    "sender": "69b0754f32556f54fb1c2785",
+    "type": "follow",
+    "message": "friend1 started following you",
+    "link": "/users/69b0754f32556f54fb1c2785",
+    "isRead": false,
+    "createdAt": "2026-03-11T10:50:00.000Z",
+    "updatedAt": "2026-03-11T10:50:00.000Z"
+  }
+}

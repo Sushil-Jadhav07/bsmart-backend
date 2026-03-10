@@ -11,6 +11,7 @@ const adCategories = require('../data/adCategories');
 const AdCategory = require('../models/AdCategory');
 const Notification = require('../models/notification.model');
 const sendNotification = require('../utils/sendNotification');
+const runMongoTransaction = require('../utils/runMongoTransaction');
 
 const REWARD_COINS = 10; // Coins given to user when they like/comment/reply/save an ad (deducted from ad creator)
 
@@ -22,18 +23,9 @@ const REWARD_COINS = 10; // Coins given to user when they like/comment/reply/sav
 exports.createAd = async (req, res) => {
   try {
     const userId = req.userId;
-    
-    // Validate vendor status
-    const vendor = await Vendor.findOne({ user_id: userId });
-    if (!vendor) {
-      return res.status(403).json({ message: 'Vendor profile not found' });
-    }
-    if (!vendor.validated) {
-      return res.status(403).json({ message: 'Vendor account not validated' });
-    }
 
     const {
-      title, // Kept for backwards compatibility if needed, or map caption to it
+      title,
       caption,
       location,
       media,
@@ -41,14 +33,11 @@ exports.createAd = async (req, res) => {
       tagged_users,
       engagement_controls,
       content_type,
-      // Legacy fields (map to new structure if possible, or keep optional)
       video_fileName,
       video_url,
       thumbnail_fileName,
       thumbnail_url,
       duration_seconds,
-      // Common fields
-      coins_reward,
       category,
       tags,
       target_language,
@@ -57,7 +46,11 @@ exports.createAd = async (req, res) => {
       total_budget_coins
     } = req.body;
 
-    // Validation: Require media array OR legacy fields
+    const budget = Number(total_budget_coins || 0);
+    if (!Number.isFinite(budget) || budget <= 0) {
+      return res.status(400).json({ message: 'total_budget_coins must be a positive number' });
+    }
+
     const hasNewMedia = media && Array.isArray(media) && media.length > 0;
     const hasLegacyMedia = video_fileName && video_url && duration_seconds;
 
@@ -65,21 +58,19 @@ exports.createAd = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields (media/video, category)' });
     }
 
-    // Construct Ad Object
     const adData = {
-      vendor_id: vendor._id,
+      vendor_id: null,
       user_id: userId,
-      // Map title to caption if caption missing, or vice versa
-      caption: caption || title || '', 
+      caption: caption || title || '',
       location: location || '',
       category,
       tags: tags || [],
       target_language: Array.isArray(target_language) ? target_language : (target_language ? [target_language] : []),
       target_location: Array.isArray(target_location) ? target_location : (target_location ? [target_location] : []),
       target_preferences: target_preferences || [],
-      total_budget_coins: total_budget_coins || 0,
+      total_budget_coins: budget,
+      total_coins_spent: 0,
       status: 'pending',
-      // New fields
       hashtags: hashtags || [],
       tagged_users: tagged_users || [],
       engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
@@ -89,7 +80,6 @@ exports.createAd = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
 
     if (hasNewMedia) {
-      // Process new media array
       adData.media = media.map(m => ({
         ...m,
         fileUrl: m.fileUrl && !m.fileUrl.startsWith('http') ? `${baseUrl}${m.fileUrl}` : m.fileUrl,
@@ -99,12 +89,11 @@ exports.createAd = async (req, res) => {
         })) : []
       }));
     } else {
-      // Backwards compatibility: Map legacy fields to media array
       const fullVideoUrl = video_url.startsWith('http') ? video_url : `${baseUrl}${video_url}`;
-      const fullThumbnailUrl = thumbnail_url && !thumbnail_url.startsWith('http') 
-        ? `${baseUrl}${thumbnail_url}` 
+      const fullThumbnailUrl = thumbnail_url && !thumbnail_url.startsWith('http')
+        ? `${baseUrl}${thumbnail_url}`
         : thumbnail_url;
-      
+
       adData.media = [{
         fileName: video_fileName,
         fileUrl: fullVideoUrl,
@@ -120,39 +109,111 @@ exports.createAd = async (req, res) => {
       }];
     }
 
-    // Check vendor wallet balance
-    const vendorWallet = await Wallet.findOne({ user_id: vendor.user_id });
-    if (!vendorWallet || vendorWallet.balance < total_budget_coins) {
-      return res.status(400).json({ message: 'Insufficient wallet balance for total budget' });
+    let createdAd;
+
+    await runMongoTransaction({
+      work: async (session) => {
+        const vendor = await Vendor.findOne({ user_id: userId }).session(session);
+        if (!vendor) {
+          const err = new Error('Vendor profile not found');
+          err.statusCode = 403;
+          throw err;
+        }
+        if (!vendor.validated) {
+          const err = new Error('Vendor account not validated');
+          err.statusCode = 403;
+          throw err;
+        }
+
+        adData.vendor_id = vendor._id;
+
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: vendor.user_id, balance: { $gte: budget } },
+          { $inc: { balance: -budget } },
+          { new: true, session }
+        );
+        if (!wallet) {
+          const err = new Error('Insufficient wallet balance for total budget');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const [adDoc] = await Ad.create([adData], { session });
+        createdAd = adDoc;
+
+        await WalletTransaction.create([{
+          user_id: vendor.user_id,
+          vendor_id: vendor._id,
+          ad_id: adDoc._id,
+          type: 'AD_BUDGET_DEDUCTION',
+          amount: -budget,
+          status: 'SUCCESS',
+          description: 'ad_creation: reserved ad budget from vendor wallet'
+        }], { session });
+      },
+      fallback: async () => {
+        const vendor = await Vendor.findOne({ user_id: userId });
+        if (!vendor) {
+          const err = new Error('Vendor profile not found');
+          err.statusCode = 403;
+          throw err;
+        }
+        if (!vendor.validated) {
+          const err = new Error('Vendor account not validated');
+          err.statusCode = 403;
+          throw err;
+        }
+
+        adData.vendor_id = vendor._id;
+
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: vendor.user_id, balance: { $gte: budget } },
+          { $inc: { balance: -budget } },
+          { new: true }
+        );
+        if (!wallet) {
+          const err = new Error('Insufficient wallet balance for total budget');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        let adDoc;
+        try {
+          adDoc = await Ad.create(adData);
+          createdAd = adDoc;
+          await WalletTransaction.create({
+            user_id: vendor.user_id,
+            vendor_id: vendor._id,
+            ad_id: adDoc._id,
+            type: 'AD_BUDGET_DEDUCTION',
+            amount: -budget,
+            status: 'SUCCESS',
+            description: 'ad_creation: reserved ad budget from vendor wallet'
+          });
+        } catch (e) {
+          await Wallet.findOneAndUpdate({ user_id: vendor.user_id }, { $inc: { balance: budget } });
+          await WalletTransaction.create({
+            user_id: vendor.user_id,
+            vendor_id: vendor._id,
+            type: 'ADMIN_ADJUSTMENT',
+            amount: budget,
+            status: 'SUCCESS',
+            description: 'refund: ad creation failed after budget deduction'
+          });
+          throw e;
+        }
+      }
+    });
+
+    if (createdAd) {
+      res.status(201).json(createdAd);
     }
-
-    // Deduct budget from vendor wallet
-    await Wallet.findOneAndUpdate(
-      { user_id: vendor.user_id },
-      { $inc: { balance: -total_budget_coins } }
-    );
-
-    // Create transaction for budget deduction
-    // Note: We don't have an ad_id yet, so we'll create the ad first then transaction?
-    // Better to create ad first but not save? No, let's create transaction after ad save.
-    // But if ad save fails, we need to rollback.
-    // Simple approach: create ad first, then deduct.
-
-    const newAd = new Ad(adData);
-    await newAd.save();
-
-   await WalletTransaction.create({
-  user_id: vendor.user_id,
-  ad_id: newAd._id,
-  // Vendor spend when creating an ad
-  type: 'AD_BUDGET_DEDUCTION',
-  amount: -total_budget_coins,
-  status: 'SUCCESS'
-});
-    res.status(201).json(newAd);
   } catch (error) {
+    const status = error.statusCode || 500;
+    if (status !== 500) {
+      return res.status(status).json({ message: error.message });
+    }
     console.error('Create ad error:', error);
-    // TODO: If wallet was deducted but ad creation failed (unlikely order above), refund.
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -457,85 +518,166 @@ exports.recordAdView = async (req, res) => {
  */
 exports.completeAdView = async (req, res) => {
   try {
-    const userId = req.userId;
+    const userId = String(req.userId);
     const adId = req.params.id;
 
-    const ad = await Ad.findById(adId);
-    if (!ad || ad.status !== 'active' || ad.isDeleted) {
-      return res.status(404).json({ message: 'Ad not available' });
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
     }
 
-    const adView = await AdView.findOne({ ad_id: adId, user_id: userId });
-    
-    if (!adView) {
-      return res.status(400).json({ message: 'View not recorded first' });
-    }
+    let rewardPaid = 0;
 
-    if (adView.rewarded) {
-      return res.status(400).json({ message: 'Already rewarded for this ad' });
-    }
+    await runMongoTransaction({
+      work: async (session) => {
+        const ad = await Ad.findById(adId).session(session);
+        if (!ad || ad.status !== 'active' || ad.isDeleted) {
+          const err = new Error('Ad not available');
+          err.statusCode = 404;
+          throw err;
+        }
 
-    // Check budget
-    if (ad.total_coins_spent + ad.coins_reward > ad.total_budget_coins) {
-      return res.status(400).json({ message: 'Ad budget exhausted' });
-    }
+        const adView = await AdView.findOne({ ad_id: adId, user_id: userId }).session(session);
+        if (!adView) {
+          const err = new Error('View not recorded first');
+          err.statusCode = 400;
+          throw err;
+        }
 
-    // Update AdView
-    adView.rewarded = true;
-    adView.completed_at = new Date();
-    await adView.save();
+        if (adView.rewarded) {
+          const err = new Error('Already rewarded for this ad');
+          err.statusCode = 400;
+          throw err;
+        }
 
-    // Update Ad stats
-    await Ad.findByIdAndUpdate(adId, {
-      $inc: { 
-        completed_views_count: 1,
-        total_coins_spent: ad.coins_reward 
+        const rewardAmount = Number(ad.coins_reward || 0);
+        const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+        if (rewardAmount > 0 && ad.user_id.toString() !== userId && remaining < rewardAmount) {
+          const err = new Error('Ad budget exhausted');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        adView.rewarded = true;
+        adView.completed_at = new Date();
+        await adView.save({ session });
+
+        ad.completed_views_count = Number(ad.completed_views_count || 0) + 1;
+
+        if (rewardAmount > 0 && ad.user_id.toString() !== userId) {
+          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+
+          await Wallet.findOneAndUpdate(
+            { user_id: userId },
+            { $inc: { balance: rewardAmount } },
+            { upsert: true, session }
+          );
+
+          await WalletTransaction.create([
+            {
+              user_id: userId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_VIEW_REWARD',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reward for completing ad view'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_VIEW_DEDUCTION',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Ad budget spent (view)'
+            }
+          ], { session });
+
+          rewardPaid = rewardAmount;
+        }
+
+        await ad.save({ session });
+      },
+      fallback: async () => {
+        const ad = await Ad.findById(adId);
+        if (!ad || ad.status !== 'active' || ad.isDeleted) {
+          const err = new Error('Ad not available');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        const adView = await AdView.findOne({ ad_id: adId, user_id: userId });
+        if (!adView) {
+          const err = new Error('View not recorded first');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        if (adView.rewarded) {
+          const err = new Error('Already rewarded for this ad');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const rewardAmount = Number(ad.coins_reward || 0);
+        const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+        if (rewardAmount > 0 && ad.user_id.toString() !== userId && remaining < rewardAmount) {
+          const err = new Error('Ad budget exhausted');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        adView.rewarded = true;
+        adView.completed_at = new Date();
+        await adView.save();
+
+        ad.completed_views_count = Number(ad.completed_views_count || 0) + 1;
+
+        if (rewardAmount > 0 && ad.user_id.toString() !== userId) {
+          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+          await Wallet.findOneAndUpdate(
+            { user_id: userId },
+            { $inc: { balance: rewardAmount } },
+            { upsert: true }
+          );
+
+          await WalletTransaction.create([
+            {
+              user_id: userId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_VIEW_REWARD',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reward for completing ad view'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_VIEW_DEDUCTION',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Ad budget spent (view)'
+            }
+          ]);
+
+          rewardPaid = rewardAmount;
+        }
+
+        await ad.save();
       }
     });
 
-    // Credit member and deduct ad owner
-    if (ad.coins_reward > 0) {
-      const rewardAmount = ad.coins_reward;
-
-      // 1. Credit member wallet
-      await Wallet.findOneAndUpdate(
-        { user_id: userId },
-        { $inc: { balance: rewardAmount } },
-        { upsert: true }
-      );
-
-      // 2. Deduct from ad owner (budget was pre-funded at createAd via AD_BUDGET_DEDUCTION)
-      await Wallet.findOneAndUpdate({ user_id: ad.user_id }, { $inc: { balance: -rewardAmount } });
-      // 3. Record deduction transaction
-      try {
-        await WalletTransaction.create({ user_id: ad.user_id, ad_id: adId, type: 'AD_VIEW_DEDUCTION', amount: rewardAmount, status: 'SUCCESS' });
-      } catch (txErr) {
-        if (txErr.code !== 11000) console.error('Ad view deduction transaction error:', txErr);
-      }
-
-      // 3. Record reward transaction for member
-      try {
-        await WalletTransaction.create({
-          user_id: userId,
-          ad_id: adId,
-          type: 'AD_VIEW_REWARD',
-          amount: rewardAmount,
-          status: 'SUCCESS'
-        });
-      } catch (txErr) {
-        console.error('Ad view reward transaction error:', txErr);
-      }
-
-      return res.json({
-        message: 'Ad completed and rewarded',
-        reward: rewardAmount,
-        member_balance_change: `+${rewardAmount}`,
-        owner_balance_change: `-${rewardAmount}`
-      });
-    }
-
-    res.json({ message: 'Ad completed (no reward configured)', reward: 0 });
+    res.json({
+      message: rewardPaid > 0 ? 'Ad completed and rewarded' : 'Ad completed (no reward configured)',
+      reward: rewardPaid
+    });
   } catch (error) {
+    const status = error.statusCode || 500;
+    if (status !== 500) {
+      return res.status(status).json({ message: error.message });
+    }
     console.error('Complete ad view error:', error);
     res.status(500).json({ message: 'Server error' });
   }
@@ -548,33 +690,152 @@ exports.completeAdView = async (req, res) => {
  */
 exports.likeAd = async (req, res) => {
   try {
-    const ad = await Ad.findById(req.params.id);
-    if (!ad) {
-      return res.status(404).json({ message: 'Ad not found' });
+    const adId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
     }
 
-    // Check if ad has already been liked
-    if (ad.likes.filter(like => like.toString() === req.userId).length > 0) {
-      // Unlike
-      const index = ad.likes.map(like => like.toString()).indexOf(req.userId);
-      ad.likes.splice(index, 1);
-      ad.likes_count = Math.max(0, ad.likes_count - 1);
-      await ad.save();
-      return res.json({ likes_count: ad.likes_count, is_liked: false });
+    const bodyUserId = req.body?.user?.id || req.body?.user_id || req.body?.userId;
+    const actingUserId = String(bodyUserId || req.userId);
+    if (bodyUserId && String(bodyUserId) !== String(req.userId) && req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Forbidden' });
     }
 
-    // Like
-    ad.likes.unshift(req.userId);
-    ad.likes_count += 1;
-    await ad.save();
+    const rewardAmount = REWARD_COINS;
+    let coinsEarned = 0;
+    let finalLikesCount = 0;
+
+    await runMongoTransaction({
+      work: async (session) => {
+        const ad = await Ad.findById(adId).session(session);
+        if (!ad || ad.isDeleted) {
+          const err = new Error('Ad not found');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        const alreadyLiked = ad.likes && ad.likes.some(like => like.toString() === actingUserId);
+        if (alreadyLiked) {
+          const err = new Error('Already liked');
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+        if (ad.user_id.toString() !== actingUserId && remaining < rewardAmount) {
+          const err = new Error('Ad budget exhausted');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        ad.likes.unshift(actingUserId);
+        ad.likes_count = Number(ad.likes_count || 0) + 1;
+
+        if (ad.user_id.toString() !== actingUserId) {
+          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+          coinsEarned = rewardAmount;
+
+          await Wallet.findOneAndUpdate(
+            { user_id: actingUserId },
+            { $inc: { balance: rewardAmount } },
+            { upsert: true, new: true, session }
+          );
+
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reward for liking ad'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_DEDUCTION',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Ad budget spent (like)'
+            }
+          ], { session });
+        }
+
+        await ad.save({ session });
+        finalLikesCount = ad.likes_count;
+      },
+      fallback: async () => {
+        const ad = await Ad.findById(adId);
+        if (!ad || ad.isDeleted) {
+          const err = new Error('Ad not found');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        const alreadyLiked = ad.likes && ad.likes.some(like => like.toString() === actingUserId);
+        if (alreadyLiked) {
+          const err = new Error('Already liked');
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+        if (ad.user_id.toString() !== actingUserId && remaining < rewardAmount) {
+          const err = new Error('Ad budget exhausted');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        ad.likes.unshift(actingUserId);
+        ad.likes_count = Number(ad.likes_count || 0) + 1;
+
+        if (ad.user_id.toString() !== actingUserId) {
+          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+          coinsEarned = rewardAmount;
+
+          await Wallet.findOneAndUpdate(
+            { user_id: actingUserId },
+            { $inc: { balance: rewardAmount } },
+            { upsert: true, new: true }
+          );
+
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reward for liking ad'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_DEDUCTION',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Ad budget spent (like)'
+            }
+          ]);
+        }
+
+        await ad.save();
+        finalLikesCount = ad.likes_count;
+      }
+    });
 
     try {
-      if (ad.user_id.toString() !== req.userId.toString()) {
-        const liker = await User.findById(req.userId).select('username').lean();
+      const ad = await Ad.findById(adId).select('user_id').lean();
+      if (ad && ad.user_id.toString() !== actingUserId) {
+        const liker = await User.findById(actingUserId).select('username').lean();
         if (liker) {
           await sendNotification(req.app, {
             recipient: ad.user_id,
-            sender: req.userId,
+            sender: actingUserId,
             type: 'ad_like',
             message: `${liker.username} liked your ad`,
             link: `/ads/${ad._id}`
@@ -585,29 +846,12 @@ exports.likeAd = async (req, res) => {
       console.error('Ad like notification error:', notifErr);
     }
 
-    let memberReward = 0;
-    if (ad.user_id.toString() !== req.userId.toString()) {
-      const rewardAmount = REWARD_COINS; // 10 coins for ad engagement
-      const remaining = ad.total_budget_coins - ad.total_coins_spent;
-      if (remaining >= rewardAmount) {
-        const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
-        if (ownerWallet && ownerWallet.balance >= rewardAmount) {
-          try {
-            await Wallet.findOneAndUpdate({ user_id: req.userId }, { $inc: { balance: rewardAmount } }, { upsert: true });
-            await Wallet.findOneAndUpdate({ user_id: ad.user_id }, { $inc: { balance: -rewardAmount } });
-            await Ad.findByIdAndUpdate(ad._id, { $inc: { total_coins_spent: rewardAmount } });
-            await WalletTransaction.create({ user_id: req.userId, ad_id: ad._id, type: 'AD_LIKE_REWARD', amount: rewardAmount, status: 'SUCCESS' });
-            await WalletTransaction.create({ user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_DEDUCTION', amount: rewardAmount, status: 'SUCCESS' });
-            memberReward = rewardAmount;
-          } catch (walletErr) {
-            if (walletErr.code !== 11000) console.error('Ad like wallet credit error:', walletErr);
-          }
-        }
-      }
-    }
-
-    res.json({ likes_count: ad.likes_count, is_liked: true, coins_earned: memberReward });
+    res.json({ likes_count: finalLikesCount, is_liked: true, coins_earned: coinsEarned });
   } catch (error) {
+    const status = error.statusCode || 500;
+    if (status !== 500) {
+      return res.status(status).json({ message: error.message });
+    }
     console.error('Like ad error:', error);
     res.status(500).json({ message: 'Server error' });
   }
@@ -620,34 +864,147 @@ exports.likeAd = async (req, res) => {
  */
 exports.dislikeAd = async (req, res) => {
   try {
-    const ad = await Ad.findById(req.params.id);
-    if (!ad) {
-      return res.status(404).json({ message: 'Ad not found' });
+    const adId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
     }
 
-    // Check if ad has already been disliked
-    if (ad.dislikes.filter(dislike => dislike.toString() === req.userId).length > 0) {
-      // Undislike
-      const index = ad.dislikes.map(dislike => dislike.toString()).indexOf(req.userId);
-      ad.dislikes.splice(index, 1);
-      ad.dislikes_count = Math.max(0, ad.dislikes_count - 1);
-      await ad.save();
-      return res.json({ dislikes_count: ad.dislikes_count, is_disliked: false });
+    const bodyUserId = req.body?.user?.id || req.body?.user_id || req.body?.userId;
+    const actingUserId = String(bodyUserId || req.userId);
+    if (bodyUserId && String(bodyUserId) !== String(req.userId) && req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Forbidden' });
     }
 
-    // Dislike
-    ad.dislikes.unshift(req.userId);
-    ad.dislikes_count += 1;
-    await ad.save();
+    const rewardAmount = REWARD_COINS;
+    let finalLikesCount = 0;
 
-    res.json({ dislikes_count: ad.dislikes_count, is_disliked: true });
+    await runMongoTransaction({
+      work: async (session) => {
+        const ad = await Ad.findById(adId).session(session);
+        if (!ad || ad.isDeleted) {
+          const err = new Error('Ad not found');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        const alreadyLiked = ad.likes && ad.likes.some(like => like.toString() === actingUserId);
+        if (!alreadyLiked) {
+          const err = new Error('You can only dislike ads you previously liked');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: actingUserId, balance: { $gte: rewardAmount } },
+          { $inc: { balance: -rewardAmount } },
+          { new: true, session }
+        );
+        if (!wallet) {
+          const err = new Error('Insufficient wallet balance to reverse like');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
+        ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
+        ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
+
+        await WalletTransaction.create([
+          {
+            user_id: actingUserId,
+            vendor_id: ad.vendor_id,
+            ad_id: ad._id,
+            type: 'AD_LIKE_REWARD_REVERSAL',
+            amount: -rewardAmount,
+            status: 'SUCCESS',
+            description: 'Reversal of like reward'
+          },
+          {
+            user_id: ad.user_id,
+            vendor_id: ad.vendor_id,
+            ad_id: ad._id,
+            type: 'AD_LIKE_BUDGET_REFUND',
+            amount: rewardAmount,
+            status: 'SUCCESS',
+            description: 'Refund to ad budget (like reversal)'
+          }
+        ], { session });
+
+        await ad.save({ session });
+        finalLikesCount = ad.likes_count;
+      },
+      fallback: async () => {
+        const ad = await Ad.findById(adId);
+        if (!ad || ad.isDeleted) {
+          const err = new Error('Ad not found');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        const alreadyLiked = ad.likes && ad.likes.some(like => like.toString() === actingUserId);
+        if (!alreadyLiked) {
+          const err = new Error('You can only dislike ads you previously liked');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: actingUserId, balance: { $gte: rewardAmount } },
+          { $inc: { balance: -rewardAmount } },
+          { new: true }
+        );
+        if (!wallet) {
+          const err = new Error('Insufficient wallet balance to reverse like');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        try {
+          ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
+          ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
+          ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
+
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD_REVERSAL',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reversal of like reward'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_BUDGET_REFUND',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Refund to ad budget (like reversal)'
+            }
+          ]);
+
+          await ad.save();
+          finalLikesCount = ad.likes_count;
+        } catch (e) {
+          await Wallet.findOneAndUpdate({ user_id: actingUserId }, { $inc: { balance: rewardAmount } });
+          throw e;
+        }
+      }
+    });
+
+    res.json({ likes_count: finalLikesCount, is_disliked: true, coins_deducted: rewardAmount });
   } catch (error) {
+    const status = error.statusCode || 500;
+    if (status !== 500) {
+      return res.status(status).json({ message: error.message });
+    }
     console.error('Dislike ad error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-const REWARD_COINS = 10;
 
 /**
  * Save an ad
@@ -682,21 +1039,98 @@ exports.saveAd = async (req, res) => {
     let coinsEarned = 0;
     if (created && ad.user_id.toString() !== userId.toString()) {
       const rewardAmount = REWARD_COINS;
-      const remaining = ad.total_budget_coins - ad.total_coins_spent;
+      const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
       if (remaining >= rewardAmount) {
-        const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
-        if (ownerWallet && ownerWallet.balance >= rewardAmount) {
-          try {
-            await Wallet.findOneAndUpdate({ user_id: userId }, { $inc: { balance: rewardAmount } }, { upsert: true });
-            await Wallet.findOneAndUpdate({ user_id: ad.user_id }, { $inc: { balance: -rewardAmount } });
-            await Ad.findByIdAndUpdate(adId, { $inc: { total_coins_spent: rewardAmount } });
-            await WalletTransaction.create({ user_id: userId, ad_id: adId, type: 'AD_SAVE_REWARD', amount: rewardAmount, status: 'SUCCESS' });
-            await WalletTransaction.create({ user_id: ad.user_id, ad_id: adId, type: 'AD_SAVE_DEDUCTION', amount: rewardAmount, status: 'SUCCESS' });
+        await runMongoTransaction({
+          work: async (session) => {
+            const adDoc = await Ad.findById(adId).session(session);
+            if (!adDoc || adDoc.isDeleted) {
+              const err = new Error('Ad not found');
+              err.statusCode = 404;
+              throw err;
+            }
+            const remainingNow = Number(adDoc.total_budget_coins || 0) - Number(adDoc.total_coins_spent || 0);
+            if (remainingNow < rewardAmount) {
+              return;
+            }
+
+            await Wallet.findOneAndUpdate(
+              { user_id: userId },
+              { $inc: { balance: rewardAmount } },
+              { upsert: true, session }
+            );
+
+            adDoc.total_coins_spent = Number(adDoc.total_coins_spent || 0) + rewardAmount;
+            await adDoc.save({ session });
+
+            await WalletTransaction.create([
+              {
+                user_id: userId,
+                vendor_id: adDoc.vendor_id,
+                ad_id: adDoc._id,
+                type: 'AD_SAVE_REWARD',
+                amount: rewardAmount,
+                status: 'SUCCESS',
+                description: 'Reward for saving ad'
+              },
+              {
+                user_id: adDoc.user_id,
+                vendor_id: adDoc.vendor_id,
+                ad_id: adDoc._id,
+                type: 'AD_SAVE_DEDUCTION',
+                amount: -rewardAmount,
+                status: 'SUCCESS',
+                description: 'Ad budget spent (save)'
+              }
+            ], { session });
+
             coinsEarned = rewardAmount;
-          } catch (walletErr) {
-            if (walletErr.code !== 11000) console.error('Ad save wallet credit error:', walletErr);
+          },
+          fallback: async () => {
+            const adDoc = await Ad.findById(adId);
+            if (!adDoc || adDoc.isDeleted) {
+              const err = new Error('Ad not found');
+              err.statusCode = 404;
+              throw err;
+            }
+            const remainingNow = Number(adDoc.total_budget_coins || 0) - Number(adDoc.total_coins_spent || 0);
+            if (remainingNow < rewardAmount) {
+              return;
+            }
+
+            await Wallet.findOneAndUpdate(
+              { user_id: userId },
+              { $inc: { balance: rewardAmount } },
+              { upsert: true }
+            );
+
+            adDoc.total_coins_spent = Number(adDoc.total_coins_spent || 0) + rewardAmount;
+            await adDoc.save();
+
+            await WalletTransaction.create([
+              {
+                user_id: userId,
+                vendor_id: adDoc.vendor_id,
+                ad_id: adDoc._id,
+                type: 'AD_SAVE_REWARD',
+                amount: rewardAmount,
+                status: 'SUCCESS',
+                description: 'Reward for saving ad'
+              },
+              {
+                user_id: adDoc.user_id,
+                vendor_id: adDoc.vendor_id,
+                ad_id: adDoc._id,
+                type: 'AD_SAVE_DEDUCTION',
+                amount: -rewardAmount,
+                status: 'SUCCESS',
+                description: 'Ad budget spent (save)'
+              }
+            ]);
+
+            coinsEarned = rewardAmount;
           }
-        }
+        });
       }
 
       try {

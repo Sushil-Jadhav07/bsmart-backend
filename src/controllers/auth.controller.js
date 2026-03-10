@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
+const WalletTransaction = require('../models/WalletTransaction');
 const Member = require('../models/Member');
 const Vendor = require('../models/Vendor');
 const sendNotification = require('../utils/sendNotification');
@@ -46,6 +47,19 @@ const normalizeCompanyDetails = (raw = {}) => {
   };
 };
 
+const normalizeAddress = (raw = {}) => {
+  const obj = raw && typeof raw === 'object' ? raw : {};
+  const toStr = (v) => (v === undefined || v === null) ? '' : String(v);
+  return {
+    address_line1: toStr(obj.address_line1 ?? obj.addressLine1 ?? obj.address_line_1 ?? obj.addressLine_1),
+    address_line2: toStr(obj.address_line2 ?? obj.addressLine2 ?? obj.address_line_2 ?? obj.addressLine_2),
+    pincode: toStr(obj.pincode ?? obj.pin_code ?? obj.pinCode ?? obj.zip ?? obj.zipcode),
+    city: toStr(obj.city),
+    state: toStr(obj.state),
+    country: toStr(obj.country),
+  };
+};
+
 exports.register = async (req, res) => {
   try {
     const {
@@ -56,6 +70,7 @@ exports.register = async (req, res) => {
       phone,
       gender,
       location,
+      address,
       role,
       company_details,
       credits
@@ -89,6 +104,13 @@ exports.register = async (req, res) => {
       }
     }
 
+    const normalizedGender = (gender === undefined || gender === null) ? '' : String(gender).toLowerCase().trim();
+    if (userRole === 'member' && normalizedGender && !['male', 'female'].includes(normalizedGender)) {
+      return res.status(400).json({ message: 'Invalid gender. Allowed: male, female' });
+    }
+
+    const memberAddress = userRole === 'member' ? normalizeAddress(address) : undefined;
+
     const user = await User.create({
       email,
       password: hashedPassword,
@@ -96,8 +118,9 @@ exports.register = async (req, res) => {
       full_name,
       phone,
       role: userRole,
-      gender: gender || '',
-      location: location || ''
+      gender: userRole === 'member' ? normalizedGender : '',
+      location: location || '',
+      ...(memberAddress ? { address: memberAddress } : {})
     });
 
     const initialCredits =
@@ -107,6 +130,16 @@ exports.register = async (req, res) => {
       user_id: user._id,
       balance: walletBalance
     });
+
+    if (userRole === 'vendor' && initialCredits > 0) {
+      await WalletTransaction.create({
+        user_id: user._id,
+        type: 'VENDOR_REGISTRATION_CREDIT',
+        amount: initialCredits,
+        status: 'SUCCESS',
+        description: 'Initial credits added on vendor registration'
+      });
+    }
 
     if (userRole === 'member') {
       await Member.create({ user_id: user._id });
@@ -158,6 +191,7 @@ exports.register = async (req, res) => {
         phone: user.phone,
         gender: user.gender,
         location: user.location,
+        ...(userRole === 'member' ? { address: user.address } : {}),
         role: user.role,
         followers_count: user.followers_count,
         following_count: user.following_count,

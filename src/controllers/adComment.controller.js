@@ -1,25 +1,115 @@
+const mongoose = require('mongoose');
 const AdComment = require('../models/AdComment');
 const Ad = require('../models/Ad');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const sendNotification = require('../utils/sendNotification');
+const runMongoTransaction = require('../utils/runMongoTransaction');
 
 async function rewardAdEngagement({ userId, adOwnerId, adId, rewardAmount, userTxType, ownerTxType }) {
   if (!rewardAmount || rewardAmount <= 0) return 0;
-  const ad = await Ad.findById(adId).select('total_budget_coins total_coins_spent').lean();
-  if (!ad) return 0;
-  const remaining = ad.total_budget_coins - ad.total_coins_spent;
-  if (remaining < rewardAmount) return 0;
-  const ownerWallet = await Wallet.findOne({ user_id: adOwnerId });
-  if (!ownerWallet || ownerWallet.balance < rewardAmount) return 0;
   try {
-    await Wallet.findOneAndUpdate({ user_id: adOwnerId }, { $inc: { balance: -rewardAmount } });
-    await Wallet.findOneAndUpdate({ user_id: userId }, { $inc: { balance: rewardAmount } }, { upsert: true });
-    await Ad.findByIdAndUpdate(adId, { $inc: { total_coins_spent: rewardAmount } });
-    await WalletTransaction.create({ user_id: adOwnerId, ad_id: adId, type: ownerTxType, amount: rewardAmount, status: 'SUCCESS' });
-    await WalletTransaction.create({ user_id: userId, ad_id: adId, type: userTxType, amount: rewardAmount, status: 'SUCCESS' });
-    return rewardAmount;
+    let rewarded = 0;
+
+    await runMongoTransaction({
+      work: async (session) => {
+        const ad = await Ad.findById(adId).select('total_budget_coins total_coins_spent vendor_id user_id isDeleted').session(session);
+        if (!ad || ad.isDeleted) {
+          return;
+        }
+
+        if (String(ad.user_id) !== String(adOwnerId)) {
+          return;
+        }
+
+        const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+        if (remaining < rewardAmount) {
+          return;
+        }
+
+        await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: rewardAmount } },
+          { upsert: true, session }
+        );
+
+        ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+        await ad.save({ session });
+
+        await WalletTransaction.create([
+          {
+            user_id: userId,
+            vendor_id: ad.vendor_id,
+            ad_id: adId,
+            type: userTxType,
+            amount: rewardAmount,
+            status: 'SUCCESS',
+            description: 'Reward for ad engagement'
+          },
+          {
+            user_id: adOwnerId,
+            vendor_id: ad.vendor_id,
+            ad_id: adId,
+            type: ownerTxType,
+            amount: -rewardAmount,
+            status: 'SUCCESS',
+            description: 'Ad budget spent (engagement)'
+          }
+        ], { session });
+
+        rewarded = rewardAmount;
+      },
+      fallback: async () => {
+        const ad = await Ad.findById(adId).select('total_budget_coins total_coins_spent vendor_id user_id isDeleted');
+        if (!ad || ad.isDeleted) {
+          return;
+        }
+
+        if (String(ad.user_id) !== String(adOwnerId)) {
+          return;
+        }
+
+        const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+        if (remaining < rewardAmount) {
+          return;
+        }
+
+        await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: rewardAmount } },
+          { upsert: true }
+        );
+
+        ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+        await ad.save();
+
+        await WalletTransaction.create([
+          {
+            user_id: userId,
+            vendor_id: ad.vendor_id,
+            ad_id: adId,
+            type: userTxType,
+            amount: rewardAmount,
+            status: 'SUCCESS',
+            description: 'Reward for ad engagement'
+          },
+          {
+            user_id: adOwnerId,
+            vendor_id: ad.vendor_id,
+            ad_id: adId,
+            type: ownerTxType,
+            amount: -rewardAmount,
+            status: 'SUCCESS',
+            description: 'Ad budget spent (engagement)'
+          }
+        ]);
+
+        rewarded = rewardAmount;
+      }
+    });
+
+    return rewarded;
   } catch (err) {
     if (err.code === 11000) return 0;
     console.error(`rewardAdEngagement error [${userTxType}]:`, err);

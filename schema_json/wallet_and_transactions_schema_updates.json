@@ -1,0 +1,37 @@
+{
+  "WalletTransaction": {
+    "added_fields": {
+      "vendor_id": "ObjectId (ref Vendor) - helps query ad spend/refund transactions for a vendor",
+      "description": "string - human readable reason shown in UI"
+    },
+    "amount_convention": {
+      "credit": "amount > 0",
+      "debit": "amount < 0",
+      "backward_compatibility": "older deduction records may have positive amount; APIs normalize debit types to negative for UI"
+    },
+    "new_types": [
+      "VENDOR_REGISTRATION_CREDIT",
+      "ADMIN_ADJUSTMENT",
+      "AD_LIKE_REWARD_REVERSAL",
+      "AD_LIKE_BUDGET_REFUND"
+    ]
+  },
+  "Ad": {
+    "budget_fields": {
+      "total_budget_coins": "total budget reserved from vendor wallet at ad creation",
+      "total_coins_spent": "coins spent from ad budget due to user engagements (like/view/save/comment/reply)"
+    }
+  },
+  "Wallet": {
+    "meaning": "Unallocated coins for a user. For vendors, ad creation reserves budget by deducting from wallet. Ad engagement spend updates Ad.total_coins_spent."
+  },
+  "Migration": {
+    "script": "scripts/migrations/20260311_wallet_transactions_update.js",
+    "does": [
+      "Backfill WalletTransaction.description as empty string when missing",
+      "Normalize deduction-type WalletTransaction.amount to negative if stored as positive",
+      "Backfill WalletTransaction.vendor_id using Ad.vendor_id when ad_id is present"
+    ]
+  }
+}
+

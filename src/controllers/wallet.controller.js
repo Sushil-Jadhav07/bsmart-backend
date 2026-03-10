@@ -1,7 +1,18 @@
+const mongoose = require('mongoose');
+const Ad = require('../models/Ad');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
+
+const DEBIT_TYPES = new Set([
+  'AD_VIEW_DEDUCTION',
+  'AD_LIKE_DEDUCTION',
+  'AD_COMMENT_DEDUCTION',
+  'AD_REPLY_DEDUCTION',
+  'AD_SAVE_DEDUCTION',
+  'AD_BUDGET_DEDUCTION'
+]);
 
 /**
  * Get my wallet balance and recent transactions
@@ -108,6 +119,268 @@ exports.getAllWallets = async (req, res) => {
     });
   } catch (error) {
     console.error('Get all wallets error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+const getWalletHistoryForUser = async ({ userId, limit = 50 }) => {
+  let wallet = await Wallet.findOne({ user_id: userId });
+  if (!wallet) {
+    wallet = await Wallet.findOneAndUpdate(
+      { user_id: userId },
+      { $setOnInsert: { balance: 0, currency: 'Coins' } },
+      { new: true, upsert: true }
+    );
+  }
+
+  const transactions = await WalletTransaction.find({ user_id: userId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .populate('ad_id', 'title thumbnail_url')
+    .populate('post_id', '_id type')
+    .lean();
+
+  const enrichedTransactions = transactions.map((t) => {
+    const rawAmount = Number(t.amount || 0);
+    const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
+    const direction = amount >= 0 ? 'credit' : 'debit';
+    const createdAt = t.createdAt || t.transactionDate;
+
+    const titles = {
+      VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
+      ADMIN_ADJUSTMENT: 'Admin Adjustment',
+      REEL_VIEW_REWARD: 'Reel View Reward',
+      AD_REWARD: 'Ad Reward',
+      AD_VIEW_REWARD: 'Ad View Reward',
+      AD_VIEW_DEDUCTION: 'Ad View Deduction',
+      AD_LIKE_REWARD: 'Ad Like Reward',
+      AD_LIKE_DEDUCTION: 'Ad Like Deduction',
+      AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
+      AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
+      AD_COMMENT_REWARD: 'Ad Comment Reward',
+      AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
+      AD_REPLY_REWARD: 'Ad Reply Reward',
+      AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
+      AD_SAVE_REWARD: 'Ad Save Reward',
+      AD_SAVE_DEDUCTION: 'Ad Save Deduction',
+      AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
+      LIKE: 'Like',
+      COMMENT: 'Comment',
+      REPLY: 'Reply',
+      SAVE: 'Save'
+    };
+
+    const title = titles[t.type] || t.type;
+    const refTitle = t.ad_id?.title ? String(t.ad_id.title) : '';
+    const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
+
+    return {
+      ...t,
+      amount,
+      ui: {
+        title,
+        description,
+        direction,
+        amount,
+        created_at: createdAt
+      }
+    };
+  });
+
+  if (enrichedTransactions.length === 0 && Number(wallet.balance || 0) > 0) {
+    const amount = Number(wallet.balance || 0);
+    const createdAt = wallet.createdAt || new Date();
+    const title = 'Registration Credit';
+    const description = 'Initial credits added on vendor registration';
+    return {
+      wallet,
+      transactions: [
+        {
+          _id: null,
+          user_id: userId,
+          type: 'VENDOR_REGISTRATION_CREDIT',
+          amount,
+          status: 'SUCCESS',
+          description,
+          transactionDate: createdAt,
+          createdAt,
+          updatedAt: createdAt,
+          synthetic: true,
+          ui: {
+            title,
+            description,
+            direction: 'credit',
+            amount,
+            created_at: createdAt
+          }
+        }
+      ]
+    };
+  }
+
+  return { wallet, transactions: enrichedTransactions };
+};
+
+const canAccessUserWallet = (requester, targetUserId) => {
+  if (!requester) return false;
+  if (requester.role === 'admin') return true;
+  return requester._id && requester._id.toString() === String(targetUserId);
+};
+
+exports.getMemberWalletHistoryByUserId = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+    if (!canAccessUserWallet(req.user, userId)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const user = await User.findById(userId).select('role');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (user.role !== 'member') {
+      return res.status(400).json({ message: 'User is not a member' });
+    }
+
+    const { wallet, transactions } = await getWalletHistoryForUser({ userId });
+    res.json({ user_id: userId, wallet: { balance: wallet.balance, currency: wallet.currency }, transactions });
+  } catch (error) {
+    console.error('Get member wallet history error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.getVendorWalletHistoryByUserId = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+    if (!canAccessUserWallet(req.user, userId)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const user = await User.findById(userId).select('role');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (user.role !== 'vendor') {
+      return res.status(400).json({ message: 'User is not a vendor' });
+    }
+
+    const { wallet, transactions } = await getWalletHistoryForUser({ userId });
+    res.json({ user_id: userId, wallet: { balance: wallet.balance, currency: wallet.currency }, transactions });
+  } catch (error) {
+    console.error('Get vendor wallet history error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.getAdWalletHistory = async (req, res) => {
+  try {
+    const adId = req.params.adId;
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid adId' });
+    }
+
+    const requester = req.user;
+    const ad = await Ad.findById(adId).select('user_id').lean();
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    const isAdmin = requester?.role === 'admin';
+    const isVendorOwner = requester?.role === 'vendor' && requester?._id?.toString() === ad.user_id.toString();
+    if (!isAdmin && !isVendorOwner) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const { startDate, endDate, type, userId } = req.query || {};
+    const match = { ad_id: adId };
+
+    if (type) {
+      const types = String(type).split(',').map(s => s.trim()).filter(Boolean);
+      if (types.length) match.type = { $in: types };
+    }
+
+    if (userId) {
+      if (!mongoose.Types.ObjectId.isValid(String(userId))) {
+        return res.status(400).json({ message: 'Invalid userId' });
+      }
+      match.user_id = String(userId);
+    }
+
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) {
+        const d = new Date(String(startDate));
+        if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid startDate' });
+        match.createdAt.$gte = d;
+      }
+      if (endDate) {
+        const d = new Date(String(endDate));
+        if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid endDate' });
+        match.createdAt.$lte = d;
+      }
+    }
+
+    const transactions = await WalletTransaction.find(match)
+      .sort({ createdAt: -1 })
+      .populate('user_id', 'username full_name avatar_url role')
+      .populate('ad_id', 'caption')
+      .lean();
+
+    const titles = {
+      VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
+      ADMIN_ADJUSTMENT: 'Admin Adjustment',
+      REEL_VIEW_REWARD: 'Reel View Reward',
+      AD_REWARD: 'Ad Reward',
+      AD_VIEW_REWARD: 'Ad View Reward',
+      AD_VIEW_DEDUCTION: 'Ad View Deduction',
+      AD_LIKE_REWARD: 'Ad Like Reward',
+      AD_LIKE_DEDUCTION: 'Ad Like Deduction',
+      AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
+      AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
+      AD_COMMENT_REWARD: 'Ad Comment Reward',
+      AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
+      AD_REPLY_REWARD: 'Ad Reply Reward',
+      AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
+      AD_SAVE_REWARD: 'Ad Save Reward',
+      AD_SAVE_DEDUCTION: 'Ad Save Deduction',
+      AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
+      LIKE: 'Like',
+      COMMENT: 'Comment',
+      REPLY: 'Reply',
+      SAVE: 'Save'
+    };
+
+    const enriched = transactions.map((t) => {
+      const rawAmount = Number(t.amount || 0);
+      const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
+      const direction = amount >= 0 ? 'credit' : 'debit';
+      const createdAt = t.createdAt || t.transactionDate;
+      const title = titles[t.type] || t.type;
+      const refTitle = t.ad_id?.caption ? String(t.ad_id.caption) : '';
+      const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
+      return {
+        ...t,
+        amount,
+        ui: {
+          title,
+          description,
+          direction,
+          amount,
+          created_at: createdAt
+        }
+      };
+    });
+
+    res.json({ ad_id: adId, total: enriched.length, transactions: enriched });
+  } catch (error) {
+    console.error('Get ad wallet history error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

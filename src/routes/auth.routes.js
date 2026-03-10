@@ -45,12 +45,35 @@ const jwt = require('jsonwebtoken');
  *                 type: string
  *               gender:
  *                 type: string
- *                 description: User gender (male, female, other) - optional for all roles
+ *                 enum: [male, female]
+ *                 description: User gender (only for role=member)
  *                 example: "male"
  *               location:
  *                 type: string
  *                 description: User location city or country - optional for all roles
  *                 example: "Mumbai, India"
+ *               address:
+ *                 type: object
+ *                 description: Location address (only for role=member)
+ *                 properties:
+ *                   address_line1:
+ *                     type: string
+ *                     example: "Address line 1"
+ *                   address_line2:
+ *                     type: string
+ *                     example: "Address line 2"
+ *                   pincode:
+ *                     type: string
+ *                     example: "560001"
+ *                   city:
+ *                     type: string
+ *                     example: "Bengaluru"
+ *                   state:
+ *                     type: string
+ *                     example: "Karnataka"
+ *                   country:
+ *                     type: string
+ *                     example: "India"
  *               role:
  *                 type: string
  *                 enum: [member, vendor, admin]

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
+const rateLimit = require('../middleware/rateLimit');
 const {
   createAd,
   listAds,
@@ -290,6 +291,7 @@ router.get('/', auth, requireAdmin, listAds);
  *                   type: string
  *               total_budget_coins:
  *                 type: number
+ *                 description: Total ad budget. This amount is deducted from vendor wallet atomically at ad creation and recorded as a transaction.
  *     responses:
  *       201:
  *         description: Ad created successfully
@@ -505,7 +507,7 @@ router.post('/:id/complete', auth, completeAdView);
  * @swagger
  * /api/ads/{id}/like:
  *   post:
- *     summary: Like or unlike an ad
+ *     summary: Like an ad (credits user wallet and spends ad budget)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -515,9 +517,22 @@ router.post('/:id/complete', auth, completeAdView);
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               user:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                 description: Optional; if provided must match authenticated user (or admin)
  *     responses:
  *       200:
- *         description: Like toggled successfully
+ *         description: Like applied successfully
  *         content:
  *           application/json:
  *             schema:
@@ -531,16 +546,31 @@ router.post('/:id/complete', auth, completeAdView);
  *                   example: true
  *                 coins_earned:
  *                   type: number
- *                   description: Coins credited to member (0 if unlike or owner has no budget)
+ *                   description: Coins credited to user wallet (0 if liking own ad)
  *                   example: 10
+ *       400:
+ *         description: Invalid ad ID or ad budget exhausted
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Ad not found
+ *       409:
+ *         description: Already liked
+ *       429:
+ *         description: Too many requests
  */
-router.post('/:id/like', auth, likeAd);
+router.post(
+  '/:id/like',
+  auth,
+  rateLimit({ windowMs: 60000, max: 20, keyGenerator: (req) => `${req.userId}:${req.params.id}:like` }),
+  likeAd
+);
 
 /**
  * @swagger
  * /api/ads/{id}/dislike:
  *   post:
- *     summary: Dislike or undislike an ad
+ *     summary: Reverse a previous like (deducts 10 coins from user and refunds ad budget)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -550,11 +580,48 @@ router.post('/:id/like', auth, likeAd);
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               user:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                 description: Optional; if provided must match authenticated user (or admin)
  *     responses:
  *       200:
- *         description: Dislike toggled
+ *         description: Like reversed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 likes_count:
+ *                   type: number
+ *                 is_disliked:
+ *                   type: boolean
+ *                 coins_deducted:
+ *                   type: number
+ *       400:
+ *         description: Invalid ad ID, not previously liked, or insufficient wallet balance
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Ad not found
+ *       429:
+ *         description: Too many requests
  */
-router.post('/:id/dislike', auth, dislikeAd);
+router.post(
+  '/:id/dislike',
+  auth,
+  rateLimit({ windowMs: 60000, max: 20, keyGenerator: (req) => `${req.userId}:${req.params.id}:dislike` }),
+  dislikeAd
+);
 
 /**
  * @swagger

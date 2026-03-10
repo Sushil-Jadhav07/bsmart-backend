@@ -76,6 +76,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  address: {
+    address_line1: { type: String, default: '' },
+    address_line2: { type: String, default: '' },
+    pincode: { type: String, default: '' },
+    city: { type: String, default: '' },
+    state: { type: String, default: '' },
+    country: { type: String, default: '' }
+  },
   // For vendor users: store company details snapshot on the user
   company_details: {
     company_name: { type: String, default: '' },

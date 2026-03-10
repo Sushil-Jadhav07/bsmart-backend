@@ -7,6 +7,11 @@ const walletTransactionSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  vendor_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Vendor',
+    index: true
+  },
   post_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Post',
@@ -26,11 +31,15 @@ const walletTransactionSchema = new mongoose.Schema({
     enum: [
       'REEL_VIEW_REWARD',
       'LIKE', 'COMMENT', 'REPLY', 'SAVE',
+      'VENDOR_REGISTRATION_CREDIT',
+      'ADMIN_ADJUSTMENT',
       'AD_REWARD',
       'AD_VIEW_REWARD',
       'AD_VIEW_DEDUCTION',
       'AD_LIKE_REWARD',
       'AD_LIKE_DEDUCTION',
+      'AD_LIKE_REWARD_REVERSAL',
+      'AD_LIKE_BUDGET_REFUND',
       'AD_COMMENT_REWARD',
       'AD_REPLY_REWARD',
       'AD_COMMENT_DEDUCTION',
@@ -44,6 +53,10 @@ const walletTransactionSchema = new mongoose.Schema({
   amount: {
     type: Number,
     default: 10
+  },
+  description: {
+    type: String,
+    default: ''
   },
   status: {
     type: String,
