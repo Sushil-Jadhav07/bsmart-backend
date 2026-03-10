@@ -96,7 +96,8 @@ exports.register = async (req, res) => {
       full_name,
       phone,
       role: userRole,
-      ...(userRole === 'member' ? { gender, location } : {})
+      gender: gender || '',
+      location: location || ''
     });
 
     const initialCredits =

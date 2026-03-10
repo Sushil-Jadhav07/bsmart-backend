@@ -45,10 +45,12 @@ const jwt = require('jsonwebtoken');
  *                 type: string
  *               gender:
  *                 type: string
- *                 description: Member gender (only when role is member)
+ *                 description: User gender (male, female, other) - optional for all roles
+ *                 example: "male"
  *               location:
  *                 type: string
- *                 description: Member location (only when role is member)
+ *                 description: User location city or country - optional for all roles
+ *                 example: "Mumbai, India"
  *               role:
  *                 type: string
  *                 enum: [member, vendor, admin]
@@ -89,6 +91,7 @@ const jwt = require('jsonwebtoken');
  *                   $ref: '#/components/schemas/User'
  *             examples:
  *               member:
+ *                 summary: Member registration response
  *                 value:
  *                   token: "jwt_token_here"
  *                   user:
@@ -106,6 +109,25 @@ const jwt = require('jsonwebtoken');
  *                     wallet:
  *                       balance: 0
  *                       currency: "Coins"
+ *               vendor:
+ *                 summary: Vendor registration response
+ *                 value:
+ *                   token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *                   user:
+ *                     id: "60f1b2c3d4e5f67890123457"
+ *                     email: "vendor@example.com"
+ *                     username: "vendor_shop"
+ *                     full_name: "Vendor Name"
+ *                     phone: "+919876543211"
+ *                     gender: "female"
+ *                     location: "Delhi, India"
+ *                     role: "vendor"
+ *                     company_details:
+ *                       company_name: "My Shop"
+ *                     credits: 100
+ *                     vendor_validated: false
+ *                     followers_count: 0
+ *                     following_count: 0
  *       400:
  *         description: User already exists or invalid role
  *       500:

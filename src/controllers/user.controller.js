@@ -46,8 +46,8 @@ exports.getAllUsers = async (req, res) => {
       }
 
       const userObj = user.toObject();
-      userObj.gender = userObj.gender ?? '';
-      userObj.location = userObj.location ?? '';
+      userObj.gender = (userObj.gender !== undefined && userObj.gender !== null) ? String(userObj.gender) : '';
+      userObj.location = (userObj.location !== undefined && userObj.location !== null) ? String(userObj.location) : '';
       result.push({
         ...userObj,
         posts: enrichedPosts
@@ -78,8 +78,12 @@ exports.getUserById = async (req, res) => {
     const vendor = await Vendor.findOne({ user_id: userId }).select('validated _id').lean();
     const validated = vendor ? !!vendor.validated : false;
     const obj = user.toObject ? user.toObject() : user;
-    obj.gender = obj.gender ?? '';
-    obj.location = obj.location ?? '';
+
+    // Force gender and location to always be present as strings for ALL roles
+    // Old MongoDB records created before these schema fields existed return undefined
+    obj.gender = (obj.gender !== undefined && obj.gender !== null) ? String(obj.gender) : '';
+    obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+
     obj.validated = validated;
     if (vendor) {
       obj.vendor_id = vendor._id;
@@ -131,8 +135,9 @@ exports.listUsersProfiles = async (req, res) => {
     const vmap = new Map(vendors.map(v => [v.user_id.toString(), v]));
     const results = [];
     for (const u of users) {
-      u.gender = u.gender ?? '';
-      u.location = u.location ?? '';
+      // Force gender and location to always be strings for ALL roles
+      u.gender = (u.gender !== undefined && u.gender !== null) ? String(u.gender) : '';
+      u.location = (u.location !== undefined && u.location !== null) ? String(u.location) : '';
       const vendor = vmap.get(u._id.toString());
       u.validated = vendor ? !!vendor.validated : false;
       if (vendor) {
