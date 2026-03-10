@@ -67,8 +67,8 @@ exports.followByParam = async (req, res) => {
     const you = await User.findById(userId);
     return res.json({
       success: true,
-      follower: { _id: me._id, username: me.username, email: me.email, role: me.role },
-      following: { _id: you._id, username: you.username, email: you.email, role: you.role },
+      follower: { _id: me._id, username: me.username, email: me.email, role: me.role, gender: me.gender, location: me.location },
+      following: { _id: you._id, username: you.username, email: you.email, role: you.role, gender: you.gender, location: you.location },
       followingCount: me.following_count || 0,
       followersCount: you.followers_count || 0
     });
@@ -103,7 +103,7 @@ exports.getFollowers = async (req, res) => {
   try {
     const userId = req.params.id;
     const users = await Follow.find({ followed_id: userId })
-      .populate('follower_id', 'username full_name avatar_url followers_count following_count')
+      .populate('follower_id', 'username full_name avatar_url followers_count following_count gender location')
       .lean();
     const result = users.map(u => u.follower_id);
     return res.json({ total: result.length, users: result });
@@ -117,7 +117,7 @@ exports.getFollowing = async (req, res) => {
   try {
     const userId = req.params.id;
     const users = await Follow.find({ follower_id: userId })
-      .populate('followed_id', 'username full_name avatar_url followers_count following_count')
+      .populate('followed_id', 'username full_name avatar_url followers_count following_count gender location')
       .lean();
     const result = users.map(u => u.followed_id);
     return res.json({ total: result.length, users: result });
@@ -130,8 +130,8 @@ exports.getFollowing = async (req, res) => {
 exports.getAllFollowers = async (req, res) => {
   try {
     const rels = await Follow.find({})
-      .populate('follower_id', 'username full_name avatar_url followers_count following_count')
-      .populate('followed_id', 'username full_name avatar_url followers_count following_count')
+      .populate('follower_id', 'username full_name avatar_url followers_count following_count gender location')
+      .populate('followed_id', 'username full_name avatar_url followers_count following_count gender location')
       .lean();
     const result = rels.map(r => ({ follower: r.follower_id, followed: r.followed_id }));
     return res.json({ total: result.length, relations: result });
@@ -144,8 +144,8 @@ exports.getAllFollowers = async (req, res) => {
 exports.getAllFollowing = async (req, res) => {
   try {
     const rels = await Follow.find({})
-      .populate('follower_id', 'username full_name avatar_url followers_count following_count')
-      .populate('followed_id', 'username full_name avatar_url followers_count following_count')
+      .populate('follower_id', 'username full_name avatar_url followers_count following_count gender location')
+      .populate('followed_id', 'username full_name avatar_url followers_count following_count gender location')
       .lean();
     const result = rels.map(r => ({ follower: r.follower_id, followed: r.followed_id }));
     return res.json({ total: result.length, relations: result });

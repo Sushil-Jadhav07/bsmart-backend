@@ -51,7 +51,7 @@ exports.getAllWallets = async (req, res) => {
   try {
     // Fetch ALL transactions without pagination or filters
     const transactions = await WalletTransaction.find({})
-      .populate('user_id', 'username full_name avatar_url')
+      .populate('user_id', 'username full_name avatar_url gender location')
       .populate('ad_id', 'title')
       .populate('post_id', 'type')
       .sort({ createdAt: -1 });

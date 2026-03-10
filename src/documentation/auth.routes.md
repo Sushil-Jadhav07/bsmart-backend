@@ -36,12 +36,15 @@ This is the API documentation for the authentication and user management system.
   "username": "string",
   "full_name": "string",
   "phone": "string",
+  "gender": "string",
+  "location": "string",
   "role": "member|vendor|admin",
   "company_details": {
     "company_name": "string"
   }
 }
 ```
+Note: `company_details` is required only when `role` is `vendor`. For `member`/`admin`, you can omit it.
 
 ##### Responses
 

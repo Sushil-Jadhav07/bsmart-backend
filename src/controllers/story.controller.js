@@ -100,7 +100,7 @@ exports.getStoriesFeed = async (req, res) => {
     const now = nowUtc();
     const stories = await Story.find({ expiresAt: { $gt: now }, isArchived: false, items_count: { $gt: 0 } })
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username avatar_url followers_count following_count');
+      .populate('user_id', 'username avatar_url followers_count following_count gender location');
 
     const results = [];
     for (const s of stories) {

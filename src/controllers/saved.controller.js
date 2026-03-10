@@ -125,7 +125,7 @@ exports.getSavedPostsByUser = async (req, res) => {
     }
     const saved = await SavedPost.find({ user_id: userId }).lean();
     const ids = saved.map(s => s.post_id);
-    const posts = await Post.find({ _id: { $in: ids } }).sort({ createdAt: -1 }).populate('user_id', 'username full_name avatar_url followers_count following_count');
+    const posts = await Post.find({ _id: { $in: ids } }).sort({ createdAt: -1 }).populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const transformed = posts.map(p => transformPost(p, baseUrl));
     return res.json(transformed);
@@ -142,7 +142,7 @@ exports.listMySavedPosts = async (req, res) => {
     const ids = items.map(s => s.post_id);
     const posts = await Post.find({ _id: { $in: ids } })
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url');
+      .populate('user_id', 'username full_name avatar_url gender location');
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const data = posts.map(p => transformPost(p, baseUrl));
     return res.json({ success: true, posts: data });

@@ -198,7 +198,7 @@ exports.listAds = async (req, res) => {
     const filter = { isDeleted: false };
     const ads = await Ad.find(filter)
       .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url')
+      .populate('user_id', 'username full_name avatar_url gender location')
       .sort({ createdAt: -1 });
 
     const total = ads.length;
@@ -233,7 +233,7 @@ exports.getAdsFeed = async (req, res) => {
 
     const ads = await Ad.find(filter)
       .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url')
+      .populate('user_id', 'username full_name avatar_url gender location')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -289,14 +289,14 @@ exports.getUserAdsWithComments = async (req, res) => {
     // Only exclude deleted ads
     const ads = await Ad.find(filter)
       .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url')
+      .populate('user_id', 'username full_name avatar_url gender location')
       .sort({ createdAt: -1 })
       .lean();
 
     // Fetch comments for each ad
     const adsWithComments = await Promise.all(ads.map(async (ad) => {
       const comments = await AdComment.find({ ad_id: ad._id, isDeleted: false })
-        .populate('user_id', 'username full_name avatar_url')
+        .populate('user_id', 'username full_name avatar_url gender location')
         .sort({ createdAt: -1 })
         .lean();
       
@@ -323,7 +323,7 @@ exports.getAdById = async (req, res) => {
     const userId = req.userId;
     const ad = await Ad.findOne({ _id: req.params.id, isDeleted: false })
       .populate('vendor_id', 'business_name logo_url validated description website')
-      .populate('user_id', 'username full_name avatar_url')
+      .populate('user_id', 'username full_name avatar_url gender location')
       .lean();
 
     if (!ad) {
@@ -795,7 +795,7 @@ exports.searchAds = async (req, res) => {
     const [ads, total] = await Promise.all([
       Ad.find(filter)
         .populate('vendor_id', 'business_name logo_url validated')
-        .populate('user_id', 'username full_name avatar_url')
+        .populate('user_id', 'username full_name avatar_url gender location')
         .sort(sortQuery)
         .skip(skip)
         .limit(limitNum)

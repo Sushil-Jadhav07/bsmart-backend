@@ -54,6 +54,8 @@ exports.register = async (req, res) => {
       username,
       full_name,
       phone,
+      gender,
+      location,
       role,
       company_details,
       credits
@@ -93,7 +95,8 @@ exports.register = async (req, res) => {
       username,
       full_name,
       phone,
-      role: userRole
+      role: userRole,
+      ...(userRole === 'member' ? { gender, location } : {})
     });
 
     const initialCredits =
@@ -152,6 +155,8 @@ exports.register = async (req, res) => {
         full_name: user.full_name,
         avatar_url: user.avatar_url,
         phone: user.phone,
+        gender: user.gender,
+        location: user.location,
         role: user.role,
         followers_count: user.followers_count,
         following_count: user.following_count,
@@ -242,6 +247,8 @@ exports.googleLogin = async (req, res) => {
         username: user.username,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
+        gender: user.gender,
+        location: user.location,
         role: user.role,
         createdAt: user.createdAt
       }
@@ -318,6 +325,8 @@ exports.login = async (req, res) => {
         full_name: user.full_name,
         avatar_url: user.avatar_url,
         phone: user.phone,
+        gender: user.gender,
+        location: user.location,
         role: user.role,
         followers_count: user.followers_count,
         following_count: user.following_count,

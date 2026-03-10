@@ -45,8 +45,11 @@ exports.getAllUsers = async (req, res) => {
         enrichedPosts.push(transformed);
       }
 
+      const userObj = user.toObject();
+      userObj.gender = userObj.gender ?? '';
+      userObj.location = userObj.location ?? '';
       result.push({
-        ...user.toObject(),
+        ...userObj,
         posts: enrichedPosts
       });
     }
@@ -75,6 +78,8 @@ exports.getUserById = async (req, res) => {
     const vendor = await Vendor.findOne({ user_id: userId }).select('validated _id').lean();
     const validated = vendor ? !!vendor.validated : false;
     const obj = user.toObject ? user.toObject() : user;
+    obj.gender = obj.gender ?? '';
+    obj.location = obj.location ?? '';
     obj.validated = validated;
     if (vendor) {
       obj.vendor_id = vendor._id;
@@ -96,7 +101,7 @@ exports.getUserPostsDetails = async (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const posts = await Post.find({ user_id: userId })
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url followers_count following_count');
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
     const enriched = [];
     for (const post of posts) {
       const p = transformPost(post, baseUrl);
@@ -118,7 +123,7 @@ exports.listUsersProfiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const users = await User.find({})
-      .select('_id username full_name avatar_url phone role followers_count following_count createdAt updatedAt')
+      .select('_id username full_name avatar_url phone role gender location followers_count following_count createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean();
     const ids = users.map(u => u._id);
@@ -126,6 +131,8 @@ exports.listUsersProfiles = async (req, res) => {
     const vmap = new Map(vendors.map(v => [v.user_id.toString(), v]));
     const results = [];
     for (const u of users) {
+      u.gender = u.gender ?? '';
+      u.location = u.location ?? '';
       const vendor = vmap.get(u._id.toString());
       u.validated = vendor ? !!vendor.validated : false;
       if (vendor) {
@@ -133,7 +140,7 @@ exports.listUsersProfiles = async (req, res) => {
       }
       const posts = await Post.find({ user_id: u._id })
         .sort({ createdAt: -1 })
-        .populate('user_id', 'username full_name avatar_url followers_count following_count');
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
       const enrichedPosts = posts.map(p => {
         const tp = transformPost(p, baseUrl);
         return {
@@ -173,7 +180,7 @@ exports.updateUser = async (req, res) => {
     }
 
     // Update fields
-    const { full_name, bio, avatar_url, phone, username } = req.body;
+    const { full_name, bio, avatar_url, phone, username, gender, location } = req.body;
 
     // Build update object
     const updateFields = {};
@@ -182,6 +189,8 @@ exports.updateUser = async (req, res) => {
     if (avatar_url) updateFields.avatar_url = avatar_url;
     if (phone) updateFields.phone = phone;
     if (username) updateFields.username = username;
+    if (typeof gender !== 'undefined') updateFields.gender = gender;
+    if (typeof location !== 'undefined') updateFields.location = location;
 
     const user = await User.findByIdAndUpdate(
       userId,

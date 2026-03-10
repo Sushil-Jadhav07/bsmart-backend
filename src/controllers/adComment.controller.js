@@ -75,7 +75,7 @@ exports.addAdComment = async (req, res) => {
     await Ad.findByIdAndUpdate(adId, { $inc: { comments_count: 1 } });
 
     // Populate user info for immediate display
-    await newComment.populate('user_id', 'username full_name avatar_url');
+    await newComment.populate('user_id', 'username full_name avatar_url gender location');
 
     res.status(201).json(newComment);
   } catch (error) {
@@ -96,7 +96,7 @@ exports.getAdComments = async (req, res) => {
     // Fetch only top-level comments (parent_id is null)
     const comments = await AdComment.find({ ad_id: adId, parent_id: null, isDeleted: false })
       .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url');
+      .populate('user_id', 'username full_name avatar_url gender location');
 
     res.json(comments);
   } catch (error) {
@@ -116,7 +116,7 @@ exports.getAdCommentReplies = async (req, res) => {
 
     const replies = await AdComment.find({ parent_id: commentId, isDeleted: false })
       .sort({ createdAt: 1 })
-      .populate('user_id', 'username full_name avatar_url');
+      .populate('user_id', 'username full_name avatar_url gender location');
 
     res.json(replies);
   } catch (error) {

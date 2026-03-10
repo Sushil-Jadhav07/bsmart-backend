@@ -68,6 +68,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  gender: {
+    type: String,
+    default: ''
+  },
+  location: {
+    type: String,
+    default: ''
+  },
   // For vendor users: store company details snapshot on the user
   company_details: {
     company_name: { type: String, default: '' },

@@ -43,6 +43,12 @@ const jwt = require('jsonwebtoken');
  *                 type: string
  *               phone:
  *                 type: string
+ *               gender:
+ *                 type: string
+ *                 description: Member gender (only when role is member)
+ *               location:
+ *                 type: string
+ *                 description: Member location (only when role is member)
  *               role:
  *                 type: string
  *                 enum: [member, vendor, admin]
@@ -50,7 +56,7 @@ const jwt = require('jsonwebtoken');
  *                 description: User role
  *               company_details:
  *                 type: object
- *                 description: Required when role is vendor
+ *                 description: Required when role is vendor (ignore for member/admin)
  *                 properties:
  *                   company_name:
  *                     type: string
@@ -81,6 +87,25 @@ const jwt = require('jsonwebtoken');
  *                   type: string
  *                 user:
  *                   $ref: '#/components/schemas/User'
+ *             examples:
+ *               member:
+ *                 value:
+ *                   token: "jwt_token_here"
+ *                   user:
+ *                     id: "60f1b2c3d4e5f67890123456"
+ *                     email: "member@example.com"
+ *                     username: "member123"
+ *                     full_name: "Member Name"
+ *                     avatar_url: ""
+ *                     phone: "+911234567890"
+ *                     gender: "male"
+ *                     location: "Mumbai, India"
+ *                     role: "member"
+ *                     followers_count: 0
+ *                     following_count: 0
+ *                     wallet:
+ *                       balance: 0
+ *                       currency: "Coins"
  *       400:
  *         description: User already exists or invalid role
  *       500:
@@ -129,6 +154,12 @@ router.post('/register', register);
  *                       type: string
  *                     avatar_url:
  *                       type: string
+ *                     gender:
+ *                       type: string
+ *                       example: ""
+ *                     location:
+ *                       type: string
+ *                       example: ""
  *                     role:
  *                       type: string
  *                     createdAt:
@@ -331,6 +362,14 @@ router.get(
  *           type: string
  *         phone:
  *           type: string
+ *         gender:
+ *           type: string
+ *           description: User gender (male, female, other, or empty string)
+ *           example: "male"
+ *         location:
+ *           type: string
+ *           description: User location city or country
+ *           example: "Mumbai, India"
  *         role:
  *           type: string
  *           enum: [member, vendor, admin]

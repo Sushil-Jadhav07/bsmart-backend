@@ -200,7 +200,7 @@ exports.getVendorProfile = async (req, res) => {
     const { userId } = req.params;
     
     const vendor = await Vendor.findOne({ user_id: userId })
-      .populate('user_id', 'username full_name avatar_url email phone role');
+      .populate('user_id', 'username full_name avatar_url email phone role gender location');
       
     if (!vendor) {
       return res.status(404).json({ message: 'Vendor not found' });
@@ -322,7 +322,7 @@ exports.adminProcessVendorVerification = async (req, res) => {
 exports.listAllVendors = async (req, res) => {
   try {
     const vendors = await Vendor.find({})
-      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt')
+      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location')
       .sort({ createdAt: -1 });
     
     // Return full vendor object with user details embedded
@@ -363,7 +363,7 @@ exports.deleteVendorByUserId = async (req, res) => {
 exports.getAllVendorsForAdmin = async (req, res) => {
   try {
     const vendors = await Vendor.find({})
-      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt')
+      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location')
       .sort({ createdAt: -1 });
     
     return res.json(vendors);
@@ -414,7 +414,7 @@ exports.getVendorProfileByUserId = async (req, res) => {
 exports.listAllVendors = async (req, res) => {
   try {
     const vendors = await Vendor.find({})
-      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt')
+      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt gender location')
       .sort({ createdAt: -1 });
 
     const result = vendors.map(vendor => {
@@ -436,7 +436,7 @@ exports.getVendorById = async (req, res) => {
   try {
     const vendorId = req.params.id;
     const vendor = await Vendor.findById(vendorId)
-      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt');
+      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt gender location');
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
     const payload = {
       _id: vendor._id,

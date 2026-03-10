@@ -47,6 +47,32 @@ const auth = require('../middleware/auth');
  *                     type: array
  *                     items:
  *                       $ref: '#/components/schemas/Post'
+ *             examples:
+ *               sample:
+ *                 value:
+ *                   - user:
+ *                       id: "60f1b2c3d4e5f67890123456"
+ *                       username: "john_doe"
+ *                       email: "john@example.com"
+ *                       full_name: "John Doe"
+ *                       avatar_url: ""
+ *                       phone: "+910000000000"
+ *                       gender: "male"
+ *                       location: "Mumbai, India"
+ *                       role: "member"
+ *                       followers_count: 10
+ *                       following_count: 5
+ *                       createdAt: "2026-03-10T06:14:50.531Z"
+ *                       updatedAt: "2026-03-10T06:14:50.531Z"
+ *                     summary:
+ *                       posts_count: 2
+ *                       reels_count: 1
+ *                       likes_count_total: 5
+ *                       comments_count_total: 3
+ *                       views_count_total: 200
+ *                       unique_views_count_total: 150
+ *                       completed_views_count_total: 120
+ *                     posts: []
  *       401:
  *         description: Not authorized
  *       500:
@@ -74,6 +100,22 @@ router.get('/', auth, listUsersProfiles);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/User'
+ *             examples:
+ *               user:
+ *                 value:
+ *                   id: "60f1b2c3d4e5f67890123456"
+ *                   username: "john_doe"
+ *                   email: "john@example.com"
+ *                   full_name: "John Doe"
+ *                   avatar_url: ""
+ *                   phone: "+910000000000"
+ *                   gender: "male"
+ *                   location: "Mumbai, India"
+ *                   role: "member"
+ *                   followers_count: 10
+ *                   following_count: 5
+ *                   createdAt: "2026-03-10T06:14:50.531Z"
+ *                   updatedAt: "2026-03-10T06:14:50.531Z"
  *       404:
  *         description: User not found
  *       500:
@@ -145,6 +187,14 @@ router.get('/:id/saved', auth, getSavedPostsByUser);
  *                 type: string
  *               username:
  *                 type: string
+ *               gender:
+ *                 type: string
+ *                 description: User gender (e.g. male, female, other)
+ *                 example: "male"
+ *               location:
+ *                 type: string
+ *                 description: User location (city, country, etc.)
+ *                 example: "Mumbai, India"
  *     responses:
  *       200:
  *         description: User updated successfully
