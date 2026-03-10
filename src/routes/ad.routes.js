@@ -14,6 +14,8 @@ const {
   completeAdView,
   likeAd,
   dislikeAd,
+  saveAd,
+  unsaveAd,
   deleteAd,
   searchAds
 } = require('../controllers/ad.controller');
@@ -553,6 +555,50 @@ router.post('/:id/like', auth, likeAd);
  *         description: Dislike toggled
  */
 router.post('/:id/dislike', auth, dislikeAd);
+
+/**
+ * @swagger
+ * /api/ads/{id}/save:
+ *   post:
+ *     summary: Save an ad
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Ad saved (user earns 10 coins, deducted from ad creator wallet)
+ *       409:
+ *         description: Already saved
+ */
+router.post('/:id/save', auth, saveAd);
+
+/**
+ * @swagger
+ * /api/ads/{id}/unsave:
+ *   post:
+ *     summary: Unsave an ad
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Ad unsaved
+ *       400:
+ *         description: Not saved yet
+ */
+router.post('/:id/unsave', auth, unsaveAd);
 
 /**
  * @swagger

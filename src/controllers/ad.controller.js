@@ -6,10 +6,13 @@ const WalletTransaction = require('../models/WalletTransaction');
 const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const AdComment = require('../models/AdComment');
+const SavedAd = require('../models/SavedAd');
 const adCategories = require('../data/adCategories');
 const AdCategory = require('../models/AdCategory');
 const Notification = require('../models/notification.model');
 const sendNotification = require('../utils/sendNotification');
+
+const REWARD_COINS = 10; // Coins given to user when they like/comment/reply/save an ad (deducted from ad creator)
 
 /**
  * Create a new ad (Vendor only)
@@ -501,26 +504,13 @@ exports.completeAdView = async (req, res) => {
         { upsert: true }
       );
 
-      // 2. Deduct from ad owner (vendor) wallet - prevent going below 0
-      const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
-      if (ownerWallet && ownerWallet.balance >= rewardAmount) {
-        await Wallet.findOneAndUpdate(
-          { user_id: ad.user_id },
-          { $inc: { balance: -rewardAmount } }
-        );
-
-        // Record deduction transaction for ad owner
-        try {
-          await WalletTransaction.create({
-            user_id: ad.user_id,
-            ad_id: adId,
-            type: 'AD_VIEW_DEDUCTION',
-            amount: rewardAmount,
-            status: 'SUCCESS'
-          });
-        } catch (txErr) {
-          console.error('Ad view deduction transaction error:', txErr);
-        }
+      // 2. Deduct from ad owner (budget was pre-funded at createAd via AD_BUDGET_DEDUCTION)
+      await Wallet.findOneAndUpdate({ user_id: ad.user_id }, { $inc: { balance: -rewardAmount } });
+      // 3. Record deduction transaction
+      try {
+        await WalletTransaction.create({ user_id: ad.user_id, ad_id: adId, type: 'AD_VIEW_DEDUCTION', amount: rewardAmount, status: 'SUCCESS' });
+      } catch (txErr) {
+        if (txErr.code !== 11000) console.error('Ad view deduction transaction error:', txErr);
       }
 
       // 3. Record reward transaction for member
@@ -595,49 +585,24 @@ exports.likeAd = async (req, res) => {
       console.error('Ad like notification error:', notifErr);
     }
 
-    // Credit member +10 and deduct ad owner -10 for liking
-    const LIKE_REWARD = 10;
     let memberReward = 0;
-
-    // Only reward if ad owner has enough balance
-    const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
-    if (ownerWallet && ownerWallet.balance >= LIKE_REWARD) {
-      try {
-        // 1. Credit member
-        await Wallet.findOneAndUpdate(
-          { user_id: req.userId },
-          { $inc: { balance: LIKE_REWARD } },
-          { upsert: true }
-        );
-
-        // 2. Deduct owner
-        await Wallet.findOneAndUpdate(
-          { user_id: ad.user_id },
-          { $inc: { balance: -LIKE_REWARD } }
-        );
-
-        // 3. Record member reward transaction
-        await WalletTransaction.create({
-          user_id: req.userId,
-          ad_id: ad._id,
-          type: 'AD_LIKE_REWARD',
-          amount: LIKE_REWARD,
-          status: 'SUCCESS'
-        });
-
-        // 4. Record owner deduction transaction
-        await WalletTransaction.create({
-          user_id: ad.user_id,
-          ad_id: ad._id,
-          type: 'AD_LIKE_DEDUCTION',
-          amount: LIKE_REWARD,
-          status: 'SUCCESS'
-        });
-
-        memberReward = LIKE_REWARD;
-      } catch (walletErr) {
-        // Non-fatal: like is saved even if wallet update fails
-        console.error('Ad like wallet credit error:', walletErr);
+    if (ad.user_id.toString() !== req.userId.toString()) {
+      const rewardAmount = REWARD_COINS; // 10 coins for ad engagement
+      const remaining = ad.total_budget_coins - ad.total_coins_spent;
+      if (remaining >= rewardAmount) {
+        const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
+        if (ownerWallet && ownerWallet.balance >= rewardAmount) {
+          try {
+            await Wallet.findOneAndUpdate({ user_id: req.userId }, { $inc: { balance: rewardAmount } }, { upsert: true });
+            await Wallet.findOneAndUpdate({ user_id: ad.user_id }, { $inc: { balance: -rewardAmount } });
+            await Ad.findByIdAndUpdate(ad._id, { $inc: { total_coins_spent: rewardAmount } });
+            await WalletTransaction.create({ user_id: req.userId, ad_id: ad._id, type: 'AD_LIKE_REWARD', amount: rewardAmount, status: 'SUCCESS' });
+            await WalletTransaction.create({ user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_DEDUCTION', amount: rewardAmount, status: 'SUCCESS' });
+            memberReward = rewardAmount;
+          } catch (walletErr) {
+            if (walletErr.code !== 11000) console.error('Ad like wallet credit error:', walletErr);
+          }
+        }
       }
     }
 
@@ -678,6 +643,115 @@ exports.dislikeAd = async (req, res) => {
     res.json({ dislikes_count: ad.dislikes_count, is_disliked: true });
   } catch (error) {
     console.error('Dislike ad error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const REWARD_COINS = 10;
+
+/**
+ * Save an ad
+ * @route POST /api/ads/:id/save
+ * @access Private
+ */
+exports.saveAd = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const adId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findById(adId);
+    if (!ad || ad.isDeleted) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    let created = false;
+    try {
+      await SavedAd.create({ user_id: userId, ad_id: adId });
+      created = true;
+    } catch (e) {
+      if (e.code === 11000) {
+        return res.status(409).json({ message: 'Already saved' });
+      }
+      throw e;
+    }
+
+    let coinsEarned = 0;
+    if (created && ad.user_id.toString() !== userId.toString()) {
+      const rewardAmount = REWARD_COINS;
+      const remaining = ad.total_budget_coins - ad.total_coins_spent;
+      if (remaining >= rewardAmount) {
+        const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
+        if (ownerWallet && ownerWallet.balance >= rewardAmount) {
+          try {
+            await Wallet.findOneAndUpdate({ user_id: userId }, { $inc: { balance: rewardAmount } }, { upsert: true });
+            await Wallet.findOneAndUpdate({ user_id: ad.user_id }, { $inc: { balance: -rewardAmount } });
+            await Ad.findByIdAndUpdate(adId, { $inc: { total_coins_spent: rewardAmount } });
+            await WalletTransaction.create({ user_id: userId, ad_id: adId, type: 'AD_SAVE_REWARD', amount: rewardAmount, status: 'SUCCESS' });
+            await WalletTransaction.create({ user_id: ad.user_id, ad_id: adId, type: 'AD_SAVE_DEDUCTION', amount: rewardAmount, status: 'SUCCESS' });
+            coinsEarned = rewardAmount;
+          } catch (walletErr) {
+            if (walletErr.code !== 11000) console.error('Ad save wallet credit error:', walletErr);
+          }
+        }
+      }
+
+      try {
+        const saver = await User.findById(userId).select('username').lean();
+        if (saver) {
+          await sendNotification(req.app, {
+            recipient: ad.user_id,
+            sender: userId,
+            type: 'ad_save',
+            message: `${saver.username} saved your ad`,
+            link: `/ads/${ad._id}`
+          });
+        }
+      } catch (notifErr) {
+        console.error('Ad save notification error:', notifErr);
+      }
+    }
+
+    const saved_count = await SavedAd.countDocuments({ ad_id: adId });
+    res.json({ success: true, message: 'Ad saved', saved: true, saved_count, coins_earned: coinsEarned });
+  } catch (error) {
+    console.error('Save ad error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Unsave an ad
+ * @route POST /api/ads/:id/unsave
+ * @access Private
+ */
+exports.unsaveAd = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const adId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findById(adId);
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    const rel = await SavedAd.findOne({ user_id: userId, ad_id: adId });
+    if (!rel) {
+      return res.status(400).json({ message: 'Not saved yet' });
+    }
+
+    await SavedAd.deleteOne({ _id: rel._id });
+    const saved_count = await SavedAd.countDocuments({ ad_id: adId });
+    res.json({ success: true, message: 'Ad unsaved', saved: false, saved_count });
+  } catch (error) {
+    console.error('Unsave ad error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

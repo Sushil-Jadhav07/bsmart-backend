@@ -1,7 +1,31 @@
 const AdComment = require('../models/AdComment');
 const Ad = require('../models/Ad');
 const User = require('../models/User');
+const Wallet = require('../models/Wallet');
+const WalletTransaction = require('../models/WalletTransaction');
 const sendNotification = require('../utils/sendNotification');
+
+async function rewardAdEngagement({ userId, adOwnerId, adId, rewardAmount, userTxType, ownerTxType }) {
+  if (!rewardAmount || rewardAmount <= 0) return 0;
+  const ad = await Ad.findById(adId).select('total_budget_coins total_coins_spent').lean();
+  if (!ad) return 0;
+  const remaining = ad.total_budget_coins - ad.total_coins_spent;
+  if (remaining < rewardAmount) return 0;
+  const ownerWallet = await Wallet.findOne({ user_id: adOwnerId });
+  if (!ownerWallet || ownerWallet.balance < rewardAmount) return 0;
+  try {
+    await Wallet.findOneAndUpdate({ user_id: adOwnerId }, { $inc: { balance: -rewardAmount } });
+    await Wallet.findOneAndUpdate({ user_id: userId }, { $inc: { balance: rewardAmount } }, { upsert: true });
+    await Ad.findByIdAndUpdate(adId, { $inc: { total_coins_spent: rewardAmount } });
+    await WalletTransaction.create({ user_id: adOwnerId, ad_id: adId, type: ownerTxType, amount: rewardAmount, status: 'SUCCESS' });
+    await WalletTransaction.create({ user_id: userId, ad_id: adId, type: userTxType, amount: rewardAmount, status: 'SUCCESS' });
+    return rewardAmount;
+  } catch (err) {
+    if (err.code === 11000) return 0;
+    console.error(`rewardAdEngagement error [${userTxType}]:`, err);
+    return 0;
+  }
+}
 
 /**
  * Add a comment to an ad
@@ -74,10 +98,24 @@ exports.addAdComment = async (req, res) => {
     // Increment comment count
     await Ad.findByIdAndUpdate(adId, { $inc: { comments_count: 1 } });
 
+    let coinsEarned = 0;
+    const REWARD_COINS = 10;
+    if (ad.user_id.toString() !== userId.toString()) {
+      const isReply = !!parentCommentId;
+      coinsEarned = await rewardAdEngagement({
+        userId,
+        adOwnerId: ad.user_id,
+        adId,
+        rewardAmount: REWARD_COINS,
+        userTxType: isReply ? 'AD_REPLY_REWARD' : 'AD_COMMENT_REWARD',
+        ownerTxType: isReply ? 'AD_REPLY_DEDUCTION' : 'AD_COMMENT_DEDUCTION',
+      });
+    }
+
     // Populate user info for immediate display
     await newComment.populate('user_id', 'username full_name avatar_url gender location');
 
-    res.status(201).json(newComment);
+    res.status(201).json({ ...newComment.toObject(), coins_earned: coinsEarned });
   } catch (error) {
     console.error('Add ad comment error:', error);
     res.status(500).json({ message: 'Server error' });

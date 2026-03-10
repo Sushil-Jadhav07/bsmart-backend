@@ -31,6 +31,12 @@ const walletTransactionSchema = new mongoose.Schema({
       'AD_VIEW_DEDUCTION',
       'AD_LIKE_REWARD',
       'AD_LIKE_DEDUCTION',
+      'AD_COMMENT_REWARD',
+      'AD_REPLY_REWARD',
+      'AD_COMMENT_DEDUCTION',
+      'AD_REPLY_DEDUCTION',
+      'AD_SAVE_REWARD',
+      'AD_SAVE_DEDUCTION',
       'AD_BUDGET_DEDUCTION'
     ],
     required: true
@@ -83,7 +89,24 @@ walletTransactionSchema.index(
   { user_id: 1, ad_id: 1, type: 1 },
   {
     unique: true,
-    partialFilterExpression: { ad_id: { $type: 'objectId' } }
+    partialFilterExpression: {
+      ad_id: { $type: 'objectId' },
+      type: {
+        $in: [
+          'AD_VIEW_REWARD',
+          'AD_LIKE_REWARD',
+          'AD_VIEW_DEDUCTION',
+          'AD_LIKE_DEDUCTION',
+          'AD_BUDGET_DEDUCTION',
+          'AD_COMMENT_REWARD',
+          'AD_COMMENT_DEDUCTION',
+          'AD_REPLY_REWARD',
+          'AD_REPLY_DEDUCTION',
+          'AD_SAVE_REWARD',
+          'AD_SAVE_DEDUCTION'
+        ]
+      }
+    }
   }
 );
 

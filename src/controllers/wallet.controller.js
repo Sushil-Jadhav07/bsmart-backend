@@ -63,7 +63,7 @@ exports.getAllWallets = async (req, res) => {
       {
         $match: {
           status: 'SUCCESS',
-          type: { $in: ['AD_REWARD', 'REEL_VIEW_REWARD'] }
+          type: { $in: ['AD_REWARD', 'REEL_VIEW_REWARD', 'AD_VIEW_REWARD', 'AD_LIKE_REWARD', 'AD_COMMENT_REWARD', 'AD_REPLY_REWARD', 'AD_SAVE_REWARD'] }
         }
       },
       {
@@ -72,7 +72,11 @@ exports.getAllWallets = async (req, res) => {
           total_coins_minted: { $sum: '$amount' },
           total_coins_from_ads: {
             $sum: {
-              $cond: [{ $eq: ['$type', 'AD_REWARD'] }, '$amount', 0]
+              $cond: [
+                { $in: ['$type', ['AD_REWARD', 'AD_VIEW_REWARD', 'AD_LIKE_REWARD', 'AD_COMMENT_REWARD', 'AD_REPLY_REWARD', 'AD_SAVE_REWARD']] },
+                '$amount',
+                0
+              ]
             }
           },
           total_coins_from_reels: {
