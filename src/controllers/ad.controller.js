@@ -490,24 +490,61 @@ exports.completeAdView = async (req, res) => {
       }
     });
 
-    // Reward User
+    // Credit member and deduct ad owner
     if (ad.coins_reward > 0) {
+      const rewardAmount = ad.coins_reward;
+
+      // 1. Credit member wallet
       await Wallet.findOneAndUpdate(
         { user_id: userId },
-        { $inc: { balance: ad.coins_reward } },
+        { $inc: { balance: rewardAmount } },
         { upsert: true }
       );
 
-      await WalletTransaction.create({
-        user_id: userId,
-        ad_id: adId,
-        type: 'AD_VIEW_REWARD',
-        amount: ad.coins_reward,
-        status: 'SUCCESS'
+      // 2. Deduct from ad owner (vendor) wallet - prevent going below 0
+      const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
+      if (ownerWallet && ownerWallet.balance >= rewardAmount) {
+        await Wallet.findOneAndUpdate(
+          { user_id: ad.user_id },
+          { $inc: { balance: -rewardAmount } }
+        );
+
+        // Record deduction transaction for ad owner
+        try {
+          await WalletTransaction.create({
+            user_id: ad.user_id,
+            ad_id: adId,
+            type: 'AD_VIEW_DEDUCTION',
+            amount: rewardAmount,
+            status: 'SUCCESS'
+          });
+        } catch (txErr) {
+          console.error('Ad view deduction transaction error:', txErr);
+        }
+      }
+
+      // 3. Record reward transaction for member
+      try {
+        await WalletTransaction.create({
+          user_id: userId,
+          ad_id: adId,
+          type: 'AD_VIEW_REWARD',
+          amount: rewardAmount,
+          status: 'SUCCESS'
+        });
+      } catch (txErr) {
+        console.error('Ad view reward transaction error:', txErr);
+      }
+
+      return res.json({
+        message: 'Ad completed and rewarded',
+        reward: rewardAmount,
+        member_balance_change: `+${rewardAmount}`,
+        owner_balance_change: `-${rewardAmount}`
       });
     }
 
-    res.json({ message: 'Ad completed and rewarded', reward: ad.coins_reward });
+    res.json({ message: 'Ad completed (no reward configured)', reward: 0 });
   } catch (error) {
     console.error('Complete ad view error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -558,7 +595,53 @@ exports.likeAd = async (req, res) => {
       console.error('Ad like notification error:', notifErr);
     }
 
-    res.json({ likes_count: ad.likes_count, is_liked: true });
+    // Credit member +10 and deduct ad owner -10 for liking
+    const LIKE_REWARD = 10;
+    let memberReward = 0;
+
+    // Only reward if ad owner has enough balance
+    const ownerWallet = await Wallet.findOne({ user_id: ad.user_id });
+    if (ownerWallet && ownerWallet.balance >= LIKE_REWARD) {
+      try {
+        // 1. Credit member
+        await Wallet.findOneAndUpdate(
+          { user_id: req.userId },
+          { $inc: { balance: LIKE_REWARD } },
+          { upsert: true }
+        );
+
+        // 2. Deduct owner
+        await Wallet.findOneAndUpdate(
+          { user_id: ad.user_id },
+          { $inc: { balance: -LIKE_REWARD } }
+        );
+
+        // 3. Record member reward transaction
+        await WalletTransaction.create({
+          user_id: req.userId,
+          ad_id: ad._id,
+          type: 'AD_LIKE_REWARD',
+          amount: LIKE_REWARD,
+          status: 'SUCCESS'
+        });
+
+        // 4. Record owner deduction transaction
+        await WalletTransaction.create({
+          user_id: ad.user_id,
+          ad_id: ad._id,
+          type: 'AD_LIKE_DEDUCTION',
+          amount: LIKE_REWARD,
+          status: 'SUCCESS'
+        });
+
+        memberReward = LIKE_REWARD;
+      } catch (walletErr) {
+        // Non-fatal: like is saved even if wallet update fails
+        console.error('Ad like wallet credit error:', walletErr);
+      }
+    }
+
+    res.json({ likes_count: ad.likes_count, is_liked: true, coins_earned: memberReward });
   } catch (error) {
     console.error('Like ad error:', error);
     res.status(500).json({ message: 'Server error' });

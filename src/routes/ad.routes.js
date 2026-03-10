@@ -475,7 +475,27 @@ router.post('/:id/view', auth, recordAdView);
  *                 type: number
  *     responses:
  *       200:
- *         description: Reward processed
+ *         description: Ad view completed and reward claimed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Ad completed and rewarded"
+ *                 reward:
+ *                   type: number
+ *                   description: Coins rewarded to member
+ *                   example: 10
+ *                 member_balance_change:
+ *                   type: string
+ *                   description: Balance change for member
+ *                   example: "+10"
+ *                 owner_balance_change:
+ *                   type: string
+ *                   description: Balance change for ad owner
+ *                   example: "-10"
  */
 router.post('/:id/complete', auth, completeAdView);
 
@@ -495,7 +515,22 @@ router.post('/:id/complete', auth, completeAdView);
  *           type: string
  *     responses:
  *       200:
- *         description: Like status updated
+ *         description: Like toggled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 likes_count:
+ *                   type: number
+ *                   example: 5
+ *                 is_liked:
+ *                   type: boolean
+ *                   example: true
+ *                 coins_earned:
+ *                   type: number
+ *                   description: Coins credited to member (0 if unlike or owner has no budget)
+ *                   example: 10
  */
 router.post('/:id/like', auth, likeAd);
 

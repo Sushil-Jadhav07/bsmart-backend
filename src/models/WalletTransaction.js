@@ -23,7 +23,16 @@ const walletTransactionSchema = new mongoose.Schema({
     type: String,
     // AD_REWARD: coins rewarded to a user for engaging with/viewing an ad (minting)
     // AD_BUDGET_DEDUCTION: coins deducted from vendor wallet when creating an ad (spend)
-    enum: ['REEL_VIEW_REWARD', 'LIKE', 'COMMENT', 'REPLY', 'SAVE', 'AD_REWARD', 'AD_BUDGET_DEDUCTION'],
+    enum: [
+      'REEL_VIEW_REWARD',
+      'LIKE', 'COMMENT', 'REPLY', 'SAVE',
+      'AD_REWARD',
+      'AD_VIEW_REWARD',
+      'AD_VIEW_DEDUCTION',
+      'AD_LIKE_REWARD',
+      'AD_LIKE_DEDUCTION',
+      'AD_BUDGET_DEDUCTION'
+    ],
     required: true
   },
   amount: {
