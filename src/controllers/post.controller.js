@@ -1,6 +1,8 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
 const Comment = require('../models/Comment');
+const Ad = require('../models/Ad');
+const AdView = require('../models/AdView');
 const sendNotification = require('../utils/sendNotification');
 
 // Helper to transform post with fileUrl, is_liked_by_me, is_saved_by_me
@@ -130,7 +132,67 @@ exports.getFeed = async (req, res) => {
     const savedSet = new Set(saved.map(s => s.post_id.toString()));
     const transformedPosts = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
 
-    res.json(transformedPosts);
+    const adSlots = Math.floor(transformedPosts.length / 5);
+    if (adSlots <= 0) {
+      return res.json(transformedPosts);
+    }
+
+    const ads = await Ad.find({ status: 'active', isDeleted: false })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, adSlots))
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url gender location')
+      .lean();
+
+    if (!ads.length) {
+      return res.json(transformedPosts);
+    }
+
+    const rewarded = await AdView.find({
+      user_id: req.userId,
+      rewarded: true,
+      ad_id: { $in: ads.map(a => a._id) }
+    }).select('ad_id').lean();
+    const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
+
+    const normalizedAds = ads.map((ad) => {
+      const normalizedMedia = Array.isArray(ad.media)
+        ? ad.media.map((m) => {
+          const fileUrl = m.fileUrl
+            ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
+            : (m.fileName ? `${baseUrl}/uploads/${m.fileName}` : '');
+          const thumbnails = Array.isArray(m.thumbnails)
+            ? m.thumbnails.map((t) => {
+              const thumbUrl = t.fileUrl
+                ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
+                : (t.fileName ? `${baseUrl}/uploads/${t.fileName}` : '');
+              return { ...t, fileUrl: thumbUrl };
+            })
+            : [];
+          return { ...m, fileUrl, thumbnails };
+        })
+        : [];
+
+      return {
+        item_type: 'ad',
+        ...ad,
+        media: normalizedMedia,
+        is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
+        is_liked_by_me: Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString())
+      };
+    });
+
+    const mixed = [];
+    let adIndex = 0;
+    for (let i = 0; i < transformedPosts.length; i++) {
+      mixed.push(transformedPosts[i]);
+      if ((i + 1) % 5 === 0) {
+        mixed.push(normalizedAds[adIndex % normalizedAds.length]);
+        adIndex += 1;
+      }
+    }
+
+    res.json(mixed);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });
