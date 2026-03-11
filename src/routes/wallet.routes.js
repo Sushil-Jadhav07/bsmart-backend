@@ -127,46 +127,58 @@ router.get('/vendor/:userId/history', auth, getVendorWalletHistoryByUserId);
  *         name: startDate
  *         schema:
  *           type: string
- *         description: ISO date string
+ *           format: date-time
+ *         description: Filter transactions from this date (ISO 8601)
  *       - in: query
  *         name: endDate
  *         schema:
  *           type: string
- *         description: ISO date string
+ *           format: date-time
+ *         description: Filter transactions until this date (ISO 8601)
  *       - in: query
  *         name: type
  *         schema:
  *           type: string
- *         description: Comma-separated transaction types
+ *         description: Comma-separated types (e.g. AD_LIKE_REWARD,AD_LIKE_DEDUCTION)
  *       - in: query
  *         name: userId
  *         schema:
  *           type: string
- *         description: Filter by a specific userId
+ *         description: Filter by user ID
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Max transactions to return (1-200)
  *     responses:
  *       200:
- *         description: Ad transaction history
+ *         description: Ad transaction history with budget summary
  *         content:
  *           application/json:
  *             schema:
  *               type: object
+ *               required: [ad_id, total_budget_coins, balance_left, total, transactions]
  *               properties:
  *                 ad_id:
  *                   type: string
  *                 total_budget_coins:
  *                   type: number
+ *                   description: Total budget allocated when ad was created
  *                 balance_left:
  *                   type: number
+ *                   description: Remaining budget (total_budget_coins - total_coins_spent)
  *                 total:
- *                   type: number
+ *                   type: integer
+ *                   description: Number of transactions in response
  *                 transactions:
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/WalletTransaction'
  *       400:
- *         description: Invalid parameters
+ *         description: Invalid adId, userId, or date parameters
  *       403:
- *         description: Forbidden
+ *         description: Forbidden (not ad owner or admin)
  *       404:
  *         description: Ad not found
  */

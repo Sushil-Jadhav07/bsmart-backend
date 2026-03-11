@@ -14,6 +14,49 @@ const DEBIT_TYPES = new Set([
   'AD_BUDGET_DEDUCTION'
 ]);
 
+const TITLES = {
+  VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
+  ADMIN_ADJUSTMENT: 'Admin Adjustment',
+  REEL_VIEW_REWARD: 'Reel View Reward',
+  AD_REWARD: 'Ad Reward',
+  AD_VIEW_REWARD: 'Ad View Reward',
+  AD_VIEW_DEDUCTION: 'Ad View Deduction',
+  AD_LIKE_REWARD: 'Ad Like Reward',
+  AD_LIKE_DEDUCTION: 'Ad Like Deduction',
+  AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
+  AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
+  AD_COMMENT_REWARD: 'Ad Comment Reward',
+  AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
+  AD_REPLY_REWARD: 'Ad Reply Reward',
+  AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
+  AD_SAVE_REWARD: 'Ad Save Reward',
+  AD_SAVE_DEDUCTION: 'Ad Save Deduction',
+  AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
+  LIKE: 'Like',
+  COMMENT: 'Comment',
+  REPLY: 'Reply',
+  SAVE: 'Save'
+};
+
+/**
+ * Enrich a raw transaction with corrected amount sign and ui block.
+ * adTitleField: the field name on the populated ad_id object ('title' or 'caption')
+ */
+const enrichTransaction = (t, adTitleField = 'caption') => {
+  const rawAmount = Number(t.amount || 0);
+  const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
+  const direction = amount >= 0 ? 'credit' : 'debit';
+  const createdAt = t.createdAt || t.transactionDate;
+  const title = TITLES[t.type] || t.type;
+  const refTitle = t.ad_id?.[adTitleField] ? String(t.ad_id[adTitleField]) : '';
+  const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
+  return {
+    ...t,
+    amount,
+    ui: { title, description, direction, amount, created_at: createdAt }
+  };
+};
+
 /**
  * Get my wallet balance and recent transactions
  * @route GET /api/wallet/me
@@ -22,8 +65,7 @@ const DEBIT_TYPES = new Set([
 exports.getMyWallet = async (req, res) => {
   try {
     const userId = req.userId;
-    
-    // Get or create wallet
+
     let wallet = await Wallet.findOne({ user_id: userId });
     if (!wallet) {
       wallet = await Wallet.findOneAndUpdate(
@@ -33,7 +75,6 @@ exports.getMyWallet = async (req, res) => {
       );
     }
 
-    // Get recent transactions
     const transactions = await WalletTransaction.find({ user_id: userId })
       .sort({ createdAt: -1 })
       .limit(50)
@@ -41,10 +82,7 @@ exports.getMyWallet = async (req, res) => {
       .populate('post_id', '_id type');
 
     res.json({
-      wallet: {
-        balance: wallet.balance,
-        currency: wallet.currency
-      },
+      wallet: { balance: wallet.balance, currency: wallet.currency },
       transactions
     });
   } catch (error) {
@@ -60,7 +98,6 @@ exports.getMyWallet = async (req, res) => {
  */
 exports.getAllWallets = async (req, res) => {
   try {
-    // Fetch ALL transactions without pagination or filters
     const transactions = await WalletTransaction.find({})
       .populate('user_id', 'username full_name avatar_url gender location')
       .populate('ad_id', 'title')
@@ -69,7 +106,6 @@ exports.getAllWallets = async (req, res) => {
 
     const total = transactions.length;
 
-    // Aggregate global summary
     const [summary] = await WalletTransaction.aggregate([
       {
         $match: {
@@ -91,16 +127,13 @@ exports.getAllWallets = async (req, res) => {
             }
           },
           total_coins_from_reels: {
-            $sum: {
-              $cond: [{ $eq: ['$type', 'REEL_VIEW_REWARD'] }, '$amount', 0]
-            }
+            $sum: { $cond: [{ $eq: ['$type', 'REEL_VIEW_REWARD'] }, '$amount', 0] }
           },
           total_transactions: { $sum: 1 }
         }
       }
     ]);
 
-    // Defaults if no transactions yet
     const finalSummary = summary || {
       total_coins_minted: 0,
       total_coins_from_ads: 0,
@@ -108,15 +141,9 @@ exports.getAllWallets = async (req, res) => {
       total_transactions: 0
     };
 
-    // Ensure total_transactions counts ALL transactions
-    const totalTxCount = await WalletTransaction.countDocuments({});
-    finalSummary.total_transactions = totalTxCount;
+    finalSummary.total_transactions = await WalletTransaction.countDocuments({});
 
-    res.json({
-      summary: finalSummary,
-      total,
-      transactions
-    });
+    res.json({ summary: finalSummary, total, transactions });
   } catch (error) {
     console.error('Get all wallets error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -140,52 +167,7 @@ const getWalletHistoryForUser = async ({ userId, limit = 50 }) => {
     .populate('post_id', '_id type')
     .lean();
 
-  const enrichedTransactions = transactions.map((t) => {
-    const rawAmount = Number(t.amount || 0);
-    const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
-    const direction = amount >= 0 ? 'credit' : 'debit';
-    const createdAt = t.createdAt || t.transactionDate;
-
-    const titles = {
-      VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
-      ADMIN_ADJUSTMENT: 'Admin Adjustment',
-      REEL_VIEW_REWARD: 'Reel View Reward',
-      AD_REWARD: 'Ad Reward',
-      AD_VIEW_REWARD: 'Ad View Reward',
-      AD_VIEW_DEDUCTION: 'Ad View Deduction',
-      AD_LIKE_REWARD: 'Ad Like Reward',
-      AD_LIKE_DEDUCTION: 'Ad Like Deduction',
-      AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
-      AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
-      AD_COMMENT_REWARD: 'Ad Comment Reward',
-      AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
-      AD_REPLY_REWARD: 'Ad Reply Reward',
-      AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
-      AD_SAVE_REWARD: 'Ad Save Reward',
-      AD_SAVE_DEDUCTION: 'Ad Save Deduction',
-      AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
-      LIKE: 'Like',
-      COMMENT: 'Comment',
-      REPLY: 'Reply',
-      SAVE: 'Save'
-    };
-
-    const title = titles[t.type] || t.type;
-    const refTitle = t.ad_id?.title ? String(t.ad_id.title) : '';
-    const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
-
-    return {
-      ...t,
-      amount,
-      ui: {
-        title,
-        description,
-        direction,
-        amount,
-        created_at: createdAt
-      }
-    };
-  });
+  const enrichedTransactions = transactions.map((t) => enrichTransaction(t, 'title'));
 
   if (enrichedTransactions.length === 0 && Number(wallet.balance || 0) > 0) {
     const amount = Number(wallet.balance || 0);
@@ -194,27 +176,19 @@ const getWalletHistoryForUser = async ({ userId, limit = 50 }) => {
     const description = 'Initial credits added on vendor registration';
     return {
       wallet,
-      transactions: [
-        {
-          _id: null,
-          user_id: userId,
-          type: 'VENDOR_REGISTRATION_CREDIT',
-          amount,
-          status: 'SUCCESS',
-          description,
-          transactionDate: createdAt,
-          createdAt,
-          updatedAt: createdAt,
-          synthetic: true,
-          ui: {
-            title,
-            description,
-            direction: 'credit',
-            amount,
-            created_at: createdAt
-          }
-        }
-      ]
+      transactions: [{
+        _id: null,
+        user_id: userId,
+        type: 'VENDOR_REGISTRATION_CREDIT',
+        amount,
+        status: 'SUCCESS',
+        description,
+        transactionDate: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        synthetic: true,
+        ui: { title, description, direction: 'credit', amount, created_at: createdAt }
+      }]
     };
   }
 
@@ -238,12 +212,8 @@ exports.getMemberWalletHistoryByUserId = async (req, res) => {
     }
 
     const user = await User.findById(userId).select('role');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    if (user.role !== 'member') {
-      return res.status(400).json({ message: 'User is not a member' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role !== 'member') return res.status(400).json({ message: 'User is not a member' });
 
     const { wallet, transactions } = await getWalletHistoryForUser({ userId });
     res.json({ user_id: userId, wallet: { balance: wallet.balance, currency: wallet.currency }, transactions });
@@ -264,12 +234,8 @@ exports.getVendorWalletHistoryByUserId = async (req, res) => {
     }
 
     const user = await User.findById(userId).select('role');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    if (user.role !== 'vendor') {
-      return res.status(400).json({ message: 'User is not a vendor' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role !== 'vendor') return res.status(400).json({ message: 'User is not a vendor' });
 
     const wallet = await Wallet.findOne({ user_id: userId }) || { balance: 0, currency: 'Coins' };
 
@@ -295,50 +261,7 @@ exports.getVendorWalletHistoryByUserId = async (req, res) => {
     [...userTx, ...vendorAdTx].forEach(t => map.set(String(t._id), t));
     const merged = Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const titles = {
-      VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
-      ADMIN_ADJUSTMENT: 'Admin Adjustment',
-      REEL_VIEW_REWARD: 'Reel View Reward',
-      AD_REWARD: 'Ad Reward',
-      AD_VIEW_REWARD: 'Ad View Reward',
-      AD_VIEW_DEDUCTION: 'Ad View Deduction',
-      AD_LIKE_REWARD: 'Ad Like Reward',
-      AD_LIKE_DEDUCTION: 'Ad Like Deduction',
-      AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
-      AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
-      AD_COMMENT_REWARD: 'Ad Comment Reward',
-      AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
-      AD_REPLY_REWARD: 'Ad Reply Reward',
-      AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
-      AD_SAVE_REWARD: 'Ad Save Reward',
-      AD_SAVE_DEDUCTION: 'Ad Save Deduction',
-      AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
-      LIKE: 'Like',
-      COMMENT: 'Comment',
-      REPLY: 'Reply',
-      SAVE: 'Save'
-    };
-
-    const enriched = merged.map((t) => {
-      const rawAmount = Number(t.amount || 0);
-      const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
-      const direction = amount >= 0 ? 'credit' : 'debit';
-      const createdAt = t.createdAt || t.transactionDate;
-      const title = titles[t.type] || t.type;
-      const refTitle = t.ad_id?.title ? String(t.ad_id.title) : '';
-      const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
-      return {
-        ...t,
-        amount,
-        ui: {
-          title,
-          description,
-          direction,
-          amount,
-          created_at: createdAt
-        }
-      };
-    });
+    const enriched = merged.map((t) => enrichTransaction(t, 'title'));
 
     if (enriched.length === 0 && Number(wallet.balance || 0) > 0) {
       const amount = Number(wallet.balance || 0);
@@ -356,13 +279,7 @@ exports.getVendorWalletHistoryByUserId = async (req, res) => {
         createdAt,
         updatedAt: createdAt,
         synthetic: true,
-        ui: {
-          title,
-          description,
-          direction: 'credit',
-          amount,
-          created_at: createdAt
-        }
+        ui: { title, description, direction: 'credit', amount, created_at: createdAt }
       });
     }
 
@@ -373,6 +290,30 @@ exports.getVendorWalletHistoryByUserId = async (req, res) => {
   }
 };
 
+/**
+ * Transaction types that deduct from ad budget (spend).
+ * Used to compute total_coins_spent and for amount sign correction in enrichTransaction.
+ */
+const AD_DEDUCTION_TYPES = [
+  'AD_VIEW_DEDUCTION',
+  'AD_LIKE_DEDUCTION',
+  'AD_COMMENT_DEDUCTION',
+  'AD_REPLY_DEDUCTION',
+  'AD_SAVE_DEDUCTION'
+];
+
+/**
+ * Get transaction history for a specific ad.
+ * Returns ad budget summary and all related transactions (rewards to users, deductions from budget).
+ *
+ * @route GET /api/wallet/ads/:adId/history
+ * @access Private (vendor owner or admin)
+ * @query startDate - ISO date string (filter transactions from this date)
+ * @query endDate   - ISO date string (filter transactions until this date)
+ * @query type      - Comma-separated transaction types (e.g. AD_LIKE_REWARD,AD_LIKE_DEDUCTION)
+ * @query userId    - Filter transactions by user
+ * @query limit     - Max transactions to return (default 50)
+ */
 exports.getAdWalletHistory = async (req, res) => {
   try {
     const adId = req.params.adId;
@@ -380,20 +321,42 @@ exports.getAdWalletHistory = async (req, res) => {
       return res.status(400).json({ message: 'Invalid adId' });
     }
 
-    const requester = req.user;
-    const ad = await Ad.findById(adId).select('user_id').lean();
+    const adObjectId = new mongoose.Types.ObjectId(adId);
+    const ad = await Ad.findById(adId).select('user_id total_budget_coins total_coins_spent').lean();
     if (!ad) {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
+    const requester = req.user;
     const isAdmin = requester?.role === 'admin';
-    const isVendorOwner = requester?.role === 'vendor' && requester?._id?.toString() === ad.user_id.toString();
+    const isVendorOwner = requester?.role === 'vendor' &&
+      requester?._id?.toString() === String(ad.user_id);
     if (!isAdmin && !isVendorOwner) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
-    const { startDate, endDate, type, userId } = req.query || {};
-    const match = { ad_id: adId };
+    const { startDate, endDate, type, userId, limit = 50 } = req.query;
+
+    // Build transaction filter
+    const match = { ad_id: adObjectId };
+
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) {
+        const d = new Date(String(startDate));
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ message: 'Invalid startDate' });
+        }
+        match.createdAt.$gte = d;
+      }
+      if (endDate) {
+        const d = new Date(String(endDate));
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ message: 'Invalid endDate' });
+        }
+        match.createdAt.$lte = d;
+      }
+    }
 
     if (type) {
       const types = String(type).split(',').map(s => s.trim()).filter(Boolean);
@@ -404,103 +367,62 @@ exports.getAdWalletHistory = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(String(userId))) {
         return res.status(400).json({ message: 'Invalid userId' });
       }
-      match.user_id = String(userId);
+      match.user_id = new mongoose.Types.ObjectId(String(userId));
     }
 
-    if (startDate || endDate) {
-      match.createdAt = {};
-      if (startDate) {
-        const d = new Date(String(startDate));
-        if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid startDate' });
-        match.createdAt.$gte = d;
-      }
-      if (endDate) {
-        const d = new Date(String(endDate));
-        if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid endDate' });
-        match.createdAt.$lte = d;
-      }
-    }
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 50), 200);
 
+    // Fetch transactions
     const transactions = await WalletTransaction.find(match)
+      .select('-__v')
       .sort({ createdAt: -1 })
+      .limit(limitNum)
       .populate('user_id', 'username full_name avatar_url role')
       .populate('ad_id', 'caption')
       .lean();
 
-    const adMeta = await Ad.findById(adId).select('total_budget_coins total_coins_spent').lean();
-    let total_budget_coins = Number(adMeta?.total_budget_coins ?? 0) || 0;
-    let total_coins_spent = Number(adMeta?.total_coins_spent ?? 0) || 0;
+    // Budget from Ad document (source of truth; updated on every engagement)
+    let total_budget_coins = Number(ad.total_budget_coins ?? 0) || 0;
+    let total_coins_spent = Number(ad.total_coins_spent ?? 0) || 0;
 
+    // Fallback for legacy ads: derive from transactions
     if (!total_budget_coins) {
-      const budgetTx = transactions.find((t) => t.type === 'AD_BUDGET_DEDUCTION');
-      const budgetAmount = Number(budgetTx?.amount ?? 0) || 0;
-      total_budget_coins = Math.abs(budgetAmount);
+      const budgetTx = await WalletTransaction.findOne({
+        ad_id: adObjectId,
+        type: 'AD_BUDGET_DEDUCTION'
+      }).select('amount').lean();
+      total_budget_coins = budgetTx ? Math.abs(Number(budgetTx.amount ?? 0)) : 0;
     }
 
     if (!total_coins_spent) {
-      // Sum all per-interaction deductions (like, view, comment, reply, save) — excluding the initial budget deduction
-      const interactionDeductionTypes = new Set([
-        'AD_VIEW_DEDUCTION',
-        'AD_LIKE_DEDUCTION',
-        'AD_COMMENT_DEDUCTION',
-        'AD_REPLY_DEDUCTION',
-        'AD_SAVE_DEDUCTION'
+      const [agg] = await WalletTransaction.aggregate([
+        {
+          $match: {
+            ad_id: adObjectId,
+            type: { $in: AD_DEDUCTION_TYPES }
+          }
+        },
+        { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }
       ]);
-      total_coins_spent = transactions.reduce((sum, t) => {
-        const amt = Number(t.amount ?? 0) || 0;
-        if (!interactionDeductionTypes.has(t.type)) return sum;
-        return sum + Math.abs(amt);
-      }, 0);
+      total_coins_spent = agg?.total ?? 0;
     }
 
     const balance_left = Math.max(0, total_budget_coins - total_coins_spent);
 
-    const titles = {
-      VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
-      ADMIN_ADJUSTMENT: 'Admin Adjustment',
-      REEL_VIEW_REWARD: 'Reel View Reward',
-      AD_REWARD: 'Ad Reward',
-      AD_VIEW_REWARD: 'Ad View Reward',
-      AD_VIEW_DEDUCTION: 'Ad View Deduction',
-      AD_LIKE_REWARD: 'Ad Like Reward',
-      AD_LIKE_DEDUCTION: 'Ad Like Deduction',
-      AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
-      AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
-      AD_COMMENT_REWARD: 'Ad Comment Reward',
-      AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
-      AD_REPLY_REWARD: 'Ad Reply Reward',
-      AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
-      AD_SAVE_REWARD: 'Ad Save Reward',
-      AD_SAVE_DEDUCTION: 'Ad Save Deduction',
-      AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
-      LIKE: 'Like',
-      COMMENT: 'Comment',
-      REPLY: 'Reply',
-      SAVE: 'Save'
-    };
-
+    // Enrich and clean transactions for response
     const enriched = transactions.map((t) => {
-      const rawAmount = Number(t.amount || 0);
-      const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
-      const direction = amount >= 0 ? 'credit' : 'debit';
-      const createdAt = t.createdAt || t.transactionDate;
-      const title = titles[t.type] || t.type;
-      const refTitle = t.ad_id?.caption ? String(t.ad_id.caption) : '';
-      const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
-      return {
-        ...t,
-        amount,
-        ui: {
-          title,
-          description,
-          direction,
-          amount,
-          created_at: createdAt
-        }
-      };
+      const e = enrichTransaction(t, 'caption');
+      const { __v, ...tx } = e;
+      return tx;
     });
 
-    res.json({ ad_id: adId, total_budget_coins, balance_left, total: enriched.length, transactions: enriched });
+    res.json({
+      ad_id: adId,
+      total_budget_coins,
+      balance_left,
+      total: enriched.length,
+      transactions: enriched
+    });
   } catch (error) {
     console.error('Get ad wallet history error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -515,19 +437,12 @@ exports.updateWalletBalance = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Determine transaction type based on amount sign if not strictly provided
-    // Assuming 'type' is 'CREDIT' or 'DEBIT' from admin panel
-    // But transaction model uses specific enums like 'AD_REWARD', etc.
-    // Let's use 'ADMIN_ADJUSTMENT' for manual changes or stick to provided type.
-    
-    // Update wallet
     const wallet = await Wallet.findOneAndUpdate(
       { user_id: userId },
       { $inc: { balance: Number(amount) } },
       { new: true, upsert: true }
     );
 
-    // Create transaction record
     await WalletTransaction.create({
       user_id: userId,
       type: type || 'ADMIN_ADJUSTMENT',
@@ -536,7 +451,6 @@ exports.updateWalletBalance = async (req, res) => {
       description: description || 'Admin adjustment'
     });
 
-    // Send Notification
     try {
       const numAmount = Number(amount);
       if (numAmount > 0) {
