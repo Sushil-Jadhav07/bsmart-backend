@@ -404,6 +404,7 @@ exports.getMe = async (req, res) => {
     }
 
     const userData = user.toObject();
+    if (userData.password) delete userData.password;
     if (wallet) {
       userData.wallet = wallet;
     }

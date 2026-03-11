@@ -185,7 +185,20 @@ exports.updateUser = async (req, res) => {
     }
 
     // Update fields
-    const { full_name, bio, avatar_url, phone, username, gender, location } = req.body;
+    const { full_name, bio, avatar_url, phone, username, gender, location, address } = req.body;
+
+    const normalizeAddress = (raw = {}) => {
+      const obj = raw && typeof raw === 'object' ? raw : {};
+      const toStr = (v) => (v === undefined || v === null) ? '' : String(v);
+      return {
+        address_line1: toStr(obj.address_line1 ?? obj.addressLine1 ?? obj.address_line_1 ?? obj.addressLine_1 ?? obj.street),
+        address_line2: toStr(obj.address_line2 ?? obj.addressLine2 ?? obj.address_line_2 ?? obj.addressLine_2),
+        pincode: toStr(obj.pincode ?? obj.pin_code ?? obj.pinCode ?? obj.zip ?? obj.zipcode),
+        city: toStr(obj.city),
+        state: toStr(obj.state),
+        country: toStr(obj.country)
+      };
+    };
 
     // Build update object
     const updateFields = {};
@@ -196,6 +209,7 @@ exports.updateUser = async (req, res) => {
     if (username) updateFields.username = username;
     if (typeof gender !== 'undefined') updateFields.gender = gender;
     if (typeof location !== 'undefined') updateFields.location = location;
+    if (typeof address !== 'undefined') updateFields.address = normalizeAddress(address);
 
     const user = await User.findByIdAndUpdate(
       userId,

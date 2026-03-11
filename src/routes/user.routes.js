@@ -195,6 +195,22 @@ router.get('/:id/saved', auth, getSavedPostsByUser);
  *                 type: string
  *                 description: User location (city, country, etc.)
  *                 example: "Mumbai, India"
+ *               address:
+ *                 type: object
+ *                 description: Address object (replaces the whole address)
+ *                 properties:
+ *                   address_line1:
+ *                     type: string
+ *                   address_line2:
+ *                     type: string
+ *                   pincode:
+ *                     type: string
+ *                   city:
+ *                     type: string
+ *                   state:
+ *                     type: string
+ *                   country:
+ *                     type: string
  *     responses:
  *       200:
  *         description: User updated successfully

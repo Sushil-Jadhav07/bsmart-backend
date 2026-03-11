@@ -273,6 +273,27 @@ router.post('/login', login);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/User'
+ *             examples:
+ *               member:
+ *                 value:
+ *                   _id: "69b0754f32556f54fb1c2783"
+ *                   email: "member@example.com"
+ *                   username: "member123"
+ *                   full_name: "Member Name"
+ *                   phone: "+911234567890"
+ *                   gender: "male"
+ *                   location: "Mumbai, India"
+ *                   address:
+ *                     address_line1: "Address line 1"
+ *                     address_line2: "Address line 2"
+ *                     pincode: "560001"
+ *                     city: "Bengaluru"
+ *                     state: "Karnataka"
+ *                     country: "India"
+ *                   role: "member"
+ *                   wallet:
+ *                     balance: 0
+ *                     currency: "Coins"
  *       401:
  *         description: Not authorized
  *       404:
