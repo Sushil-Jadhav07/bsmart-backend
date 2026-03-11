@@ -146,6 +146,23 @@ router.get('/vendor/:userId/history', auth, getVendorWalletHistoryByUserId);
  *     responses:
  *       200:
  *         description: Ad transaction history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ad_id:
+ *                   type: string
+ *                 total_budget_coins:
+ *                   type: number
+ *                 balance_left:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 transactions:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/WalletTransaction'
  *       400:
  *         description: Invalid parameters
  *       403:
@@ -168,5 +185,99 @@ router.get('/ads/:adId/history', auth, getAdWalletHistory);
  *         description: All transactions and summary (no pagination)
  */
 router.get('/', auth, requireAdmin, getAllWallets);
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     WalletTransaction:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *         user_id:
+ *           oneOf:
+ *             - type: string
+ *             - type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 username:
+ *                   type: string
+ *                 full_name:
+ *                   type: string
+ *                 role:
+ *                   type: string
+ *                 avatar_url:
+ *                   type: string
+ *         vendor_id:
+ *           type: string
+ *         ad_id:
+ *           oneOf:
+ *             - type: string
+ *             - type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 caption:
+ *                   type: string
+ *         type:
+ *           type: string
+ *         amount:
+ *           type: number
+ *         description:
+ *           type: string
+ *         status:
+ *           type: string
+ *         transactionDate:
+ *           type: string
+ *           format: date-time
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *         ui:
+ *           type: object
+ *           properties:
+ *             title:
+ *               type: string
+ *             description:
+ *               type: string
+ *             direction:
+ *               type: string
+ *               enum: [credit, debit]
+ *             amount:
+ *               type: number
+ *             created_at:
+ *               type: string
+ *               format: date-time
+ *       example:
+ *         _id: "69b1394f14031fbfa34b40dd"
+ *         user_id:
+ *           _id: "69b1373a6c8c363efb249490"
+ *           username: "tech_supplies"
+ *           full_name: "Arjun Mehta"
+ *           role: "vendor"
+ *           avatar_url: ""
+ *         vendor_id: "69b1373a6c8c363efb249497"
+ *         ad_id:
+ *           _id: "69b138886e532a9f5d7d8edc"
+ *           caption: "somethings"
+ *         type: "AD_LIKE_DEDUCTION"
+ *         amount: -10
+ *         description: "Ad budget spent (like)"
+ *         status: "SUCCESS"
+ *         transactionDate: "2026-03-11T09:43:43.605Z"
+ *         createdAt: "2026-03-11T09:43:43.605Z"
+ *         updatedAt: "2026-03-11T09:43:43.605Z"
+ *         ui:
+ *           title: "Ad Like Deduction"
+ *           description: "Ad budget spent (like)"
+ *           direction: "debit"
+ *           amount: -10
+ *           created_at: "2026-03-11T09:43:43.605Z"
+ */
 
 module.exports = router;

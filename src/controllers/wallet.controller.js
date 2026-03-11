@@ -427,6 +427,34 @@ exports.getAdWalletHistory = async (req, res) => {
       .populate('ad_id', 'caption')
       .lean();
 
+    const adMeta = await Ad.findById(adId).select('total_budget_coins total_coins_spent').lean();
+    let total_budget_coins = Number(adMeta?.total_budget_coins ?? 0) || 0;
+    let total_coins_spent = Number(adMeta?.total_coins_spent ?? 0) || 0;
+
+    if (!total_budget_coins) {
+      const budgetTx = transactions.find((t) => t.type === 'AD_BUDGET_DEDUCTION');
+      const budgetAmount = Number(budgetTx?.amount ?? 0) || 0;
+      total_budget_coins = Math.abs(budgetAmount);
+    }
+
+    if (!total_coins_spent) {
+      const rewardTypes = new Set([
+        'AD_REWARD',
+        'AD_VIEW_REWARD',
+        'AD_LIKE_REWARD',
+        'AD_COMMENT_REWARD',
+        'AD_REPLY_REWARD',
+        'AD_SAVE_REWARD'
+      ]);
+      total_coins_spent = transactions.reduce((sum, t) => {
+        const amt = Number(t.amount ?? 0) || 0;
+        if (!rewardTypes.has(t.type)) return sum;
+        return sum + (amt > 0 ? amt : 0);
+      }, 0);
+    }
+
+    const balance_left = Math.max(0, total_budget_coins - total_coins_spent);
+
     const titles = {
       VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
       ADMIN_ADJUSTMENT: 'Admin Adjustment',
@@ -472,7 +500,7 @@ exports.getAdWalletHistory = async (req, res) => {
       };
     });
 
-    res.json({ ad_id: adId, total: enriched.length, transactions: enriched });
+    res.json({ ad_id: adId, total_budget_coins, balance_left, total: enriched.length, transactions: enriched });
   } catch (error) {
     console.error('Get ad wallet history error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
