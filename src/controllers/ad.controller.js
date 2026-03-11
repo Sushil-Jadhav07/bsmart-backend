@@ -474,39 +474,224 @@ exports.addAdCategory = async (req, res) => {
  */
 exports.recordAdView = async (req, res) => {
   try {
-    const userId = req.userId;
     const adId = req.params.id;
-
-    const ad = await Ad.findById(adId);
-    if (!ad || ad.status !== 'active' || ad.isDeleted) {
-      return res.status(404).json({ message: 'Ad not available' });
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
     }
 
-    let adView = await AdView.findOne({ ad_id: adId, user_id: userId });
-    let isUnique = false;
-
-    if (!adView) {
-      adView = new AdView({
-        ad_id: adId,
-        user_id: userId,
-        view_count: 1
-      });
-      isUnique = true;
-    } else {
-      adView.view_count += 1;
+    const bodyUserId = req.body?.user?.id || req.body?.user_id || req.body?.userId;
+    const actingUserId = String(bodyUserId || req.userId);
+    if (bodyUserId && String(bodyUserId) !== String(req.userId) && req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Forbidden' });
     }
 
-    await adView.save();
+    const now = new Date();
+    let viewCount = 0;
+    let rewardPaid = 0;
+    let rewarded = false;
 
-    // Update ad statistics
-    const update = { $inc: { views_count: 1 } };
-    if (isUnique) {
-      update.$inc.unique_views_count = 1;
-    }
-    await Ad.findByIdAndUpdate(adId, update);
+    await runMongoTransaction({
+      work: async (session) => {
+        const ad = await Ad.findById(adId).session(session);
+        if (!ad || ad.status !== 'active' || ad.isDeleted) {
+          const err = new Error('Ad not available');
+          err.statusCode = 404;
+          throw err;
+        }
 
-    res.json({ message: 'View recorded', view_count: adView.view_count });
+        let adView = await AdView.findOne({ ad_id: adId, user_id: actingUserId }).session(session);
+        const isUnique = !adView;
+
+        if (!adView) {
+          adView = new AdView({
+            ad_id: adId,
+            user_id: actingUserId,
+            view_count: 1
+          });
+        } else {
+          adView.view_count = Number(adView.view_count || 0) + 1;
+        }
+
+        const adUpdate = {
+          $inc: {
+            views_count: 1,
+            ...(isUnique ? { unique_views_count: 1 } : {})
+          }
+        };
+
+        if (!adView.completed) {
+          adView.completed = true;
+          adView.completed_at = now;
+          adUpdate.$inc.completed_views_count = 1;
+        }
+
+        const configuredReward = Number(ad.coins_reward);
+        const rewardAmount = Number.isFinite(configuredReward) && configuredReward > 0 ? configuredReward : REWARD_COINS;
+        const canReward = rewardAmount > 0 && String(ad.user_id) !== String(actingUserId);
+
+        if (canReward && !adView.rewarded) {
+          const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+          if (remaining >= rewardAmount) {
+            const upsertReward = await WalletTransaction.updateOne(
+              { user_id: actingUserId, ad_id: ad._id, type: 'AD_VIEW_REWARD' },
+              {
+                $setOnInsert: {
+                  vendor_id: ad.vendor_id,
+                  amount: rewardAmount,
+                  status: 'SUCCESS',
+                  description: 'Reward for completing ad view'
+                }
+              },
+              { upsert: true, session }
+            );
+            const upsertDeduction = await WalletTransaction.updateOne(
+              { user_id: ad.user_id, ad_id: ad._id, type: 'AD_VIEW_DEDUCTION' },
+              {
+                $setOnInsert: {
+                  vendor_id: ad.vendor_id,
+                  amount: -rewardAmount,
+                  status: 'SUCCESS',
+                  description: 'Ad budget spent (view)'
+                }
+              },
+              { upsert: true, session }
+            );
+
+            if (!!upsertReward?.upsertedId !== !!upsertDeduction?.upsertedId) {
+              const err = new Error('View reward transaction mismatch');
+              err.statusCode = 500;
+              throw err;
+            }
+
+            if (upsertReward?.upsertedId) {
+              await Wallet.findOneAndUpdate(
+                { user_id: actingUserId },
+                { $inc: { balance: rewardAmount } },
+                { upsert: true, session }
+              );
+
+              ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+
+              adView.rewarded = true;
+              adView.rewarded_at = now;
+              adView.coins_rewarded = rewardAmount;
+
+              rewardPaid = rewardAmount;
+              rewarded = true;
+            } else {
+              adView.rewarded = true;
+              if (!adView.rewarded_at) adView.rewarded_at = now;
+              rewarded = true;
+            }
+          }
+        }
+
+        await adView.save({ session });
+        await ad.save({ session });
+        await Ad.updateOne({ _id: adId }, adUpdate, { session });
+
+        viewCount = adView.view_count;
+      },
+      fallback: async () => {
+        const ad = await Ad.findById(adId);
+        if (!ad || ad.status !== 'active' || ad.isDeleted) {
+          const err = new Error('Ad not available');
+          err.statusCode = 404;
+          throw err;
+        }
+
+        let adView = await AdView.findOne({ ad_id: adId, user_id: actingUserId });
+        const isUnique = !adView;
+
+        if (!adView) {
+          adView = new AdView({
+            ad_id: adId,
+            user_id: actingUserId,
+            view_count: 1
+          });
+        } else {
+          adView.view_count = Number(adView.view_count || 0) + 1;
+        }
+
+        const adUpdate = {
+          $inc: {
+            views_count: 1,
+            ...(isUnique ? { unique_views_count: 1 } : {})
+          }
+        };
+
+        if (!adView.completed) {
+          adView.completed = true;
+          adView.completed_at = now;
+          adUpdate.$inc.completed_views_count = 1;
+        }
+
+        const configuredReward = Number(ad.coins_reward);
+        const rewardAmount = Number.isFinite(configuredReward) && configuredReward > 0 ? configuredReward : REWARD_COINS;
+        const canReward = rewardAmount > 0 && String(ad.user_id) !== String(actingUserId);
+
+        if (canReward && !adView.rewarded) {
+          const remaining = Number(ad.total_budget_coins || 0) - Number(ad.total_coins_spent || 0);
+          if (remaining >= rewardAmount) {
+            const upsertReward = await WalletTransaction.updateOne(
+              { user_id: actingUserId, ad_id: ad._id, type: 'AD_VIEW_REWARD' },
+              { $setOnInsert: { vendor_id: ad.vendor_id, amount: rewardAmount, status: 'SUCCESS', description: 'Reward for completing ad view' } },
+              { upsert: true }
+            );
+            const upsertDeduction = await WalletTransaction.updateOne(
+              { user_id: ad.user_id, ad_id: ad._id, type: 'AD_VIEW_DEDUCTION' },
+              { $setOnInsert: { vendor_id: ad.vendor_id, amount: -rewardAmount, status: 'SUCCESS', description: 'Ad budget spent (view)' } },
+              { upsert: true }
+            );
+
+            if (!!upsertReward?.upsertedId !== !!upsertDeduction?.upsertedId) {
+              const err = new Error('View reward transaction mismatch');
+              err.statusCode = 500;
+              throw err;
+            }
+
+            if (upsertReward?.upsertedId) {
+              await Wallet.findOneAndUpdate(
+                { user_id: actingUserId },
+                { $inc: { balance: rewardAmount } },
+                { upsert: true }
+              );
+
+              ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+
+              adView.rewarded = true;
+              adView.rewarded_at = now;
+              adView.coins_rewarded = rewardAmount;
+
+              rewardPaid = rewardAmount;
+              rewarded = true;
+            } else {
+              adView.rewarded = true;
+              if (!adView.rewarded_at) adView.rewarded_at = now;
+              rewarded = true;
+            }
+          }
+        }
+
+        await adView.save();
+        await ad.save();
+        await Ad.updateOne({ _id: adId }, adUpdate);
+
+        viewCount = adView.view_count;
+      }
+    });
+
+    res.json({
+      message: 'View recorded',
+      view_count: viewCount,
+      rewarded,
+      reward: rewardPaid
+    });
   } catch (error) {
+    const status = error.statusCode || 500;
+    if (status !== 500) {
+      return res.status(status).json({ message: error.message });
+    }
     console.error('Record ad view error:', error);
     res.status(500).json({ message: 'Server error' });
   }

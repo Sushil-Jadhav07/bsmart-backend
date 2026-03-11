@@ -12,7 +12,6 @@ const {
   getAdCategories,
   addAdCategory,
   recordAdView,
-  completeAdView,
   likeAd,
   dislikeAd,
   saveAd,
@@ -439,27 +438,7 @@ router.delete('/:id', auth, deleteAd);
  * @swagger
  * /api/ads/{id}/view:
  *   post:
- *     summary: Record an ad view
- *     tags: [Ads]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: View recorded
- */
-router.post('/:id/view', auth, recordAdView);
-
-/**
- * @swagger
- * /api/ads/{id}/complete:
- *   post:
- *     summary: Complete ad view and claim reward
+ *     summary: Record an ad view (counts view and applies reward if eligible)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -470,38 +449,23 @@ router.post('/:id/view', auth, recordAdView);
  *         schema:
  *           type: string
  *     requestBody:
+ *       required: false
  *       content:
  *         application/json:
  *           schema:
  *             type: object
  *             properties:
- *               watchTimeMs:
- *                 type: number
+ *               user:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                 description: Optional; if provided must match authenticated user (or admin)
  *     responses:
  *       200:
- *         description: Ad view completed and reward claimed
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Ad completed and rewarded"
- *                 reward:
- *                   type: number
- *                   description: Coins rewarded to member
- *                   example: 10
- *                 member_balance_change:
- *                   type: string
- *                   description: Balance change for member
- *                   example: "+10"
- *                 owner_balance_change:
- *                   type: string
- *                   description: Balance change for ad owner
- *                   example: "-10"
+ *         description: View recorded (and reward applied if eligible)
  */
-router.post('/:id/complete', auth, completeAdView);
+router.post('/:id/view', auth, recordAdView);
 
 /**
  * @swagger
