@@ -188,24 +188,10 @@ exports.addAdComment = async (req, res) => {
     // Increment comment count
     await Ad.findByIdAndUpdate(adId, { $inc: { comments_count: 1 } });
 
-    let coinsEarned = 0;
-    const REWARD_COINS = 10;
-    if (ad.user_id.toString() !== userId.toString()) {
-      const isReply = !!parentCommentId;
-      coinsEarned = await rewardAdEngagement({
-        userId,
-        adOwnerId: ad.user_id,
-        adId,
-        rewardAmount: REWARD_COINS,
-        userTxType: isReply ? 'AD_REPLY_REWARD' : 'AD_COMMENT_REWARD',
-        ownerTxType: isReply ? 'AD_REPLY_DEDUCTION' : 'AD_COMMENT_DEDUCTION',
-      });
-    }
-
     // Populate user info for immediate display
     await newComment.populate('user_id', 'username full_name avatar_url gender location');
 
-    res.status(201).json({ ...newComment.toObject(), coins_earned: coinsEarned });
+    res.status(201).json({ ...newComment.toObject(), coins_earned: 0 });
   } catch (error) {
     console.error('Add ad comment error:', error);
     res.status(500).json({ message: 'Server error' });

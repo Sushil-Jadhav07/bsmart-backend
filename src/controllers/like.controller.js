@@ -1,6 +1,4 @@
 const Post = require('../models/Post');
-const Wallet = require('../models/Wallet');
-const WalletTransaction = require('../models/WalletTransaction');
 const sendNotification = require('../utils/sendNotification');
 const User = require('../models/User'); // Need User model to get username
 
@@ -42,34 +40,6 @@ exports.likePost = async (req, res) => {
       }
     }
 
-    const ownerId = post.user_id.toString();
-    if (ownerId !== userId.toString()) {
-      try {
-        await new WalletTransaction({
-          user_id: userId,
-          post_id: postId,
-          type: 'LIKE',
-          amount: 10,
-          status: 'SUCCESS'
-        }).save();
-        await Wallet.updateOne({ user_id: userId }, { $inc: { balance: 10 } }, { upsert: true });
-      } catch (e) {
-        if (e.code !== 11000) throw e;
-      }
-      try {
-        await new WalletTransaction({
-          user_id: ownerId,
-          post_id: postId,
-          type: 'LIKE',
-          amount: -10,
-          status: 'SUCCESS'
-        }).save();
-        await Wallet.updateOne({ user_id: ownerId }, { $inc: { balance: -10 } }, { upsert: true });
-      } catch (e) {
-        if (e.code !== 11000) throw e;
-      }
-    }
-
     res.json({
       message: 'Liked',
       likes_count: post.likes_count,
@@ -98,12 +68,10 @@ exports.unlikePost = async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
 
-    // Check if not liked yet
     if (!post.likes.includes(userId)) {
       return res.status(400).json({ message: 'Not liked yet' });
     }
 
-    // Remove like
     post.likes = post.likes.filter(id => id.toString() !== userId.toString());
     post.likes_count = post.likes.length;
     await post.save();

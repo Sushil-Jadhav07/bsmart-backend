@@ -1,103 +1,138 @@
+'use strict';
+
 const mongoose = require('mongoose');
 
-const walletTransactionSchema = new mongoose.Schema({
-  user_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
+const walletTransactionSchema = new mongoose.Schema(
+  {
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
+    vendor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Vendor',
+      index: true,
+    },
+    post_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Post',
+      index: true,
+    },
+    ad_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ad',
+      index: true,
+    },
+    /**
+     * Transaction Type Reference
+     * ─────────────────────────────────────────────────────────
+     * VENDOR WALLET (stored with vendor's user_id)
+     *   VENDOR_REGISTRATION_CREDIT  – initial coins when vendor signs up
+     *   VENDOR_RECHARGE             – admin tops up vendor wallet
+     *   AD_BUDGET_DEDUCTION         – vendor creates ad; budget deducted
+     *   AD_LIKE_BUDGET_REFUND       – user un-likes; budget refunded to vendor
+     *   ADMIN_ADJUSTMENT            – manual admin credit/debit
+     *
+     * MEMBER WALLET (stored with member's user_id)
+     *   AD_VIEW_REWARD              – member completes watching an ad (first view only)
+     *   AD_LIKE_REWARD              – member likes an ad
+     *   AD_LIKE_REWARD_REVERSAL     – member un-likes; coins deducted back
+     *   AD_COMMENT_REWARD           – member comments on an ad
+     *   AD_REPLY_REWARD             – member replies to a comment on an ad
+     *   AD_SAVE_REWARD              – member saves an ad
+     *   VENDOR_PROFILE_VIEW_REWARD  – member views vendor profile for 3+ min
+     *   REEL_VIEW_REWARD            – member views a post/reel
+     *   AD_REWARD                   – generic ad engagement reward
+     *   ADMIN_ADJUSTMENT            – manual admin credit/debit
+     *
+     * AD BUDGET (stored with vendor's user_id, ad_id set)
+     *   AD_VIEW_DEDUCTION           – ad budget spent when member views ad
+     *   AD_LIKE_DEDUCTION           – ad budget spent when member likes ad
+     *   AD_COMMENT_DEDUCTION        – ad budget spent when member comments
+     *   AD_REPLY_DEDUCTION          – ad budget spent when member replies
+     *   AD_SAVE_DEDUCTION           – ad budget spent when member saves ad
+     */
+    type: {
+      type: String,
+      enum: [
+        // Vendor wallet
+        'VENDOR_REGISTRATION_CREDIT',
+        'VENDOR_RECHARGE',
+        'AD_BUDGET_DEDUCTION',
+        'AD_LIKE_BUDGET_REFUND',
+        'VENDOR_PROFILE_VIEW_DEDUCTION',
+        // Member wallet – rewards
+        'REEL_VIEW_REWARD',
+        'AD_REWARD',
+        'AD_VIEW_REWARD',
+        'AD_LIKE_REWARD',
+        'AD_LIKE_REWARD_REVERSAL',
+        'AD_COMMENT_REWARD',
+        'AD_REPLY_REWARD',
+        'AD_SAVE_REWARD',
+        'VENDOR_PROFILE_VIEW_REWARD',
+        // Ad budget – deductions (vendor's wallet)
+        'AD_VIEW_DEDUCTION',
+        'AD_LIKE_DEDUCTION',
+        'AD_COMMENT_DEDUCTION',
+        'AD_REPLY_DEDUCTION',
+        'AD_SAVE_DEDUCTION',
+        // Shared
+        'ADMIN_ADJUSTMENT',
+        // Legacy post actions
+        'LIKE',
+        'COMMENT',
+        'REPLY',
+        'SAVE',
+      ],
+      required: true,
+    },
+    amount: {
+      type: Number,
+      default: 10,
+    },
+    description: {
+      type: String,
+      default: '',
+    },
+    status: {
+      type: String,
+      enum: ['SUCCESS', 'FAILED'],
+      default: 'SUCCESS',
+    },
+    transactionDate: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  vendor_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Vendor',
-    index: true
-  },
-  post_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Post',
-    required: false,
-    index: true
-  },
-  ad_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Ad',
-    required: false,
-    index: true
-  },
-  type: {
-    type: String,
-    // AD_REWARD: coins rewarded to a user for engaging with/viewing an ad (minting)
-    // AD_BUDGET_DEDUCTION: coins deducted from vendor wallet when creating an ad (spend)
-    enum: [
-      'REEL_VIEW_REWARD',
-      'LIKE', 'COMMENT', 'REPLY', 'SAVE',
-      'VENDOR_REGISTRATION_CREDIT',
-      'ADMIN_ADJUSTMENT',
-      'AD_REWARD',
-      'AD_VIEW_REWARD',
-      'AD_VIEW_DEDUCTION',
-      'AD_LIKE_REWARD',
-      'AD_LIKE_DEDUCTION',
-      'AD_LIKE_REWARD_REVERSAL',
-      'AD_LIKE_BUDGET_REFUND',
-      'AD_COMMENT_REWARD',
-      'AD_REPLY_REWARD',
-      'AD_COMMENT_DEDUCTION',
-      'AD_REPLY_DEDUCTION',
-      'AD_SAVE_REWARD',
-      'AD_SAVE_DEDUCTION',
-      'AD_BUDGET_DEDUCTION'
-    ],
-    required: true
-  },
-  amount: {
-    type: Number,
-    default: 10
-  },
-  description: {
-    type: String,
-    default: ''
-  },
-  status: {
-    type: String,
-    enum: ['SUCCESS', 'FAILED'],
-    default: 'SUCCESS'
-  },
-  transactionDate: {
-    type: Date,
-    default: Date.now
-  }
-}, {
-  timestamps: true
-});
+  { timestamps: true }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Indexes
+// ─────────────────────────────────────────────────────────────
 
 /**
- * IMPORTANT (MongoDB index notes)
+ * IMPORTANT – unique index notes
  *
- * Your production DB previously had a UNIQUE index on { user_id, post_id, type }.
- * That breaks ad transactions because ads don't always have post_id (null), causing
- * E11000 duplicate key errors.
+ * We use PARTIAL indexes so null ad_id / post_id doesn't cause E11000 errors.
  *
- * Fix strategy:
- * - Keep uniqueness for post-related actions ONLY when post_id exists.
- * - Keep uniqueness for ad-related actions ONLY when ad_id exists.
- *
- * This allows:
- * - One LIKE/COMMENT/etc per user per post (if you use it that way)
- * - One AD_REWARD per user per ad (reward once)
- * - One AD_BUDGET_DEDUCTION per vendor per ad (deduct once)
+ * post-based actions: one per user per post
  */
-
-// Unique for post-based transactions (only when post_id is present)
 walletTransactionSchema.index(
   { user_id: 1, post_id: 1, type: 1 },
   {
     unique: true,
-    partialFilterExpression: { post_id: { $type: 'objectId' } }
+    partialFilterExpression: { post_id: { $type: 'objectId' } },
   }
 );
 
-// Unique for ad-based transactions (only when ad_id is present)
+/**
+ * ad-based actions that should only happen once per user per ad
+ * (view reward, budget deduction, comment, reply, save)
+ */
 walletTransactionSchema.index(
   { user_id: 1, ad_id: 1, type: 1 },
   {
@@ -114,14 +149,16 @@ walletTransactionSchema.index(
           'AD_REPLY_REWARD',
           'AD_REPLY_DEDUCTION',
           'AD_SAVE_REWARD',
-          'AD_SAVE_DEDUCTION'
-        ]
-      }
-    }
+          'AD_SAVE_DEDUCTION',
+          'VENDOR_PROFILE_VIEW_REWARD',
+        ],
+      },
+    },
   }
 );
 
-// For fetching user history efficiently
+// Efficient history queries
 walletTransactionSchema.index({ user_id: 1, createdAt: -1 });
+walletTransactionSchema.index({ ad_id: 1, createdAt: -1 });
 
 module.exports = mongoose.model('WalletTransaction', walletTransactionSchema);

@@ -19,7 +19,7 @@ const {
 } = require('../controllers/vendor.controller');
 const requireAdmin = require('../middleware/requireAdmin');
 const { deleteVendorByAdmin } = require('../controllers/admin.controller');
-
+const { recordVendorProfileView } = require('../controllers/vendorProfileView.controller');
 /**
  * @swagger
  * tags:
@@ -295,5 +295,34 @@ router.get('/admin/all', requireAdmin, getAllVendorsForAdmin);
  *         description: Vendor not found
  */
 router.delete('/admin/user/:userId', requireAdmin, deleteVendorByUserId);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{vendorUserId}/view:
+ *   post:
+ *     summary: Record a vendor profile view (credits member, deducts from vendor wallet)
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: vendorUserId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profile view reward recorded
+ *       400:
+ *         description: Invalid vendorUserId / insufficient vendor wallet balance
+ *       403:
+ *         description: Only members can earn
+ *       404:
+ *         description: Vendor not found
+ *       429:
+ *         description: Cooldown not finished
+ */
+router.post('/profile/:vendorUserId/view', auth, recordVendorProfileView);
+
 
 module.exports = router;
