@@ -438,18 +438,18 @@ exports.getAdWalletHistory = async (req, res) => {
     }
 
     if (!total_coins_spent) {
-      const rewardTypes = new Set([
-        'AD_REWARD',
-        'AD_VIEW_REWARD',
-        'AD_LIKE_REWARD',
-        'AD_COMMENT_REWARD',
-        'AD_REPLY_REWARD',
-        'AD_SAVE_REWARD'
+      // Sum all per-interaction deductions (like, view, comment, reply, save) — excluding the initial budget deduction
+      const interactionDeductionTypes = new Set([
+        'AD_VIEW_DEDUCTION',
+        'AD_LIKE_DEDUCTION',
+        'AD_COMMENT_DEDUCTION',
+        'AD_REPLY_DEDUCTION',
+        'AD_SAVE_DEDUCTION'
       ]);
       total_coins_spent = transactions.reduce((sum, t) => {
         const amt = Number(t.amount ?? 0) || 0;
-        if (!rewardTypes.has(t.type)) return sum;
-        return sum + (amt > 0 ? amt : 0);
+        if (!interactionDeductionTypes.has(t.type)) return sum;
+        return sum + Math.abs(amt);
       }, 0);
     }
 
