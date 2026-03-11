@@ -30,6 +30,38 @@ const run = async () => {
     [{ $set: { amount: { $multiply: ['$amount', -1] } } }]
   );
 
+  try {
+    await WalletTransaction.collection.dropIndex('user_id_1_ad_id_1_type_1');
+  } catch (e) {
+    if (e && e.codeName !== 'IndexNotFound') {
+      throw e;
+    }
+  }
+
+  await WalletTransaction.collection.createIndex(
+    { user_id: 1, ad_id: 1, type: 1 },
+    {
+      unique: true,
+      name: 'user_id_1_ad_id_1_type_1',
+      partialFilterExpression: {
+        ad_id: { $type: 'objectId' },
+        type: {
+          $in: [
+            'AD_VIEW_REWARD',
+            'AD_VIEW_DEDUCTION',
+            'AD_BUDGET_DEDUCTION',
+            'AD_COMMENT_REWARD',
+            'AD_COMMENT_DEDUCTION',
+            'AD_REPLY_REWARD',
+            'AD_REPLY_DEDUCTION',
+            'AD_SAVE_REWARD',
+            'AD_SAVE_DEDUCTION'
+          ]
+        }
+      }
+    }
+  );
+
   const cursor = WalletTransaction.find({ ad_id: { $type: 'objectId' }, vendor_id: { $exists: false } })
     .select('_id ad_id')
     .cursor();
@@ -50,4 +82,3 @@ run().then(() => {
   console.error(err);
   process.exit(1);
 });
-

@@ -271,8 +271,102 @@ exports.getVendorWalletHistoryByUserId = async (req, res) => {
       return res.status(400).json({ message: 'User is not a vendor' });
     }
 
-    const { wallet, transactions } = await getWalletHistoryForUser({ userId });
-    res.json({ user_id: userId, wallet: { balance: wallet.balance, currency: wallet.currency }, transactions });
+    const wallet = await Wallet.findOne({ user_id: userId }) || { balance: 0, currency: 'Coins' };
+
+    const vendor = await mongoose.model('Vendor').findOne({ user_id: userId }).select('_id').lean();
+    const vendorId = vendor?._id;
+
+    const userTx = await WalletTransaction.find({ user_id: userId })
+      .sort({ createdAt: -1 })
+      .populate('ad_id', 'title thumbnail_url')
+      .populate('post_id', '_id type')
+      .lean();
+
+    let vendorAdTx = [];
+    if (vendorId) {
+      vendorAdTx = await WalletTransaction.find({ vendor_id: vendorId })
+        .sort({ createdAt: -1 })
+        .populate('ad_id', 'title thumbnail_url')
+        .populate('post_id', '_id type')
+        .lean();
+    }
+
+    const map = new Map();
+    [...userTx, ...vendorAdTx].forEach(t => map.set(String(t._id), t));
+    const merged = Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const titles = {
+      VENDOR_REGISTRATION_CREDIT: 'Registration Credit',
+      ADMIN_ADJUSTMENT: 'Admin Adjustment',
+      REEL_VIEW_REWARD: 'Reel View Reward',
+      AD_REWARD: 'Ad Reward',
+      AD_VIEW_REWARD: 'Ad View Reward',
+      AD_VIEW_DEDUCTION: 'Ad View Deduction',
+      AD_LIKE_REWARD: 'Ad Like Reward',
+      AD_LIKE_DEDUCTION: 'Ad Like Deduction',
+      AD_LIKE_REWARD_REVERSAL: 'Like Reversal (User Debit)',
+      AD_LIKE_BUDGET_REFUND: 'Like Reversal (Ad Budget Refund)',
+      AD_COMMENT_REWARD: 'Ad Comment Reward',
+      AD_COMMENT_DEDUCTION: 'Ad Comment Deduction',
+      AD_REPLY_REWARD: 'Ad Reply Reward',
+      AD_REPLY_DEDUCTION: 'Ad Reply Deduction',
+      AD_SAVE_REWARD: 'Ad Save Reward',
+      AD_SAVE_DEDUCTION: 'Ad Save Deduction',
+      AD_BUDGET_DEDUCTION: 'Ad Budget Deduction',
+      LIKE: 'Like',
+      COMMENT: 'Comment',
+      REPLY: 'Reply',
+      SAVE: 'Save'
+    };
+
+    const enriched = merged.map((t) => {
+      const rawAmount = Number(t.amount || 0);
+      const amount = (rawAmount > 0 && DEBIT_TYPES.has(t.type)) ? -rawAmount : rawAmount;
+      const direction = amount >= 0 ? 'credit' : 'debit';
+      const createdAt = t.createdAt || t.transactionDate;
+      const title = titles[t.type] || t.type;
+      const refTitle = t.ad_id?.title ? String(t.ad_id.title) : '';
+      const description = t.description || (refTitle ? `${title} • ${refTitle}` : title);
+      return {
+        ...t,
+        amount,
+        ui: {
+          title,
+          description,
+          direction,
+          amount,
+          created_at: createdAt
+        }
+      };
+    });
+
+    if (enriched.length === 0 && Number(wallet.balance || 0) > 0) {
+      const amount = Number(wallet.balance || 0);
+      const createdAt = wallet.createdAt || new Date();
+      const title = 'Registration Credit';
+      const description = 'Initial credits added on vendor registration';
+      enriched.push({
+        _id: null,
+        user_id: userId,
+        type: 'VENDOR_REGISTRATION_CREDIT',
+        amount,
+        status: 'SUCCESS',
+        description,
+        transactionDate: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        synthetic: true,
+        ui: {
+          title,
+          description,
+          direction: 'credit',
+          amount,
+          created_at: createdAt
+        }
+      });
+    }
+
+    res.json({ user_id: userId, wallet: { balance: wallet.balance, currency: wallet.currency }, transactions: enriched });
   } catch (error) {
     console.error('Get vendor wallet history error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

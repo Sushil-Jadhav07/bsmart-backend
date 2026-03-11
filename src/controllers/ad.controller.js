@@ -732,9 +732,6 @@ exports.likeAd = async (req, res) => {
         ad.likes_count = Number(ad.likes_count || 0) + 1;
 
         if (ad.user_id.toString() !== actingUserId) {
-          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
-          coinsEarned = rewardAmount;
-
           await Wallet.findOneAndUpdate(
             { user_id: actingUserId },
             { $inc: { balance: rewardAmount } },
@@ -761,6 +758,9 @@ exports.likeAd = async (req, res) => {
               description: 'Ad budget spent (like)'
             }
           ], { session });
+
+          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+          coinsEarned = rewardAmount;
         }
 
         await ad.save({ session });
@@ -792,9 +792,6 @@ exports.likeAd = async (req, res) => {
         ad.likes_count = Number(ad.likes_count || 0) + 1;
 
         if (ad.user_id.toString() !== actingUserId) {
-          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
-          coinsEarned = rewardAmount;
-
           await Wallet.findOneAndUpdate(
             { user_id: actingUserId },
             { $inc: { balance: rewardAmount } },
@@ -821,6 +818,9 @@ exports.likeAd = async (req, res) => {
               description: 'Ad budget spent (like)'
             }
           ]);
+
+          ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
+          coinsEarned = rewardAmount;
         }
 
         await ad.save();

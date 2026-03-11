@@ -107,9 +107,7 @@ walletTransactionSchema.index(
       type: {
         $in: [
           'AD_VIEW_REWARD',
-          'AD_LIKE_REWARD',
           'AD_VIEW_DEDUCTION',
-          'AD_LIKE_DEDUCTION',
           'AD_BUDGET_DEDUCTION',
           'AD_COMMENT_REWARD',
           'AD_COMMENT_DEDUCTION',
