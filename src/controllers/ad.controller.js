@@ -12,6 +12,7 @@ const AdCategory = require('../models/AdCategory');
 const Notification = require('../models/notification.model');
 const sendNotification = require('../utils/sendNotification');
 const runMongoTransaction = require('../utils/runMongoTransaction');
+const MemberAdAction = require('../models/MemberAdAction');
 
 const REWARD_COINS = 10; // Coins given to user when they like/comment/reply/save an ad (deducted from ad creator)
 
@@ -761,6 +762,14 @@ exports.likeAd = async (req, res) => {
 
           ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
           coinsEarned = rewardAmount;
+
+          await MemberAdAction.create([{
+            user_id: actingUserId,
+            vendor_id: ad.vendor_id,
+            ad_id: ad._id,
+            event_type: 'like',
+            credit_delta: rewardAmount
+          }], { session });
         }
 
         await ad.save({ session });
@@ -821,6 +830,14 @@ exports.likeAd = async (req, res) => {
 
           ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
           coinsEarned = rewardAmount;
+
+          await MemberAdAction.create({
+            user_id: actingUserId,
+            vendor_id: ad.vendor_id,
+            ad_id: ad._id,
+            event_type: 'like',
+            credit_delta: rewardAmount
+          });
         }
 
         await ad.save();
@@ -894,41 +911,54 @@ exports.dislikeAd = async (req, res) => {
           throw err;
         }
 
-        const wallet = await Wallet.findOneAndUpdate(
-          { user_id: actingUserId, balance: { $gte: rewardAmount } },
-          { $inc: { balance: -rewardAmount } },
-          { new: true, session }
+        const upsertUserReversal = await WalletTransaction.updateOne(
+          { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD_REVERSAL' },
+          {
+            $setOnInsert: {
+              vendor_id: ad.vendor_id,
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reversal of like reward'
+            }
+          },
+          { upsert: true, session }
         );
-        if (!wallet) {
-          const err = new Error('Insufficient wallet balance to reverse like');
-          err.statusCode = 400;
-          throw err;
-        }
+        const upsertVendorRefund = await WalletTransaction.updateOne(
+          { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_BUDGET_REFUND' },
+          {
+            $setOnInsert: {
+              vendor_id: ad.vendor_id,
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Refund to ad budget (like reversal)'
+            }
+          },
+          { upsert: true, session }
+        );
 
         ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
         ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
-        ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
 
-        await WalletTransaction.create([
-          {
+        if ((upsertUserReversal && upsertUserReversal.upsertedId) || (upsertVendorRefund && upsertVendorRefund.upsertedId)) {
+          const wallet = await Wallet.findOneAndUpdate(
+            { user_id: actingUserId, balance: { $gte: rewardAmount } },
+            { $inc: { balance: -rewardAmount } },
+            { new: true, session }
+          );
+          if (!wallet) {
+            const err = new Error('Insufficient wallet balance to reverse like');
+            err.statusCode = 400;
+            throw err;
+          }
+          ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
+          await MemberAdAction.create([{
             user_id: actingUserId,
             vendor_id: ad.vendor_id,
             ad_id: ad._id,
-            type: 'AD_LIKE_REWARD_REVERSAL',
-            amount: -rewardAmount,
-            status: 'SUCCESS',
-            description: 'Reversal of like reward'
-          },
-          {
-            user_id: ad.user_id,
-            vendor_id: ad.vendor_id,
-            ad_id: ad._id,
-            type: 'AD_LIKE_BUDGET_REFUND',
-            amount: rewardAmount,
-            status: 'SUCCESS',
-            description: 'Refund to ad budget (like reversal)'
-          }
-        ], { session });
+            event_type: 'undo-like',
+            credit_delta: -rewardAmount
+          }], { session });
+        }
 
         await ad.save({ session });
         finalLikesCount = ad.likes_count;
@@ -948,49 +978,57 @@ exports.dislikeAd = async (req, res) => {
           throw err;
         }
 
-        const wallet = await Wallet.findOneAndUpdate(
-          { user_id: actingUserId, balance: { $gte: rewardAmount } },
-          { $inc: { balance: -rewardAmount } },
-          { new: true }
-        );
-        if (!wallet) {
-          const err = new Error('Insufficient wallet balance to reverse like');
-          err.statusCode = 400;
-          throw err;
-        }
-
-        try {
-          ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
-          ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
-          ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
-
-          await WalletTransaction.create([
-            {
-              user_id: actingUserId,
+        const upsertUserReversal = await WalletTransaction.updateOne(
+          { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD_REVERSAL' },
+          {
+            $setOnInsert: {
               vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_LIKE_REWARD_REVERSAL',
               amount: -rewardAmount,
               status: 'SUCCESS',
               description: 'Reversal of like reward'
-            },
-            {
-              user_id: ad.user_id,
+            }
+          },
+          { upsert: true }
+        );
+        const upsertVendorRefund = await WalletTransaction.updateOne(
+          { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_BUDGET_REFUND' },
+          {
+            $setOnInsert: {
               vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_LIKE_BUDGET_REFUND',
               amount: rewardAmount,
               status: 'SUCCESS',
               description: 'Refund to ad budget (like reversal)'
             }
-          ]);
+          },
+          { upsert: true }
+        );
 
-          await ad.save();
-          finalLikesCount = ad.likes_count;
-        } catch (e) {
-          await Wallet.findOneAndUpdate({ user_id: actingUserId }, { $inc: { balance: rewardAmount } });
-          throw e;
+        ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
+        ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
+
+        if ((upsertUserReversal && upsertUserReversal.upsertedId) || (upsertVendorRefund && upsertVendorRefund.upsertedId)) {
+          const wallet = await Wallet.findOneAndUpdate(
+            { user_id: actingUserId, balance: { $gte: rewardAmount } },
+            { $inc: { balance: -rewardAmount } },
+            { new: true }
+          );
+          if (!wallet) {
+            const err = new Error('Insufficient wallet balance to reverse like');
+            err.statusCode = 400;
+            throw err;
+          }
+          ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
+          await MemberAdAction.create({
+            user_id: actingUserId,
+            vendor_id: ad.vendor_id,
+            ad_id: ad._id,
+            event_type: 'undo-like',
+            credit_delta: -rewardAmount
+          });
         }
+
+        await ad.save();
+        finalLikesCount = ad.likes_count;
       }
     });
 

@@ -23,6 +23,8 @@ const memberRoutes = require('./src/routes/member.routes');
 const adRoutes = require('./src/routes/ad.routes');
 const walletRoutes = require('./src/routes/wallet.routes');
 const notificationRoutes = require('./src/routes/notification.routes');
+const memberV1Routes = require('./src/routes/member.v1.routes');
+const vendorV1Routes = require('./src/routes/vendor.v1.routes');
 
 const app = express();
 const server = http.createServer(app);  // ← WRAP app in http server
@@ -88,6 +90,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/ads', adRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/v1/member', memberV1Routes);
+app.use('/api/v1/vendor', vendorV1Routes);
 
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
