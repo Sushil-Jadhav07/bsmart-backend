@@ -13,7 +13,6 @@ const runMongoTransaction = require('../utils/runMongoTransaction');
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-/** Transaction types that represent money going OUT of a wallet (debit) */
 const DEBIT_TYPES = new Set([
   'AD_VIEW_DEDUCTION',
   'AD_LIKE_DEDUCTION',
@@ -25,7 +24,6 @@ const DEBIT_TYPES = new Set([
   'VENDOR_PROFILE_VIEW_DEDUCTION',
 ]);
 
-/** Transaction types that belong to the Vendor's own wallet activity */
 const VENDOR_WALLET_TYPES = new Set([
   'VENDOR_REGISTRATION_CREDIT',
   'VENDOR_RECHARGE',
@@ -35,7 +33,6 @@ const VENDOR_WALLET_TYPES = new Set([
   'ADMIN_ADJUSTMENT',
 ]);
 
-/** Transaction types that belong to the Member's own wallet activity */
 const MEMBER_WALLET_TYPES = new Set([
   'AD_VIEW_REWARD',
   'AD_LIKE_REWARD',
@@ -49,7 +46,6 @@ const MEMBER_WALLET_TYPES = new Set([
   'ADMIN_ADJUSTMENT',
 ]);
 
-/** Deduction types that reduce ad budget (used for budget math) */
 const AD_DEDUCTION_TYPES = [
   'AD_VIEW_DEDUCTION',
   'AD_LIKE_DEDUCTION',
@@ -59,40 +55,36 @@ const AD_DEDUCTION_TYPES = [
 ];
 
 const TRANSACTION_LABELS = {
-  VENDOR_REGISTRATION_CREDIT:  'Registration Credit',
-  VENDOR_RECHARGE:             'Wallet Recharge',
-  ADMIN_ADJUSTMENT:            'Admin Adjustment',
-  REEL_VIEW_REWARD:            'Reel View Reward',
-  AD_REWARD:                   'Ad Reward',
-  AD_VIEW_REWARD:              'Ad View Reward',
-  AD_VIEW_DEDUCTION:           'Ad View Deduction',
-  AD_LIKE_REWARD:              'Ad Like Reward',
-  AD_LIKE_DEDUCTION:           'Ad Like Deduction',
-  AD_LIKE_REWARD_REVERSAL:     'Like Reversed (Deducted)',
-  AD_LIKE_BUDGET_REFUND:       'Like Reversed (Refund)',
-  AD_COMMENT_REWARD:           'Ad Comment Reward',
-  AD_COMMENT_DEDUCTION:        'Ad Comment Deduction',
-  AD_REPLY_REWARD:             'Ad Reply Reward',
-  AD_REPLY_DEDUCTION:          'Ad Reply Deduction',
-  AD_SAVE_REWARD:              'Ad Save Reward',
-  AD_SAVE_DEDUCTION:           'Ad Save Deduction',
-  AD_BUDGET_DEDUCTION:         'Ad Budget Allocated',
-  VENDOR_PROFILE_VIEW_REWARD:  'Vendor Profile View Reward',
-  VENDOR_PROFILE_VIEW_DEDUCTION: 'Vendor Profile View Deduction',
-  LIKE:                        'Like',
-  COMMENT:                     'Comment',
-  REPLY:                       'Reply',
-  SAVE:                        'Save',
+  VENDOR_REGISTRATION_CREDIT:     'Registration Credit',
+  VENDOR_RECHARGE:                'Wallet Recharge',
+  ADMIN_ADJUSTMENT:               'Admin Adjustment',
+  REEL_VIEW_REWARD:               'Reel View Reward',
+  AD_REWARD:                      'Ad Reward',
+  AD_VIEW_REWARD:                 'Ad View Reward',
+  AD_VIEW_DEDUCTION:              'Ad View Deduction',
+  AD_LIKE_REWARD:                 'Ad Like Reward',
+  AD_LIKE_DEDUCTION:              'Ad Like Deduction',
+  AD_LIKE_REWARD_REVERSAL:        'Like Reversed (Deducted)',
+  AD_LIKE_BUDGET_REFUND:          'Like Reversed (Refund)',
+  AD_COMMENT_REWARD:              'Ad Comment Reward',
+  AD_COMMENT_DEDUCTION:           'Ad Comment Deduction',
+  AD_REPLY_REWARD:                'Ad Reply Reward',
+  AD_REPLY_DEDUCTION:             'Ad Reply Deduction',
+  AD_SAVE_REWARD:                 'Ad Save Reward',
+  AD_SAVE_DEDUCTION:              'Ad Save Deduction',
+  AD_BUDGET_DEDUCTION:            'Ad Budget Allocated',
+  VENDOR_PROFILE_VIEW_REWARD:     'Vendor Profile View Reward',
+  VENDOR_PROFILE_VIEW_DEDUCTION:  'Vendor Profile View Deduction',
+  LIKE:                           'Like',
+  COMMENT:                        'Comment',
+  REPLY:                          'Reply',
+  SAVE:                           'Save',
 };
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Enrich a raw transaction document with a clean `ui` block and corrected
- * signed amount (debit types always negative).
- */
 const enrichTransaction = (t, adTitleField = 'caption') => {
   const rawAmount = Number(t.amount ?? 0);
   const amount = rawAmount > 0 && DEBIT_TYPES.has(t.type) ? -rawAmount : rawAmount;
@@ -120,7 +112,6 @@ const enrichTransaction = (t, adTitleField = 'caption') => {
   };
 };
 
-/** Upsert a wallet, returning the existing or newly created doc. */
 const getOrCreateWallet = async (userId, session) => {
   const opts = session ? { new: true, upsert: true, session } : { new: true, upsert: true };
   return Wallet.findOneAndUpdate(
@@ -137,13 +128,9 @@ const canAccessWallet = (requester, targetUserId) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Controllers
+// GET /api/wallet/me
 // ─────────────────────────────────────────────────────────────
 
-/**
- * GET /api/wallet/me
- * Returns the authenticated user's own wallet balance + recent transactions.
- */
 exports.getMyWallet = async (req, res) => {
   try {
     const userId = req.userId;
@@ -160,10 +147,7 @@ exports.getMyWallet = async (req, res) => {
 
     res.json({
       success: true,
-      wallet: {
-        balance: wallet.balance,
-        currency: wallet.currency,
-      },
+      wallet: { balance: wallet.balance, currency: wallet.currency },
       total: transactions.length,
       transactions,
     });
@@ -173,85 +157,10 @@ exports.getMyWallet = async (req, res) => {
   }
 };
 
-/**
- * GET /api/wallet/vendor/:userId/history
- * Shows ONLY vendor-side wallet transactions:
- *   - VENDOR_REGISTRATION_CREDIT (initial credits on signup)
- *   - VENDOR_RECHARGE (admin/manual top-ups)
- *   - AD_BUDGET_DEDUCTION (coins spent when creating an ad)
- *   - AD_LIKE_BUDGET_REFUND (coins refunded when a user un-likes)
- *   - ADMIN_ADJUSTMENT
- */
-exports.getVendorWalletHistory = async (req, res) => {
-  try {
-    const { userId } = req.params;
+// ─────────────────────────────────────────────────────────────
+// GET /api/wallet/member/:userId/history
+// ─────────────────────────────────────────────────────────────
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid userId' });
-    }
-    if (!canAccessWallet(req.user, userId)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' });
-    }
-
-    const user = await User.findById(userId).select('role username full_name avatar_url').lean();
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    if (user.role !== 'vendor') {
-      return res.status(400).json({ success: false, message: 'User is not a vendor' });
-    }
-
-    const wallet = await getOrCreateWallet(userId);
-
-    // Vendor wallet transactions are stored with user_id = vendor's user_id
-    const rawTx = await WalletTransaction.find({
-      user_id: userId,
-      type: { $in: Array.from(VENDOR_WALLET_TYPES) },
-    })
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .populate('ad_id', 'caption title thumbnail_url status')
-      .lean();
-
-    const transactions = rawTx.map((t) => enrichTransaction(t, 'caption'));
-
-    // Summary stats
-    const totalCredited = transactions
-      .filter((t) => t.direction === 'credit')
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-    const totalDebited = transactions
-      .filter((t) => t.direction === 'debit')
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-    res.json({
-      success: true,
-      user: {
-        _id: user._id,
-        username: user.username,
-        full_name: user.full_name,
-        avatar_url: user.avatar_url,
-        role: user.role,
-      },
-      wallet: {
-        balance: wallet.balance,
-        currency: wallet.currency,
-      },
-      summary: {
-        total_credited: totalCredited,
-        total_debited: totalDebited,
-        total_transactions: transactions.length,
-      },
-      transactions,
-    });
-  } catch (err) {
-    console.error('[getVendorWalletHistory]', err);
-    res.status(500).json({ success: false, message: 'Server error', error: err.message });
-  }
-};
-
-/**
- * GET /api/wallet/member/:userId/history
- * Shows ONLY member-side wallet transactions — rewards earned from engaging with ads.
- */
 exports.getMemberWalletHistory = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -269,26 +178,70 @@ exports.getMemberWalletHistory = async (req, res) => {
       return res.status(400).json({ success: false, message: 'User is not a member' });
     }
 
-    const wallet = await getOrCreateWallet(userId);
+    // Parse optional query filters
+    const { startDate, endDate, type, limit = 100, page = 1 } = req.query;
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 100), 500);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (pageNum - 1) * limitNum;
 
-    const rawTx = await WalletTransaction.find({
-      user_id: userId,
+    const match = {
+      user_id: new mongoose.Types.ObjectId(userId),
       type: { $in: Array.from(MEMBER_WALLET_TYPES) },
-    })
+    };
+
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) {
+        const d = new Date(String(startDate));
+        if (!isNaN(d)) match.createdAt.$gte = d;
+      }
+      if (endDate) {
+        const d = new Date(String(endDate));
+        if (!isNaN(d)) { d.setHours(23, 59, 59, 999); match.createdAt.$lte = d; }
+      }
+    }
+
+    if (type) {
+      const requestedTypes = String(type).split(',').map((s) => s.trim()).filter(Boolean);
+      const allowed = requestedTypes.filter((t) => MEMBER_WALLET_TYPES.has(t));
+      if (allowed.length) match.type = { $in: allowed };
+    }
+
+    const wallet = await getOrCreateWallet(userId);
+    const total = await WalletTransaction.countDocuments(match);
+
+    const rawTx = await WalletTransaction.find(match)
       .sort({ createdAt: -1 })
-      .limit(100)
+      .skip(skip)
+      .limit(limitNum)
       .populate('ad_id', 'caption title thumbnail_url')
       .lean();
 
     const transactions = rawTx.map((t) => enrichTransaction(t, 'caption'));
 
-    const totalEarned = transactions
-      .filter((t) => t.direction === 'credit')
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // Aggregate summary (over ALL transactions for this member, not paginated)
+    const [agg] = await WalletTransaction.aggregate([
+      { $match: { user_id: new mongoose.Types.ObjectId(userId), type: { $in: Array.from(MEMBER_WALLET_TYPES) } } },
+      {
+        $group: {
+          _id: null,
+          total_earned:   { $sum: { $cond: [{ $gt: ['$amount', 0] }, '$amount', 0] } },
+          total_deducted: { $sum: { $cond: [{ $lt: ['$amount', 0] }, { $abs: '$amount' }, 0] } },
+          total_tx:       { $sum: 1 },
+          by_type: {
+            $push: { type: '$type', amount: '$amount' }
+          },
+        },
+      },
+    ]);
 
-    const totalDeducted = transactions
-      .filter((t) => t.direction === 'debit')
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // Break down earnings by type
+    const earningsByType = {};
+    (agg?.by_type || []).forEach(({ type: txType, amount }) => {
+      if (!earningsByType[txType]) earningsByType[txType] = { count: 0, total: 0 };
+      earningsByType[txType].count += 1;
+      earningsByType[txType].total += Math.abs(Number(amount));
+    });
 
     res.json({
       success: true,
@@ -299,14 +252,18 @@ exports.getMemberWalletHistory = async (req, res) => {
         avatar_url: user.avatar_url,
         role: user.role,
       },
-      wallet: {
-        balance: wallet.balance,
-        currency: wallet.currency,
-      },
+      wallet: { balance: wallet.balance, currency: wallet.currency },
       summary: {
-        total_earned: totalEarned,
-        total_deducted: totalDeducted,
-        total_transactions: transactions.length,
+        total_earned:       agg?.total_earned ?? 0,
+        total_deducted:     agg?.total_deducted ?? 0,
+        total_transactions: agg?.total_tx ?? 0,
+        earnings_by_type:   earningsByType,
+      },
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
       },
       transactions,
     });
@@ -316,18 +273,121 @@ exports.getMemberWalletHistory = async (req, res) => {
   }
 };
 
-/**
- * GET /api/wallet/ads/:adId/history
- * Shows all coin flows for a specific ad (rewards paid to users + deductions from ad budget).
- * Accessible by the vendor who owns the ad, or an admin.
- *
- * Query params:
- *   startDate  – ISO date (filter from)
- *   endDate    – ISO date (filter until)
- *   type       – comma-separated transaction types
- *   userId     – filter by user
- *   limit      – max results (default 50, max 200)
- */
+// ─────────────────────────────────────────────────────────────
+// GET /api/wallet/vendor/:userId/history
+// ─────────────────────────────────────────────────────────────
+
+exports.getVendorWalletHistory = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid userId' });
+    }
+    if (!canAccessWallet(req.user, userId)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    const user = await User.findById(userId).select('role username full_name avatar_url').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role !== 'vendor') {
+      return res.status(400).json({ success: false, message: 'User is not a vendor' });
+    }
+
+    const { startDate, endDate, type, limit = 100, page = 1 } = req.query;
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 100), 500);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const match = {
+      user_id: new mongoose.Types.ObjectId(userId),
+      type: { $in: Array.from(VENDOR_WALLET_TYPES) },
+    };
+
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) {
+        const d = new Date(String(startDate));
+        if (!isNaN(d)) match.createdAt.$gte = d;
+      }
+      if (endDate) {
+        const d = new Date(String(endDate));
+        if (!isNaN(d)) { d.setHours(23, 59, 59, 999); match.createdAt.$lte = d; }
+      }
+    }
+
+    if (type) {
+      const requestedTypes = String(type).split(',').map((s) => s.trim()).filter(Boolean);
+      const allowed = requestedTypes.filter((t) => VENDOR_WALLET_TYPES.has(t));
+      if (allowed.length) match.type = { $in: allowed };
+    }
+
+    const wallet = await getOrCreateWallet(userId);
+    const total = await WalletTransaction.countDocuments(match);
+
+    const rawTx = await WalletTransaction.find(match)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate('ad_id', 'caption title thumbnail_url status')
+      .lean();
+
+    const transactions = rawTx.map((t) => enrichTransaction(t, 'caption'));
+
+    // Aggregate summary
+    const [agg] = await WalletTransaction.aggregate([
+      { $match: { user_id: new mongoose.Types.ObjectId(userId), type: { $in: Array.from(VENDOR_WALLET_TYPES) } } },
+      {
+        $group: {
+          _id: null,
+          total_credited: { $sum: { $cond: [{ $gt: ['$amount', 0] }, '$amount', 0] } },
+          total_debited:  { $sum: { $cond: [{ $lt: ['$amount', 0] }, { $abs: '$amount' }, 0] } },
+          total_tx:       { $sum: 1 },
+        },
+      },
+    ]);
+
+    // How many ads this vendor has + total ad budget allocated
+    const [adAgg] = await WalletTransaction.aggregate([
+      { $match: { user_id: new mongoose.Types.ObjectId(userId), type: 'AD_BUDGET_DEDUCTION' } },
+      { $group: { _id: null, count: { $sum: 1 }, total_budget_allocated: { $sum: { $abs: '$amount' } } } },
+    ]);
+
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        role: user.role,
+      },
+      wallet: { balance: wallet.balance, currency: wallet.currency },
+      summary: {
+        total_credited:           agg?.total_credited ?? 0,
+        total_debited:            agg?.total_debited ?? 0,
+        total_transactions:       agg?.total_tx ?? 0,
+        total_ads_created:        adAgg?.count ?? 0,
+        total_ad_budget_allocated: adAgg?.total_budget_allocated ?? 0,
+      },
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
+      transactions,
+    });
+  } catch (err) {
+    console.error('[getVendorWalletHistory]', err);
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/wallet/ads/:adId/history
+// ─────────────────────────────────────────────────────────────
+
 exports.getAdWalletHistory = async (req, res) => {
   try {
     const { adId } = req.params;
@@ -348,11 +408,14 @@ exports.getAdWalletHistory = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
-    const { startDate, endDate, type, userId, limit = 50 } = req.query;
+    const { startDate, endDate, type, userId, limit = 50, page = 1 } = req.query;
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 50), 200);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (pageNum - 1) * limitNum;
+
     const adObjectId = new mongoose.Types.ObjectId(adId);
     const match = { ad_id: adObjectId };
 
-    // Date filters
     if (startDate || endDate) {
       match.createdAt = {};
       if (startDate) {
@@ -363,17 +426,16 @@ exports.getAdWalletHistory = async (req, res) => {
       if (endDate) {
         const d = new Date(String(endDate));
         if (isNaN(d.getTime())) return res.status(400).json({ success: false, message: 'Invalid endDate' });
+        d.setHours(23, 59, 59, 999);
         match.createdAt.$lte = d;
       }
     }
 
-    // Type filter
     if (type) {
       const types = String(type).split(',').map((s) => s.trim()).filter(Boolean);
       if (types.length) match.type = { $in: types };
     }
 
-    // User filter
     if (userId) {
       if (!mongoose.Types.ObjectId.isValid(String(userId))) {
         return res.status(400).json({ success: false, message: 'Invalid userId' });
@@ -381,18 +443,18 @@ exports.getAdWalletHistory = async (req, res) => {
       match.user_id = new mongoose.Types.ObjectId(String(userId));
     }
 
-    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 50), 200);
+    const total = await WalletTransaction.countDocuments(match);
 
     const rawTx = await WalletTransaction.find(match)
       .sort({ createdAt: -1 })
+      .skip(skip)
       .limit(limitNum)
       .populate('user_id', 'username full_name avatar_url role')
       .populate('ad_id', 'caption title')
       .lean();
 
-    // Budget figures — prefer Ad document fields, fall back to aggregation for legacy ads
+    // Budget calculations
     let totalBudget = Number(ad.total_budget_coins ?? 0) || 0;
-    let totalSpent = 0;
 
     if (!totalBudget) {
       const budgetTx = await WalletTransaction.findOne({
@@ -415,21 +477,23 @@ exports.getAdWalletHistory = async (req, res) => {
 
     const totalDeductions = deductionsAgg?.total ?? 0;
     const totalRefunds = refundsAgg?.total ?? 0;
-    totalSpent = Math.max(0, totalDeductions - totalRefunds);
+    const totalSpent = Math.max(0, totalDeductions - totalRefunds);
 
-    const actionTypes = ['AD_VIEW_DEDUCTION', 'AD_LIKE_DEDUCTION', 'AD_LIKE_BUDGET_REFUND'];
+    // Per-action breakdown
+    const actionTypes = ['AD_VIEW_DEDUCTION', 'AD_LIKE_DEDUCTION', 'AD_COMMENT_DEDUCTION', 'AD_REPLY_DEDUCTION', 'AD_SAVE_DEDUCTION', 'AD_LIKE_BUDGET_REFUND'];
     const actionRows = await WalletTransaction.aggregate([
       { $match: { ad_id: adObjectId, type: { $in: actionTypes } } },
-      {
-        $group: {
-          _id: '$type',
-          count: { $sum: 1 },
-          total_coins: { $sum: { $abs: '$amount' } },
-        },
-      },
+      { $group: { _id: '$type', count: { $sum: 1 }, total_coins: { $sum: { $abs: '$amount' } } } },
     ]);
     const actionMap = {};
     actionRows.forEach((r) => { actionMap[r._id] = { count: r.count, total_coins: r.total_coins }; });
+
+    // Unique users who interacted
+    const [uniqueUsersAgg] = await WalletTransaction.aggregate([
+      { $match: { ad_id: adObjectId } },
+      { $group: { _id: '$user_id' } },
+      { $count: 'count' },
+    ]);
 
     const transactions = rawTx.map((t) => enrichTransaction(t, 'caption'));
 
@@ -441,17 +505,26 @@ exports.getAdWalletHistory = async (req, res) => {
         status: ad.status,
       },
       budget: {
-        total_budget_coins: totalBudget,
-        total_coins_spent: totalSpent,
-        balance_remaining: Math.max(0, totalBudget - totalSpent),
-        spent_percentage: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
+        total_budget_coins:  totalBudget,
+        total_coins_spent:   totalSpent,
+        balance_remaining:   Math.max(0, totalBudget - totalSpent),
+        spent_percentage:    totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
       },
       actions: {
-        views: actionMap['AD_VIEW_DEDUCTION'] || { count: 0, total_coins: 0 },
-        likes: actionMap['AD_LIKE_DEDUCTION'] || { count: 0, total_coins: 0 },
-        dislikes: actionMap['AD_LIKE_BUDGET_REFUND'] || { count: 0, total_coins: 0 },
+        views:    actionMap['AD_VIEW_DEDUCTION']    || { count: 0, total_coins: 0 },
+        likes:    actionMap['AD_LIKE_DEDUCTION']    || { count: 0, total_coins: 0 },
+        comments: actionMap['AD_COMMENT_DEDUCTION'] || { count: 0, total_coins: 0 },
+        replies:  actionMap['AD_REPLY_DEDUCTION']   || { count: 0, total_coins: 0 },
+        saves:    actionMap['AD_SAVE_DEDUCTION']    || { count: 0, total_coins: 0 },
+        refunds:  actionMap['AD_LIKE_BUDGET_REFUND'] || { count: 0, total_coins: 0 },
       },
-      total: transactions.length,
+      unique_users: uniqueUsersAgg?.count ?? 0,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
       transactions,
     });
   } catch (err) {
@@ -460,12 +533,10 @@ exports.getAdWalletHistory = async (req, res) => {
   }
 };
 
-/**
- * POST /api/wallet/vendor/:userId/recharge
- * Admin-only: Add coins to a vendor's wallet.
- *
- * Body: { amount: number, description?: string }
- */
+// ─────────────────────────────────────────────────────────────
+// POST /api/wallet/vendor/:userId/recharge  (Admin only)
+// ─────────────────────────────────────────────────────────────
+
 exports.rechargeVendorWallet = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -511,7 +582,6 @@ exports.rechargeVendorWallet = async (req, res) => {
           { new: true, upsert: true }
         );
         newBalance = wallet.balance;
-
         await WalletTransaction.create({
           user_id: userId,
           type: 'VENDOR_RECHARGE',
@@ -537,11 +607,7 @@ exports.rechargeVendorWallet = async (req, res) => {
     res.json({
       success: true,
       message: `${coins} coins successfully added to vendor wallet`,
-      wallet: {
-        user_id: userId,
-        new_balance: newBalance,
-        currency: 'Coins',
-      },
+      wallet: { user_id: userId, new_balance: newBalance, currency: 'Coins' },
       transaction: {
         type: 'VENDOR_RECHARGE',
         amount: coins,
@@ -555,13 +621,10 @@ exports.rechargeVendorWallet = async (req, res) => {
   }
 };
 
-/**
- * POST /api/wallet/vendor/:vendorUserId/admin-adjust
- * Admin-only: Generic credit or debit adjustment on any user's wallet.
- *
- * Body: { amount: number, description?: string }
- *   Positive amount → credit, Negative amount → debit
- */
+// ─────────────────────────────────────────────────────────────
+// POST /api/wallet/admin/adjust  (Admin only)
+// ─────────────────────────────────────────────────────────────
+
 exports.updateWalletBalance = async (req, res) => {
   try {
     const { userId, amount, type, description } = req.body;
@@ -593,23 +656,15 @@ exports.updateWalletBalance = async (req, res) => {
     });
 
     try {
-      if (coins > 0) {
-        await sendNotification(req.app, {
-          recipient: userId,
-          sender: null,
-          type: 'coins_credited',
-          message: `${coins} coins have been added to your wallet`,
-          link: '/wallet',
-        });
-      } else {
-        await sendNotification(req.app, {
-          recipient: userId,
-          sender: null,
-          type: 'coins_debited',
-          message: `${Math.abs(coins)} coins have been deducted from your wallet`,
-          link: '/wallet',
-        });
-      }
+      await sendNotification(req.app, {
+        recipient: userId,
+        sender: null,
+        type: coins > 0 ? 'coins_credited' : 'coins_debited',
+        message: coins > 0
+          ? `${coins} coins have been added to your wallet`
+          : `${Math.abs(coins)} coins have been deducted from your wallet`,
+        link: '/wallet',
+      });
     } catch (notifErr) {
       console.error('[updateWalletBalance] Notification error:', notifErr);
     }
@@ -617,11 +672,7 @@ exports.updateWalletBalance = async (req, res) => {
     res.json({
       success: true,
       message: 'Wallet updated successfully',
-      wallet: {
-        user_id: userId,
-        new_balance: wallet.balance,
-        currency: wallet.currency,
-      },
+      wallet: { user_id: userId, new_balance: wallet.balance, currency: wallet.currency },
     });
   } catch (err) {
     console.error('[updateWalletBalance]', err);
@@ -629,56 +680,175 @@ exports.updateWalletBalance = async (req, res) => {
   }
 };
 
-/**
- * GET /api/wallet (Admin only)
- * Returns all wallet transactions across all users + high-level summary.
- */
+// ─────────────────────────────────────────────────────────────
+// GET /api/wallet  (Admin only)
+// Platform-wide wallet overview: transactions + per-user wallet list
+// ─────────────────────────────────────────────────────────────
+
 exports.getAllWallets = async (req, res) => {
   try {
-    const transactions = await WalletTransaction.find({})
+    const {
+      page = 1,
+      limit = 50,
+      type,
+      role,         // 'member' | 'vendor' | 'all'
+      userId,
+      startDate,
+      endDate,
+      direction,    // 'credit' | 'debit' | 'all'
+    } = req.query;
+
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 50), 200);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    // ── Build transaction filter ────────────────────────────
+    const txMatch = {};
+
+    if (type) {
+      const types = String(type).split(',').map((s) => s.trim()).filter(Boolean);
+      if (types.length) txMatch.type = { $in: types };
+    }
+
+    if (userId && mongoose.Types.ObjectId.isValid(String(userId))) {
+      txMatch.user_id = new mongoose.Types.ObjectId(String(userId));
+    }
+
+    if (startDate || endDate) {
+      txMatch.createdAt = {};
+      if (startDate) {
+        const d = new Date(String(startDate));
+        if (!isNaN(d)) txMatch.createdAt.$gte = d;
+      }
+      if (endDate) {
+        const d = new Date(String(endDate));
+        if (!isNaN(d)) { d.setHours(23, 59, 59, 999); txMatch.createdAt.$lte = d; }
+      }
+    }
+
+    // Direction filter (positive amount = credit, negative = debit)
+    if (direction === 'credit') txMatch.amount = { $gt: 0 };
+    else if (direction === 'debit') txMatch.amount = { $lt: 0 };
+
+    // Filter by user role (join with User collection)
+    let roleUserIds = null;
+    if (role && role !== 'all') {
+      const roleUsers = await User.find({ role: String(role) }).select('_id').lean();
+      roleUserIds = roleUsers.map((u) => u._id);
+      txMatch.user_id = { $in: roleUserIds };
+    }
+
+    const total = await WalletTransaction.countDocuments(txMatch);
+
+    const rawTx = await WalletTransaction.find(txMatch)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
       .populate('user_id', 'username full_name avatar_url role')
       .populate('ad_id', 'caption title')
-      .sort({ createdAt: -1 })
       .lean();
 
-    const [summary] = await WalletTransaction.aggregate([
+    // ── Platform-wide aggregate summary ────────────────────
+    const [rewardSummary] = await WalletTransaction.aggregate([
       {
         $match: {
           status: 'SUCCESS',
-          type: {
-            $in: [
-              'AD_REWARD', 'REEL_VIEW_REWARD',
-              'AD_VIEW_REWARD', 'AD_LIKE_REWARD',
-              'AD_COMMENT_REWARD', 'AD_REPLY_REWARD',
-              'AD_SAVE_REWARD', 'VENDOR_PROFILE_VIEW_REWARD',
-            ],
-          },
+          type: { $in: ['AD_REWARD', 'REEL_VIEW_REWARD', 'AD_VIEW_REWARD', 'AD_LIKE_REWARD', 'AD_COMMENT_REWARD', 'AD_REPLY_REWARD', 'AD_SAVE_REWARD', 'VENDOR_PROFILE_VIEW_REWARD'] },
         },
       },
+      { $group: { _id: null, total_coins_minted: { $sum: '$amount' }, total_transactions: { $sum: 1 } } },
+    ]);
+
+    const [adSpendSummary] = await WalletTransaction.aggregate([
+      { $match: { status: 'SUCCESS', type: { $in: AD_DEDUCTION_TYPES } } },
+      { $group: { _id: null, total_ad_spend: { $sum: { $abs: '$amount' } } } },
+    ]);
+
+    const [reelSummary] = await WalletTransaction.aggregate([
+      { $match: { status: 'SUCCESS', type: 'REEL_VIEW_REWARD' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+
+    const [rechargeSummary] = await WalletTransaction.aggregate([
+      { $match: { status: 'SUCCESS', type: { $in: ['VENDOR_RECHARGE', 'VENDOR_REGISTRATION_CREDIT'] } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+
+    // ── Per-user wallet list for the admin dashboard table ─
+    // Returns all wallets with their user info for the wallet overview tab
+    const walletList = await Wallet.find({})
+      .populate({
+        path: 'user_id',
+        select: 'username full_name avatar_url role is_active email',
+      })
+      .sort({ balance: -1 })
+      .lean();
+
+    // Enrich wallet list with last transaction date + tx count
+    const walletUserIds = walletList.map((w) => w.user_id?._id).filter(Boolean);
+
+    const txStats = await WalletTransaction.aggregate([
+      { $match: { user_id: { $in: walletUserIds } } },
       {
         $group: {
-          _id: null,
-          total_coins_rewarded_to_members: { $sum: '$amount' },
-          total_transactions: { $sum: 1 },
+          _id: '$user_id',
+          tx_count: { $sum: 1 },
+          last_tx_at: { $max: '$createdAt' },
+          total_credited: { $sum: { $cond: [{ $gt: ['$amount', 0] }, '$amount', 0] } },
+          total_debited:  { $sum: { $cond: [{ $lt: ['$amount', 0] }, { $abs: '$amount' }, 0] } },
         },
       },
     ]);
 
-    const [spendSummary] = await WalletTransaction.aggregate([
-      {
-        $match: { status: 'SUCCESS', type: { $in: AD_DEDUCTION_TYPES } },
-      },
-      { $group: { _id: null, total_ad_spend: { $sum: { $abs: '$amount' } } } },
-    ]);
+    const txStatsMap = {};
+    txStats.forEach((s) => { txStatsMap[String(s._id)] = s; });
+
+    const enrichedWallets = walletList
+      .filter((w) => w.user_id) // skip wallets with deleted users
+      .filter((w) => !role || role === 'all' || w.user_id.role === role) // role filter on wallet list
+      .map((w) => {
+        const stats = txStatsMap[String(w.user_id._id)] || {};
+        return {
+          wallet_id: w._id,
+          user: {
+            _id: w.user_id._id,
+            username: w.user_id.username,
+            full_name: w.user_id.full_name,
+            avatar_url: w.user_id.avatar_url,
+            role: w.user_id.role,
+            is_active: w.user_id.is_active,
+            email: w.user_id.email,
+          },
+          balance: w.balance,
+          currency: w.currency,
+          tx_count:       stats.tx_count ?? 0,
+          total_credited: stats.total_credited ?? 0,
+          total_debited:  stats.total_debited ?? 0,
+          last_tx_at:     stats.last_tx_at ?? null,
+        };
+      });
 
     res.json({
       success: true,
       summary: {
-        total_transactions: transactions.length,
-        total_coins_rewarded_to_members: summary?.total_coins_rewarded_to_members ?? 0,
-        total_ad_coins_spent: spendSummary?.total_ad_spend ?? 0,
+        total_transactions:             total,
+        total_coins_minted:             rewardSummary?.total_coins_minted ?? 0,
+        total_coins_from_ads:           (rewardSummary?.total_coins_minted ?? 0) - (reelSummary?.total ?? 0),
+        total_coins_from_reels:         reelSummary?.total ?? 0,
+        total_ad_coins_spent:           adSpendSummary?.total_ad_spend ?? 0,
+        total_vendor_coins_recharged:   rechargeSummary?.total ?? 0,
+        total_wallets:                  enrichedWallets.length,
+        member_wallets:                 enrichedWallets.filter((w) => w.user.role === 'member').length,
+        vendor_wallets:                 enrichedWallets.filter((w) => w.user.role === 'vendor').length,
       },
-      transactions: transactions.map((t) => enrichTransaction(t, 'caption')),
+      wallets: enrichedWallets,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
+      transactions: rawTx.map((t) => enrichTransaction(t, 'caption')),
     });
   } catch (err) {
     console.error('[getAllWallets]', err);
