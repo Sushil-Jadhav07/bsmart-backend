@@ -16,7 +16,7 @@ const notificationSchema = new mongoose.Schema({
       'like', 'comment', 'follow', 'mention', 'order', 'payout', 'admin',
       'vendor_approved', 'ad_approved',
       'comment_like', 'comment_reply', 'post_save', 'post_tag',
-      'ad_comment', 'ad_like', 'ad_rejected',
+      'ad_comment', 'ad_like', 'ad_save', 'ad_rejected',
       'vendor_rejected',
       'coins_credited', 'coins_debited',
       'story_view', 'login_alert'

@@ -481,6 +481,25 @@ exports.recordAdView = async (req, res) => {
 
     const actingUserId = String(req.userId);
 
+    // ── Duplicate-view guard ─────────────────────────────────
+    // If this user already has a rewarded view for this ad,
+    // return immediately — no need to run the full transaction.
+    const existingRewardedView = await AdView.findOne({
+      ad_id: adId,
+      user_id: actingUserId,
+      rewarded: true
+    }).lean();
+
+    if (existingRewardedView) {
+      return res.json({
+        message: 'View recorded',
+        view_count: existingRewardedView.view_count || 1,
+        rewarded: true,
+        reward: existingRewardedView.coins_rewarded || 0
+      });
+    }
+    // ─────────────────────────────────────────────────────────
+
     const now = new Date();
     let viewCount = 0;
     let rewardPaid = 0;
@@ -957,26 +976,17 @@ exports.likeAd = async (req, res) => {
             { upsert: true, new: true, session }
           );
 
-          await WalletTransaction.create([
-            {
-              user_id: actingUserId,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_LIKE_REWARD',
-              amount: rewardAmount,
-              status: 'SUCCESS',
-              description: 'Reward for liking ad'
-            },
-            {
-              user_id: ad.user_id,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_LIKE_DEDUCTION',
-              amount: -rewardAmount,
-              status: 'SUCCESS',
-              description: 'Ad budget spent (like)'
-            }
-          ], { session });
+          await WalletTransaction.findOneAndUpdate(
+            { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD' },
+            { $setOnInsert: { vendor_id: ad.vendor_id, amount: rewardAmount, status: 'SUCCESS', description: 'Reward for liking ad' } },
+            { upsert: true, new: true, session }
+          );
+
+          await WalletTransaction.findOneAndUpdate(
+            { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_DEDUCTION' },
+            { $setOnInsert: { vendor_id: ad.vendor_id, amount: -rewardAmount, status: 'SUCCESS', description: 'Ad budget spent (like)' } },
+            { upsert: true, new: true, session }
+          );
 
           ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
           coinsEarned = rewardAmount;
@@ -1025,26 +1035,17 @@ exports.likeAd = async (req, res) => {
             { upsert: true, new: true }
           );
 
-          await WalletTransaction.create([
-            {
-              user_id: actingUserId,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_LIKE_REWARD',
-              amount: rewardAmount,
-              status: 'SUCCESS',
-              description: 'Reward for liking ad'
-            },
-            {
-              user_id: ad.user_id,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_LIKE_DEDUCTION',
-              amount: -rewardAmount,
-              status: 'SUCCESS',
-              description: 'Ad budget spent (like)'
-            }
-          ]);
+          await WalletTransaction.findOneAndUpdate(
+            { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD' },
+            { $setOnInsert: { vendor_id: ad.vendor_id, amount: rewardAmount, status: 'SUCCESS', description: 'Reward for liking ad' } },
+            { upsert: true, new: true }
+          );
+
+          await WalletTransaction.findOneAndUpdate(
+            { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_DEDUCTION' },
+            { $setOnInsert: { vendor_id: ad.vendor_id, amount: -rewardAmount, status: 'SUCCESS', description: 'Ad budget spent (like)' } },
+            { upsert: true, new: true }
+          );
 
           ad.total_coins_spent = Number(ad.total_coins_spent || 0) + rewardAmount;
           coinsEarned = rewardAmount;
