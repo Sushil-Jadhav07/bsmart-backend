@@ -472,6 +472,356 @@ router.get('/reels/:id', verifyToken, getReelById);
  */
 router.get('/saved', verifyToken, listMySavedPosts);
 
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     StatUser:
+ *       type: object
+ *       description: Basic user profile returned inside stats
+ *       properties:
+ *         _id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c0d"
+ *         username:
+ *           type: string
+ *           example: "john_doe"
+ *         full_name:
+ *           type: string
+ *           example: "John Doe"
+ *         avatar_url:
+ *           type: string
+ *           example: "http://localhost:5000/uploads/avatar.jpg"
+ *         gender:
+ *           type: string
+ *           example: "male"
+ *         location:
+ *           type: string
+ *           example: "Mumbai, India"
+ *
+ *     GenderBucket:
+ *       type: object
+ *       description: Count and user list for a specific gender
+ *       properties:
+ *         count:
+ *           type: integer
+ *           example: 5
+ *         users:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/StatUser'
+ *
+ *     LikesByGender:
+ *       type: object
+ *       properties:
+ *         male:
+ *           $ref: '#/components/schemas/GenderBucket'
+ *         female:
+ *           $ref: '#/components/schemas/GenderBucket'
+ *         other:
+ *           $ref: '#/components/schemas/GenderBucket'
+ *         unknown:
+ *           $ref: '#/components/schemas/GenderBucket'
+ *
+ *     DislikeGenderCount:
+ *       type: object
+ *       description: Gender count (no user list) for dislikes
+ *       properties:
+ *         count:
+ *           type: integer
+ *           example: 3
+ *
+ *     DislikesByGender:
+ *       type: object
+ *       properties:
+ *         male:
+ *           $ref: '#/components/schemas/DislikeGenderCount'
+ *         female:
+ *           $ref: '#/components/schemas/DislikeGenderCount'
+ *         other:
+ *           $ref: '#/components/schemas/DislikeGenderCount'
+ *         unknown:
+ *           $ref: '#/components/schemas/DislikeGenderCount'
+ *         users:
+ *           type: array
+ *           description: Full list of users who viewed but never liked
+ *           items:
+ *             $ref: '#/components/schemas/StatUser'
+ *
+ *     RecentComment:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c11"
+ *         text:
+ *           type: string
+ *           example: "Great post!"
+ *         user:
+ *           type: object
+ *           properties:
+ *             username:
+ *               type: string
+ *               example: "jane_doe"
+ *             avatar_url:
+ *               type: string
+ *               example: "http://localhost:5000/uploads/jane.jpg"
+ *         likes_count:
+ *           type: integer
+ *           example: 2
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-06-01T10:30:00.000Z"
+ *
+ *     ViewByLocation:
+ *       type: object
+ *       properties:
+ *         location:
+ *           type: string
+ *           example: "Mumbai, India"
+ *         views:
+ *           type: integer
+ *           description: Total view count from this location
+ *           example: 120
+ *         unique_viewers:
+ *           type: integer
+ *           description: Number of distinct users who viewed from this location
+ *           example: 90
+ *         completed_views:
+ *           type: integer
+ *           description: Views that were completed (watched fully)
+ *           example: 60
+ *
+ *     PostStatsResponse:
+ *       type: object
+ *       properties:
+ *         post_id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c0a"
+ *         caption:
+ *           type: string
+ *           example: "Sunset vibes 🌅"
+ *         type:
+ *           type: string
+ *           enum: [post, reel, promote, advertise]
+ *           example: "post"
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           example: "2025-05-20T08:00:00.000Z"
+ *         likes:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Total number of likes
+ *               example: 38
+ *             by_gender:
+ *               $ref: '#/components/schemas/LikesByGender'
+ *             user_ids:
+ *               type: array
+ *               description: Raw ObjectId array of all users who liked this post
+ *               items:
+ *                 type: string
+ *               example: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
+ *         dislikes:
+ *           type: object
+ *           description: Users who viewed the post but never liked it
+ *           properties:
+ *             total:
+ *               type: integer
+ *               example: 12
+ *             by_gender:
+ *               $ref: '#/components/schemas/DislikesByGender'
+ *         comments:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Total comments including replies
+ *               example: 25
+ *             top_level:
+ *               type: integer
+ *               description: Root-level comments only (no parent)
+ *               example: 18
+ *             replies:
+ *               type: integer
+ *               description: Threaded reply comments
+ *               example: 7
+ *             recent:
+ *               type: array
+ *               description: Latest 5 top-level comments
+ *               items:
+ *                 $ref: '#/components/schemas/RecentComment'
+ *         views:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Cumulative view count (re-views included)
+ *               example: 500
+ *             unique:
+ *               type: integer
+ *               description: Distinct users who viewed
+ *               example: 340
+ *             completed:
+ *               type: integer
+ *               description: Views where the user watched the full reel
+ *               example: 210
+ *             by_location:
+ *               type: array
+ *               description: View breakdown sorted by most views, grouped by viewer's location
+ *               items:
+ *                 $ref: '#/components/schemas/ViewByLocation'
+ */
+
+/**
+ * @swagger
+ * /api/posts/{id}/stats:
+ *   get:
+ *     summary: Get engagement stats for a post
+ *     description: |
+ *       Returns a full breakdown of engagement for a single post including:
+ *       - **Likes** — total count, list of user IDs who liked, and gender breakdown (male / female / other / unknown) with user profiles
+ *       - **Dislikes** — users who viewed the post but never liked it, with gender breakdown
+ *       - **Comments** — total, top-level vs replies, and the 5 most recent comments
+ *       - **Views** — total, unique, completed, and a breakdown by viewer location (sorted by most views)
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: MongoDB ObjectId of the post
+ *         example: "664f1a2b3c4d5e6f7a8b9c0a"
+ *     responses:
+ *       200:
+ *         description: Post engagement statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PostStatsResponse'
+ *             example:
+ *               post_id: "664f1a2b3c4d5e6f7a8b9c0a"
+ *               caption: "Sunset vibes 🌅"
+ *               type: "reel"
+ *               created_at: "2025-05-20T08:00:00.000Z"
+ *               likes:
+ *                 total: 38
+ *                 by_gender:
+ *                   male:
+ *                     count: 20
+ *                     users:
+ *                       - _id: "664f1a2b3c4d5e6f7a8b9c01"
+ *                         username: "rahul_m"
+ *                         full_name: "Rahul Mehta"
+ *                         gender: "male"
+ *                         location: "Delhi, India"
+ *                   female:
+ *                     count: 15
+ *                     users:
+ *                       - _id: "664f1a2b3c4d5e6f7a8b9c02"
+ *                         username: "priya_s"
+ *                         full_name: "Priya Sharma"
+ *                         gender: "female"
+ *                         location: "Mumbai, India"
+ *                   other:
+ *                     count: 1
+ *                     users: []
+ *                   unknown:
+ *                     count: 2
+ *                     users: []
+ *                 user_ids:
+ *                   - "664f1a2b3c4d5e6f7a8b9c01"
+ *                   - "664f1a2b3c4d5e6f7a8b9c02"
+ *               dislikes:
+ *                 total: 12
+ *                 by_gender:
+ *                   male: { count: 7 }
+ *                   female: { count: 4 }
+ *                   other: { count: 0 }
+ *                   unknown: { count: 1 }
+ *                 users:
+ *                   - _id: "664f1a2b3c4d5e6f7a8b9c03"
+ *                     username: "viewer_99"
+ *                     gender: "male"
+ *                     location: "Pune, India"
+ *               comments:
+ *                 total: 25
+ *                 top_level: 18
+ *                 replies: 7
+ *                 recent:
+ *                   - _id: "664f1a2b3c4d5e6f7a8b9c11"
+ *                     text: "Amazing shot!"
+ *                     user:
+ *                       username: "jane_doe"
+ *                       avatar_url: "http://localhost:5000/uploads/jane.jpg"
+ *                     likes_count: 3
+ *                     createdAt: "2025-06-01T10:30:00.000Z"
+ *               views:
+ *                 total: 500
+ *                 unique: 340
+ *                 completed: 210
+ *                 by_location:
+ *                   - location: "Mumbai, India"
+ *                     views: 180
+ *                     unique_viewers: 120
+ *                     completed_views: 90
+ *                   - location: "Delhi, India"
+ *                     views: 120
+ *                     unique_viewers: 80
+ *                     completed_views: 55
+ *                   - location: "Unknown"
+ *                     views: 200
+ *                     unique_viewers: 140
+ *                     completed_views: 65
+ *       400:
+ *         description: Invalid post ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid post ID"
+ *       401:
+ *         description: Unauthorized — missing or invalid Bearer token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Token is not valid"
+ *       404:
+ *         description: Post not found or has been deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Post not found"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Server error"
+ *                 error:
+ *                   type: string
+ */
 router.get('/:id/stats', verifyToken, getPostStats);
 
 router.get('/:id', verifyToken, getPost);
