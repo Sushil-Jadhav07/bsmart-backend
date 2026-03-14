@@ -73,6 +73,15 @@ test('wallet transactions for ad create/like/dislike', async (t) => {
     location: 'Mumbai'
   });
 
+  const memberUser2 = await User.create({
+    email: 'member2@test.com',
+    password: 'hashed',
+    username: 'member2',
+    role: 'member',
+    gender: 'female',
+    location: 'Pune'
+  });
+
   const vendor = await Vendor.create({
     user_id: vendorUser._id,
     business_name: 'Shop',
@@ -82,6 +91,7 @@ test('wallet transactions for ad create/like/dislike', async (t) => {
 
   await Wallet.create({ user_id: vendorUser._id, balance: 1000, currency: 'Coins' });
   await Wallet.create({ user_id: memberUser._id, balance: 0, currency: 'Coins' });
+  await Wallet.create({ user_id: memberUser2._id, balance: 0, currency: 'Coins' });
 
   const createReq = {
     userId: vendorUser._id.toString(),
@@ -115,6 +125,37 @@ test('wallet transactions for ad create/like/dislike', async (t) => {
   assert.equal(String(budgetTx.vendor_id), String(vendor._id));
   assert.equal(budgetTx.amount, -200);
 
+  const vendorSelfLikeReq = {
+    params: { id: ad._id.toString() },
+    userId: vendorUser._id.toString(),
+    user: vendorUser,
+    body: { user: { id: vendorUser._id.toString() } },
+    app: makeAppStub()
+  };
+  const vendorSelfLikeRes = makeRes();
+  await likeAd(vendorSelfLikeReq, vendorSelfLikeRes);
+  assert.equal(vendorSelfLikeRes.statusCode, 200);
+  assert.equal(vendorSelfLikeRes.body.is_liked, true);
+  assert.equal(vendorSelfLikeRes.body.coins_earned, 0);
+
+  const adAfterVendorSelfLike = await Ad.findById(ad._id).lean();
+  assert.equal(adAfterVendorSelfLike.total_coins_spent, 0);
+  assert.ok(adAfterVendorSelfLike.likes.some((id) => id.toString() === vendorUser._id.toString()));
+
+  const vendorWalletAfterSelfLike = await Wallet.findOne({ user_id: vendorUser._id }).lean();
+  assert.equal(vendorWalletAfterSelfLike.balance, 800);
+
+  const member2DislikeWithoutLikeReq = {
+    params: { id: ad._id.toString() },
+    userId: memberUser2._id.toString(),
+    user: memberUser2,
+    body: { user: { id: memberUser2._id.toString() } },
+    app: makeAppStub()
+  };
+  const member2DislikeWithoutLikeRes = makeRes();
+  await dislikeAd(member2DislikeWithoutLikeReq, member2DislikeWithoutLikeRes);
+  assert.equal(member2DislikeWithoutLikeRes.statusCode, 400);
+
   const likeReq = {
     params: { id: ad._id.toString() },
     userId: memberUser._id.toString(),
@@ -127,6 +168,10 @@ test('wallet transactions for ad create/like/dislike', async (t) => {
   assert.equal(likeRes.statusCode, 200);
   assert.equal(likeRes.body.is_liked, true);
   assert.equal(likeRes.body.coins_earned, 10);
+
+  const likeAgainRes = makeRes();
+  await likeAd(likeReq, likeAgainRes);
+  assert.equal(likeAgainRes.statusCode, 409);
 
   const memberWalletAfterLike = await Wallet.findOne({ user_id: memberUser._id }).lean();
   assert.equal(memberWalletAfterLike.balance, 10);
@@ -159,6 +204,10 @@ test('wallet transactions for ad create/like/dislike', async (t) => {
   const adAfterDislike = await Ad.findById(ad._id).lean();
   assert.equal(adAfterDislike.total_coins_spent, 0);
   assert.ok(!adAfterDislike.likes.some((id) => id.toString() === memberUser._id.toString()));
+  assert.ok(adAfterDislike.likes.some((id) => id.toString() === vendorUser._id.toString()));
+
+  const vendorWalletAfterMemberDislike = await Wallet.findOne({ user_id: vendorUser._id }).lean();
+  assert.equal(vendorWalletAfterMemberDislike.balance, 800);
 
   const reversalUserTx = await WalletTransaction.findOne({ ad_id: ad._id, user_id: memberUser._id, type: 'AD_LIKE_REWARD_REVERSAL' }).lean();
   const refundVendorTx = await WalletTransaction.findOne({ ad_id: ad._id, user_id: vendorUser._id, type: 'AD_LIKE_BUDGET_REFUND' }).lean();
@@ -175,7 +224,7 @@ test('wallet transactions for ad create/like/dislike', async (t) => {
   const historyRes = makeRes();
   await getAdWalletHistory(historyReq, historyRes);
   assert.equal(historyRes.statusCode, 200);
-  assert.equal(historyRes.body.ad_id, ad._id.toString());
+  assert.equal(historyRes.body.ad._id, ad._id.toString());
   assert.ok(Array.isArray(historyRes.body.transactions));
 });
 
