@@ -27,6 +27,7 @@ const {
   dislikeAdComment,
   getAdCommentReplies
 } = require('../controllers/adComment.controller');
+const { getAdStats } = require('../controllers/adstats.controller');
 
 /**
  * @swagger
@@ -387,6 +388,435 @@ router.post('/', auth, createAd);
  *         description: Server error
  */
 router.get('/search', auth, searchAds);
+
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     AdStatUser:
+ *       type: object
+ *       description: Basic user profile returned inside ad stats
+ *       properties:
+ *         _id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c0d"
+ *         username:
+ *           type: string
+ *           example: "john_doe"
+ *         full_name:
+ *           type: string
+ *           example: "John Doe"
+ *         avatar_url:
+ *           type: string
+ *           example: "http://localhost:5000/uploads/avatar.jpg"
+ *         gender:
+ *           type: string
+ *           example: "male"
+ *         location:
+ *           type: string
+ *           example: "Mumbai, India"
+ *
+ *     AdGenderBucket:
+ *       type: object
+ *       description: Count and user list for one gender (used in likes)
+ *       properties:
+ *         count:
+ *           type: integer
+ *           example: 5
+ *         users:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/AdStatUser'
+ *
+ *     AdLikesByGender:
+ *       type: object
+ *       properties:
+ *         male:
+ *           $ref: '#/components/schemas/AdGenderBucket'
+ *         female:
+ *           $ref: '#/components/schemas/AdGenderBucket'
+ *         other:
+ *           $ref: '#/components/schemas/AdGenderBucket'
+ *         unknown:
+ *           $ref: '#/components/schemas/AdGenderBucket'
+ *
+ *     AdDislikeGenderCount:
+ *       type: object
+ *       properties:
+ *         count:
+ *           type: integer
+ *           example: 3
+ *
+ *     AdDislikesByGender:
+ *       type: object
+ *       properties:
+ *         male:
+ *           $ref: '#/components/schemas/AdDislikeGenderCount'
+ *         female:
+ *           $ref: '#/components/schemas/AdDislikeGenderCount'
+ *         other:
+ *           $ref: '#/components/schemas/AdDislikeGenderCount'
+ *         unknown:
+ *           $ref: '#/components/schemas/AdDislikeGenderCount'
+ *         users:
+ *           type: array
+ *           description: Full list of users who explicitly disliked this ad
+ *           items:
+ *             $ref: '#/components/schemas/AdStatUser'
+ *
+ *     AdRecentComment:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c11"
+ *         text:
+ *           type: string
+ *           example: "Great ad!"
+ *         user:
+ *           type: object
+ *           properties:
+ *             username:
+ *               type: string
+ *               example: "jane_doe"
+ *             avatar_url:
+ *               type: string
+ *               example: "http://localhost:5000/uploads/jane.jpg"
+ *         likes_count:
+ *           type: integer
+ *           example: 2
+ *         dislikes_count:
+ *           type: integer
+ *           example: 0
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *
+ *     AdViewByLocation:
+ *       type: object
+ *       properties:
+ *         location:
+ *           type: string
+ *           example: "Mumbai, India"
+ *         views:
+ *           type: integer
+ *           example: 180
+ *         unique_viewers:
+ *           type: integer
+ *           example: 120
+ *         completed_views:
+ *           type: integer
+ *           example: 90
+ *         rewarded_views:
+ *           type: integer
+ *           description: Views that triggered a coin reward to the viewer
+ *           example: 70
+ *         total_coins_rewarded:
+ *           type: number
+ *           description: Total coins paid out to viewers from this location
+ *           example: 700
+ *
+ *     AdCoinAction:
+ *       type: object
+ *       properties:
+ *         count:
+ *           type: integer
+ *           description: Number of times this action occurred
+ *           example: 12
+ *         total_coins:
+ *           type: number
+ *           description: Net coins exchanged for this action (negative = deducted from vendor)
+ *           example: -120
+ *
+ *     AdBudget:
+ *       type: object
+ *       properties:
+ *         total:
+ *           type: number
+ *           description: Initial budget allocated at ad creation
+ *           example: 5000
+ *         spent:
+ *           type: number
+ *           description: Coins spent so far
+ *           example: 1200
+ *         remaining:
+ *           type: number
+ *           example: 3800
+ *         spent_percentage:
+ *           type: number
+ *           example: 24.0
+ *
+ *     AdStatsResponse:
+ *       type: object
+ *       properties:
+ *         ad_id:
+ *           type: string
+ *           example: "664f1a2b3c4d5e6f7a8b9c0a"
+ *         caption:
+ *           type: string
+ *           example: "Summer Sale — up to 50% off!"
+ *         category:
+ *           type: string
+ *           example: "Fashion"
+ *         status:
+ *           type: string
+ *           enum: [pending, active, paused, rejected]
+ *           example: "active"
+ *         content_type:
+ *           type: string
+ *           enum: [post, reel]
+ *           example: "reel"
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         likes:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               example: 38
+ *             by_gender:
+ *               $ref: '#/components/schemas/AdLikesByGender'
+ *             user_ids:
+ *               type: array
+ *               items:
+ *                 type: string
+ *               example: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
+ *         dislikes:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               example: 5
+ *             by_gender:
+ *               $ref: '#/components/schemas/AdDislikesByGender'
+ *             user_ids:
+ *               type: array
+ *               items:
+ *                 type: string
+ *         comments:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               example: 25
+ *             top_level:
+ *               type: integer
+ *               example: 18
+ *             replies:
+ *               type: integer
+ *               example: 7
+ *             recent:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/AdRecentComment'
+ *         views:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               example: 500
+ *             unique:
+ *               type: integer
+ *               example: 340
+ *             completed:
+ *               type: integer
+ *               example: 210
+ *             by_location:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/AdViewByLocation'
+ *         saves:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               example: 42
+ *         budget:
+ *           $ref: '#/components/schemas/AdBudget'
+ *         coins:
+ *           type: object
+ *           properties:
+ *             by_action:
+ *               type: object
+ *               description: Keyed by event_type (like, dislike, undo-like, undo-dislike)
+ *               additionalProperties:
+ *                 $ref: '#/components/schemas/AdCoinAction'
+ *               example:
+ *                 like: { count: 38, total_coins: -380 }
+ *                 dislike: { count: 5, total_coins: 50 }
+ *                 undo-like: { count: 2, total_coins: 20 }
+ */
+
+/**
+ * @swagger
+ * /api/ads/{id}/stats:
+ *   get:
+ *     summary: Get engagement stats for an ad
+ *     description: |
+ *       Returns a full breakdown of engagement for a single ad including:
+ *       - **Likes** — total count, list of user IDs, gender breakdown with profiles
+ *       - **Dislikes** — explicit dislike array from Ad model, gender breakdown with profiles
+ *       - **Comments** — total, top-level vs replies, 5 most recent
+ *       - **Views** — total, unique, completed, broken down by viewer location with coins rewarded per location
+ *       - **Saves** — total number of users who saved this ad
+ *       - **Budget** — total allocated / spent / remaining / percentage
+ *       - **Coins by action** — breakdown of coins exchanged per event type (like, dislike, undo-like, undo-dislike)
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: MongoDB ObjectId of the ad
+ *         example: "664f1a2b3c4d5e6f7a8b9c0a"
+ *     responses:
+ *       200:
+ *         description: Ad engagement statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AdStatsResponse'
+ *             example:
+ *               ad_id: "664f1a2b3c4d5e6f7a8b9c0a"
+ *               caption: "Summer Sale — up to 50% off!"
+ *               category: "Fashion"
+ *               status: "active"
+ *               content_type: "reel"
+ *               created_at: "2025-05-20T08:00:00.000Z"
+ *               likes:
+ *                 total: 38
+ *                 by_gender:
+ *                   male:
+ *                     count: 20
+ *                     users:
+ *                       - _id: "664f1a2b3c4d5e6f7a8b9c01"
+ *                         username: "rahul_m"
+ *                         gender: "male"
+ *                         location: "Delhi, India"
+ *                   female:
+ *                     count: 15
+ *                     users:
+ *                       - _id: "664f1a2b3c4d5e6f7a8b9c02"
+ *                         username: "priya_s"
+ *                         gender: "female"
+ *                         location: "Mumbai, India"
+ *                   other:
+ *                     count: 1
+ *                     users: []
+ *                   unknown:
+ *                     count: 2
+ *                     users: []
+ *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
+ *               dislikes:
+ *                 total: 5
+ *                 by_gender:
+ *                   male: { count: 3 }
+ *                   female: { count: 2 }
+ *                   other: { count: 0 }
+ *                   unknown: { count: 0 }
+ *                 users:
+ *                   - _id: "664f1a2b3c4d5e6f7a8b9c03"
+ *                     username: "viewer_99"
+ *                     gender: "male"
+ *                     location: "Pune, India"
+ *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c03"]
+ *               comments:
+ *                 total: 25
+ *                 top_level: 18
+ *                 replies: 7
+ *                 recent:
+ *                   - _id: "664f1a2b3c4d5e6f7a8b9c11"
+ *                     text: "Love this product!"
+ *                     user:
+ *                       username: "jane_doe"
+ *                       avatar_url: "http://localhost:5000/uploads/jane.jpg"
+ *                     likes_count: 3
+ *                     dislikes_count: 0
+ *                     createdAt: "2025-06-01T10:30:00.000Z"
+ *               views:
+ *                 total: 500
+ *                 unique: 340
+ *                 completed: 210
+ *                 by_location:
+ *                   - location: "Mumbai, India"
+ *                     views: 180
+ *                     unique_viewers: 120
+ *                     completed_views: 90
+ *                     rewarded_views: 70
+ *                     total_coins_rewarded: 700
+ *                   - location: "Delhi, India"
+ *                     views: 120
+ *                     unique_viewers: 80
+ *                     completed_views: 55
+ *                     rewarded_views: 40
+ *                     total_coins_rewarded: 400
+ *                   - location: "Unknown"
+ *                     views: 200
+ *                     unique_viewers: 140
+ *                     completed_views: 65
+ *                     rewarded_views: 50
+ *                     total_coins_rewarded: 500
+ *               saves:
+ *                 total: 42
+ *               budget:
+ *                 total: 5000
+ *                 spent: 1200
+ *                 remaining: 3800
+ *                 spent_percentage: 24.0
+ *               coins:
+ *                 by_action:
+ *                   like: { count: 38, total_coins: -380 }
+ *                   dislike: { count: 5, total_coins: 50 }
+ *                   undo-like: { count: 2, total_coins: 20 }
+ *       400:
+ *         description: Invalid ad ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid ad ID"
+ *       401:
+ *         description: Unauthorized — missing or invalid Bearer token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Token is not valid"
+ *       404:
+ *         description: Ad not found or has been deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Ad not found"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Server error"
+ *                 error:
+ *                   type: string
+ */
+router.get('/:id/stats', auth, getAdStats);
 
 /**
  * @swagger
