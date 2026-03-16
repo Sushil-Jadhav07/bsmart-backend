@@ -1,8 +1,5 @@
 const Ad = require('../models/Ad');
-const AdComment = require('../models/AdComment');
 const AdView = require('../models/AdView');
-const SavedAd = require('../models/SavedAd');
-const MemberAdAction = require('../models/MemberAdAction');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 
@@ -11,12 +8,8 @@ const mongoose = require('mongoose');
  *
  * Returns comprehensive stats for a single ad:
  *  - likes breakdown by gender (male / female / other / unknown) + user IDs
- *  - dislikes breakdown by gender + user IDs (Ad model has explicit dislikes[])
- *  - comments count (top-level + replies) + recent 5
+ *  - dislikes breakdown by gender + user IDs
  *  - views breakdown by user location (total / unique / completed / rewarded)
- *  - saves count
- *  - budget summary (total / spent / remaining)
- *  - coins earned per action type from MemberAdAction
  */
 exports.getAdStats = async (req, res) => {
   try {
@@ -81,34 +74,7 @@ exports.getAdStats = async (req, res) => {
       users:   dislikedUsers,
     };
 
-    // ── 4. Comments — total, top-level vs replies ─────────────────────────
-    const [totalComments, topLevelComments, replyComments] = await Promise.all([
-      AdComment.countDocuments({ ad_id: id, isDeleted: false }),
-      AdComment.countDocuments({ ad_id: id, parent_id: null, isDeleted: false }),
-      AdComment.countDocuments({ ad_id: id, parent_id: { $ne: null }, isDeleted: false }),
-    ]);
-
-    // Recent 5 top-level comments with commenter info
-    const recentComments = await AdComment.find(
-      { ad_id: id, parent_id: null, isDeleted: false }
-    )
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('user_id', 'username avatar_url')
-      .lean();
-
-    const recentCommentsMapped = recentComments.map(c => ({
-      _id: c._id,
-      text: c.text,
-      likes_count: (c.likes || []).length,
-      dislikes_count: (c.dislikes || []).length,
-      user: c.user_id
-        ? { username: c.user_id.username, avatar_url: c.user_id.avatar_url }
-        : null,
-      createdAt: c.createdAt,
-    }));
-
-    // ── 5. Views — group by viewer location via AdView → User join ────────
+    // ── 4. Views — group by viewer location via AdView → User join ────────
     const viewsWithLocation = await AdView.aggregate([
       { $match: { ad_id: new mongoose.Types.ObjectId(id) } },
       {
@@ -148,58 +114,14 @@ exports.getAdStats = async (req, res) => {
       { $sort: { views: -1 } },
     ]);
 
-    // ── 6. Saves count ────────────────────────────────────────────────────
-    const savesCount = await SavedAd.countDocuments({ ad_id: id });
-
-    // ── 7. Coins breakdown from MemberAdAction ────────────────────────────
-    const coinBreakdown = await MemberAdAction.aggregate([
-      { $match: { ad_id: new mongoose.Types.ObjectId(id) } },
-      {
-        $group: {
-          _id: '$event_type',
-          count: { $sum: 1 },
-          total_coins: { $sum: '$credit_delta' },
-        },
-      },
-      {
-        $project: {
-          event_type: '$_id',
-          count: 1,
-          total_coins: 1,
-          _id: 0,
-        },
-      },
-    ]);
-
-    // Convert to a map for easy reading
-    const coinsByAction = {};
-    for (const row of coinBreakdown) {
-      coinsByAction[row.event_type] = {
-        count: row.count,
-        total_coins: row.total_coins,
-      };
-    }
-
-    // ── 8. Budget summary ─────────────────────────────────────────────────
-    const totalBudget = ad.total_budget_coins || 0;
-    const totalSpent  = ad.total_coins_spent  || 0;
-    const budget = {
-      total: totalBudget,
-      spent: totalSpent,
-      remaining: Math.max(0, totalBudget - totalSpent),
-      spent_percentage: totalBudget > 0
-        ? parseFloat(((totalSpent / totalBudget) * 100).toFixed(2))
-        : 0,
-    };
-
-    // ── 9. Build final response ───────────────────────────────────────────
+    // ── 5. Build final response ───────────────────────────────────────────
     res.json({
-      ad_id:      ad._id,
-      caption:    ad.caption,
-      category:   ad.category,
-      status:     ad.status,
+      ad_id:        ad._id,
+      caption:      ad.caption,
+      category:     ad.category,
+      status:       ad.status,
       content_type: ad.content_type,
-      created_at: ad.createdAt,
+      created_at:   ad.createdAt,
 
       likes: {
         total:     likedUserIds.length,
@@ -213,28 +135,11 @@ exports.getAdStats = async (req, res) => {
         user_ids:  dislikedUserIds,
       },
 
-      comments: {
-        total:     totalComments,
-        top_level: topLevelComments,
-        replies:   replyComments,
-        recent:    recentCommentsMapped,
-      },
-
       views: {
-        total:     ad.views_count        || 0,
-        unique:    ad.unique_views_count  || 0,
-        completed: ad.completed_views_count || 0,
+        total:       ad.views_count          || 0,
+        unique:      ad.unique_views_count    || 0,
+        completed:   ad.completed_views_count || 0,
         by_location: viewsWithLocation,
-      },
-
-      saves: {
-        total: savesCount,
-      },
-
-      budget,
-
-      coins: {
-        by_action: coinsByAction,
       },
     });
   } catch (error) {

@@ -465,34 +465,6 @@ router.get('/search', auth, searchAds);
  *           items:
  *             $ref: '#/components/schemas/AdStatUser'
  *
- *     AdRecentComment:
- *       type: object
- *       properties:
- *         _id:
- *           type: string
- *           example: "664f1a2b3c4d5e6f7a8b9c11"
- *         text:
- *           type: string
- *           example: "Great ad!"
- *         user:
- *           type: object
- *           properties:
- *             username:
- *               type: string
- *               example: "jane_doe"
- *             avatar_url:
- *               type: string
- *               example: "http://localhost:5000/uploads/jane.jpg"
- *         likes_count:
- *           type: integer
- *           example: 2
- *         dislikes_count:
- *           type: integer
- *           example: 0
- *         createdAt:
- *           type: string
- *           format: date-time
- *
  *     AdViewByLocation:
  *       type: object
  *       properties:
@@ -516,36 +488,6 @@ router.get('/search', auth, searchAds);
  *           type: number
  *           description: Total coins paid out to viewers from this location
  *           example: 700
- *
- *     AdCoinAction:
- *       type: object
- *       properties:
- *         count:
- *           type: integer
- *           description: Number of times this action occurred
- *           example: 12
- *         total_coins:
- *           type: number
- *           description: Net coins exchanged for this action (negative = deducted from vendor)
- *           example: -120
- *
- *     AdBudget:
- *       type: object
- *       properties:
- *         total:
- *           type: number
- *           description: Initial budget allocated at ad creation
- *           example: 5000
- *         spent:
- *           type: number
- *           description: Coins spent so far
- *           example: 1200
- *         remaining:
- *           type: number
- *           example: 3800
- *         spent_percentage:
- *           type: number
- *           example: 24.0
  *
  *     AdStatsResponse:
  *       type: object
@@ -595,22 +537,6 @@ router.get('/search', auth, searchAds);
  *               type: array
  *               items:
  *                 type: string
- *         comments:
- *           type: object
- *           properties:
- *             total:
- *               type: integer
- *               example: 25
- *             top_level:
- *               type: integer
- *               example: 18
- *             replies:
- *               type: integer
- *               example: 7
- *             recent:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/AdRecentComment'
  *         views:
  *           type: object
  *           properties:
@@ -627,26 +553,6 @@ router.get('/search', auth, searchAds);
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/AdViewByLocation'
- *         saves:
- *           type: object
- *           properties:
- *             total:
- *               type: integer
- *               example: 42
- *         budget:
- *           $ref: '#/components/schemas/AdBudget'
- *         coins:
- *           type: object
- *           properties:
- *             by_action:
- *               type: object
- *               description: Keyed by event_type (like, dislike, undo-like, undo-dislike)
- *               additionalProperties:
- *                 $ref: '#/components/schemas/AdCoinAction'
- *               example:
- *                 like: { count: 38, total_coins: -380 }
- *                 dislike: { count: 5, total_coins: 50 }
- *                 undo-like: { count: 2, total_coins: 20 }
  */
 
 /**
@@ -658,11 +564,7 @@ router.get('/search', auth, searchAds);
  *       Returns a full breakdown of engagement for a single ad including:
  *       - **Likes** — total count, list of user IDs, gender breakdown with profiles
  *       - **Dislikes** — explicit dislike array from Ad model, gender breakdown with profiles
- *       - **Comments** — total, top-level vs replies, 5 most recent
  *       - **Views** — total, unique, completed, broken down by viewer location with coins rewarded per location
- *       - **Saves** — total number of users who saved this ad
- *       - **Budget** — total allocated / spent / remaining / percentage
- *       - **Coins by action** — breakdown of coins exchanged per event type (like, dislike, undo-like, undo-dislike)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -725,19 +627,6 @@ router.get('/search', auth, searchAds);
  *                     gender: "male"
  *                     location: "Pune, India"
  *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c03"]
- *               comments:
- *                 total: 25
- *                 top_level: 18
- *                 replies: 7
- *                 recent:
- *                   - _id: "664f1a2b3c4d5e6f7a8b9c11"
- *                     text: "Love this product!"
- *                     user:
- *                       username: "jane_doe"
- *                       avatar_url: "http://localhost:5000/uploads/jane.jpg"
- *                     likes_count: 3
- *                     dislikes_count: 0
- *                     createdAt: "2025-06-01T10:30:00.000Z"
  *               views:
  *                 total: 500
  *                 unique: 340
@@ -761,18 +650,6 @@ router.get('/search', auth, searchAds);
  *                     completed_views: 65
  *                     rewarded_views: 50
  *                     total_coins_rewarded: 500
- *               saves:
- *                 total: 42
- *               budget:
- *                 total: 5000
- *                 spent: 1200
- *                 remaining: 3800
- *                 spent_percentage: 24.0
- *               coins:
- *                 by_action:
- *                   like: { count: 38, total_coins: -380 }
- *                   dislike: { count: 5, total_coins: 50 }
- *                   undo-like: { count: 2, total_coins: 20 }
  *       400:
  *         description: Invalid ad ID format
  *         content:
