@@ -970,21 +970,40 @@ exports.likeAd = async (req, res) => {
         ad.likes_count = Number(ad.likes_count || 0) + 1;
 
         if (ad.user_id.toString() !== actingUserId) {
+          // Always create new transaction records — like/dislike can happen multiple times
+          // so we never use upsert/$setOnInsert here (that would silently skip repeated actions)
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reward for liking ad'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_DEDUCTION',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Ad budget spent (like)'
+            }
+          ], { session });
+
+          // Credit member wallet
           await Wallet.findOneAndUpdate(
             { user_id: actingUserId },
             { $inc: { balance: rewardAmount } },
             { upsert: true, new: true, session }
           );
 
-          await WalletTransaction.findOneAndUpdate(
-            { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD' },
-            { $setOnInsert: { vendor_id: ad.vendor_id, amount: rewardAmount, status: 'SUCCESS', description: 'Reward for liking ad' } },
-            { upsert: true, new: true, session }
-          );
-
-          await WalletTransaction.findOneAndUpdate(
-            { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_DEDUCTION' },
-            { $setOnInsert: { vendor_id: ad.vendor_id, amount: -rewardAmount, status: 'SUCCESS', description: 'Ad budget spent (like)' } },
+          // Debit vendor wallet
+          await Wallet.findOneAndUpdate(
+            { user_id: ad.user_id },
+            { $inc: { balance: -rewardAmount } },
             { upsert: true, new: true, session }
           );
 
@@ -1029,21 +1048,39 @@ exports.likeAd = async (req, res) => {
         ad.likes_count = Number(ad.likes_count || 0) + 1;
 
         if (ad.user_id.toString() !== actingUserId) {
+          // Always create new transaction records — like/dislike can happen multiple times
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reward for liking ad'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_DEDUCTION',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Ad budget spent (like)'
+            }
+          ]);
+
+          // Credit member wallet
           await Wallet.findOneAndUpdate(
             { user_id: actingUserId },
             { $inc: { balance: rewardAmount } },
             { upsert: true, new: true }
           );
 
-          await WalletTransaction.findOneAndUpdate(
-            { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD' },
-            { $setOnInsert: { vendor_id: ad.vendor_id, amount: rewardAmount, status: 'SUCCESS', description: 'Reward for liking ad' } },
-            { upsert: true, new: true }
-          );
-
-          await WalletTransaction.findOneAndUpdate(
-            { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_DEDUCTION' },
-            { $setOnInsert: { vendor_id: ad.vendor_id, amount: -rewardAmount, status: 'SUCCESS', description: 'Ad budget spent (like)' } },
+          // Debit vendor wallet
+          await Wallet.findOneAndUpdate(
+            { user_id: ad.user_id },
+            { $inc: { balance: -rewardAmount } },
             { upsert: true, new: true }
           );
 
@@ -1126,35 +1163,14 @@ exports.dislikeAd = async (req, res) => {
           throw err;
         }
 
-        const upsertUserReversal = await WalletTransaction.updateOne(
-          { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD_REVERSAL' },
-          {
-            $setOnInsert: {
-              vendor_id: ad.vendor_id,
-              amount: -rewardAmount,
-              status: 'SUCCESS',
-              description: 'Reversal of like reward'
-            }
-          },
-          { upsert: true, session }
-        );
-        const upsertVendorRefund = await WalletTransaction.updateOne(
-          { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_BUDGET_REFUND' },
-          {
-            $setOnInsert: {
-              vendor_id: ad.vendor_id,
-              amount: rewardAmount,
-              status: 'SUCCESS',
-              description: 'Refund to ad budget (like reversal)'
-            }
-          },
-          { upsert: true, session }
-        );
-
+        // Remove from likes — the alreadyLiked guard above is the real dedup check.
+        // Always create new transaction records every time a dislike (reversal) occurs,
+        // so every like→dislike cycle is fully reflected in wallet history.
         ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
         ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
 
-        if ((upsertUserReversal && upsertUserReversal.upsertedId) || (upsertVendorRefund && upsertVendorRefund.upsertedId)) {
+        if (ad.user_id.toString() !== actingUserId) {
+          // Debit member wallet (reversal of like reward)
           const wallet = await Wallet.findOneAndUpdate(
             { user_id: actingUserId, balance: { $gte: rewardAmount } },
             { $inc: { balance: -rewardAmount } },
@@ -1165,7 +1181,38 @@ exports.dislikeAd = async (req, res) => {
             err.statusCode = 400;
             throw err;
           }
+
+          // Credit vendor wallet (refund)
+          await Wallet.findOneAndUpdate(
+            { user_id: ad.user_id },
+            { $inc: { balance: rewardAmount } },
+            { upsert: true, new: true, session }
+          );
+
+          // Always create fresh transaction records for this reversal cycle
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD_REVERSAL',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reversal of like reward'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_BUDGET_REFUND',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Refund to ad budget (like reversal)'
+            }
+          ], { session });
+
           ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
+
           await MemberAdAction.create([{
             user_id: actingUserId,
             vendor_id: ad.vendor_id,
@@ -1193,35 +1240,11 @@ exports.dislikeAd = async (req, res) => {
           throw err;
         }
 
-        const upsertUserReversal = await WalletTransaction.updateOne(
-          { user_id: actingUserId, ad_id: ad._id, type: 'AD_LIKE_REWARD_REVERSAL' },
-          {
-            $setOnInsert: {
-              vendor_id: ad.vendor_id,
-              amount: -rewardAmount,
-              status: 'SUCCESS',
-              description: 'Reversal of like reward'
-            }
-          },
-          { upsert: true }
-        );
-        const upsertVendorRefund = await WalletTransaction.updateOne(
-          { user_id: ad.user_id, ad_id: ad._id, type: 'AD_LIKE_BUDGET_REFUND' },
-          {
-            $setOnInsert: {
-              vendor_id: ad.vendor_id,
-              amount: rewardAmount,
-              status: 'SUCCESS',
-              description: 'Refund to ad budget (like reversal)'
-            }
-          },
-          { upsert: true }
-        );
-
         ad.likes = ad.likes.filter(like => like.toString() !== actingUserId);
         ad.likes_count = Math.max(0, Number(ad.likes_count || 0) - 1);
 
-        if ((upsertUserReversal && upsertUserReversal.upsertedId) || (upsertVendorRefund && upsertVendorRefund.upsertedId)) {
+        if (ad.user_id.toString() !== actingUserId) {
+          // Debit member wallet (reversal of like reward)
           const wallet = await Wallet.findOneAndUpdate(
             { user_id: actingUserId, balance: { $gte: rewardAmount } },
             { $inc: { balance: -rewardAmount } },
@@ -1232,7 +1255,38 @@ exports.dislikeAd = async (req, res) => {
             err.statusCode = 400;
             throw err;
           }
+
+          // Credit vendor wallet (refund)
+          await Wallet.findOneAndUpdate(
+            { user_id: ad.user_id },
+            { $inc: { balance: rewardAmount } },
+            { upsert: true, new: true }
+          );
+
+          // Always create fresh transaction records for this reversal cycle
+          await WalletTransaction.create([
+            {
+              user_id: actingUserId,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_REWARD_REVERSAL',
+              amount: -rewardAmount,
+              status: 'SUCCESS',
+              description: 'Reversal of like reward'
+            },
+            {
+              user_id: ad.user_id,
+              vendor_id: ad.vendor_id,
+              ad_id: ad._id,
+              type: 'AD_LIKE_BUDGET_REFUND',
+              amount: rewardAmount,
+              status: 'SUCCESS',
+              description: 'Refund to ad budget (like reversal)'
+            }
+          ]);
+
           ad.total_coins_spent = Math.max(0, Number(ad.total_coins_spent || 0) - rewardAmount);
+
           await MemberAdAction.create({
             user_id: actingUserId,
             vendor_id: ad.vendor_id,
