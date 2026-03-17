@@ -185,7 +185,7 @@ exports.updateUser = async (req, res) => {
     }
 
     // Update fields
-    const { full_name, bio, avatar_url, phone, username, gender, location, address } = req.body;
+    const { full_name, bio, avatar_url, phone, username, age, gender, location, address } = req.body;
 
     const normalizeAddress = (raw = {}) => {
       const obj = raw && typeof raw === 'object' ? raw : {};
@@ -207,6 +207,7 @@ exports.updateUser = async (req, res) => {
     if (avatar_url) updateFields.avatar_url = avatar_url;
     if (phone) updateFields.phone = phone;
     if (username) updateFields.username = username;
+    if (typeof age !== 'undefined') updateFields.age = age;
     if (typeof gender !== 'undefined') updateFields.gender = gender;
     if (typeof location !== 'undefined') updateFields.location = location;
     if (typeof address !== 'undefined') updateFields.address = normalizeAddress(address);

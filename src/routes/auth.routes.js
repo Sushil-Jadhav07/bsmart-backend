@@ -43,6 +43,10 @@ const jwt = require('jsonwebtoken');
  *                 type: string
  *               phone:
  *                 type: string
+ *               age:
+ *                 type: integer
+ *                 description: User age
+ *                 example: 25
  *               gender:
  *                 type: string
  *                 enum: [male, female]
@@ -124,6 +128,7 @@ const jwt = require('jsonwebtoken');
  *                     full_name: "Member Name"
  *                     avatar_url: ""
  *                     phone: "+911234567890"
+ *                     age: 25
  *                     gender: "male"
  *                     location: "Mumbai, India"
  *                     role: "member"
@@ -142,6 +147,7 @@ const jwt = require('jsonwebtoken');
  *                     username: "vendor_shop"
  *                     full_name: "Vendor Name"
  *                     phone: "+919876543211"
+ *                     age: 30
  *                     gender: "female"
  *                     location: "Delhi, India"
  *                     role: "vendor"
@@ -199,6 +205,9 @@ router.post('/register', register);
  *                       type: string
  *                     avatar_url:
  *                       type: string
+ *                     age:
+ *                       type: integer
+ *                       example: 25
  *                     gender:
  *                       type: string
  *                       example: ""
@@ -281,6 +290,7 @@ router.post('/login', login);
  *                   username: "member123"
  *                   full_name: "Member Name"
  *                   phone: "+911234567890"
+ *                   age: 25
  *                   gender: "male"
  *                   location: "Mumbai, India"
  *                   address:
@@ -428,6 +438,10 @@ router.get(
  *           type: string
  *         phone:
  *           type: string
+ *         age:
+ *           type: integer
+ *           description: User age
+ *           example: 25
  *         gender:
  *           type: string
  *           description: User gender (male, female, other, or empty string)

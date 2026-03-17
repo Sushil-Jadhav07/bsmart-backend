@@ -495,6 +495,9 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *         gender:
  *           type: string
  *           example: "male"
+ *         age:
+ *           type: integer
+ *           example: 25
  *         location:
  *           type: string
  *           example: "Mumbai, India"
@@ -522,6 +525,34 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *           $ref: '#/components/schemas/GenderBucket'
  *         unknown:
  *           $ref: '#/components/schemas/GenderBucket'
+ *
+ *     PostAgeDemographics:
+ *       type: object
+ *       properties:
+ *         Child:
+ *           type: integer
+ *           description: "0–12 years"
+ *           example: 0
+ *         Teen:
+ *           type: integer
+ *           description: "13–19 years"
+ *           example: 5
+ *         Adult:
+ *           type: integer
+ *           description: "20–39 years"
+ *           example: 20
+ *         Middle Age:
+ *           type: integer
+ *           description: "40–59 years"
+ *           example: 10
+ *         Senior:
+ *           type: integer
+ *           description: "60+ years"
+ *           example: 1
+ *         Unknown:
+ *           type: integer
+ *           description: "Age not provided"
+ *           example: 2
  *
  *     DislikeGenderCount:
  *       type: object
@@ -619,6 +650,8 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *               example: 38
  *             by_gender:
  *               $ref: '#/components/schemas/LikesByGender'
+ *             by_age:
+ *               $ref: '#/components/schemas/PostAgeDemographics'
  *             user_ids:
  *               type: array
  *               description: Raw ObjectId array of all users who liked this post
@@ -634,6 +667,8 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *               example: 12
  *             by_gender:
  *               $ref: '#/components/schemas/DislikesByGender'
+ *             by_age:
+ *               $ref: '#/components/schemas/PostAgeDemographics'
  *         comments:
  *           type: object
  *           properties:
@@ -674,6 +709,8 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *               description: View breakdown sorted by most views, grouped by viewer's location
  *               items:
  *                 $ref: '#/components/schemas/ViewByLocation'
+ *             by_age:
+ *               $ref: '#/components/schemas/PostAgeDemographics'
  */
 
 /**
@@ -720,6 +757,7 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *                         username: "rahul_m"
  *                         full_name: "Rahul Mehta"
  *                         gender: "male"
+ *                         age: 25
  *                         location: "Delhi, India"
  *                   female:
  *                     count: 15
@@ -728,6 +766,7 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *                         username: "priya_s"
  *                         full_name: "Priya Sharma"
  *                         gender: "female"
+ *                         age: 28
  *                         location: "Mumbai, India"
  *                   other:
  *                     count: 1
@@ -735,6 +774,13 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *                   unknown:
  *                     count: 2
  *                     users: []
+ *                 by_age:
+ *                   Child: 0
+ *                   Teen: 5
+ *                   Adult: 20
+ *                   "Middle Age": 10
+ *                   Senior: 1
+ *                   Unknown: 2
  *                 user_ids:
  *                   - "664f1a2b3c4d5e6f7a8b9c01"
  *                   - "664f1a2b3c4d5e6f7a8b9c02"
@@ -779,6 +825,13 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *                     views: 200
  *                     unique_viewers: 140
  *                     completed_views: 65
+ *                 by_age:
+ *                   Child: 10
+ *                   Teen: 40
+ *                   Adult: 250
+ *                   "Middle Age": 150
+ *                   Senior: 30
+ *                   Unknown: 20
  *       400:
  *         description: Invalid post ID format
  *         content:

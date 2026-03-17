@@ -68,6 +68,7 @@ exports.register = async (req, res) => {
       username,
       full_name,
       phone,
+      age,
       gender,
       location,
       address,
@@ -109,6 +110,14 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'Invalid gender. Allowed: male, female' });
     }
 
+    // Age validation
+    if (age !== undefined && age !== null) {
+      const parsedAge = Number(age);
+      if (!Number.isInteger(parsedAge) || parsedAge < 0 || parsedAge > 120) {
+        return res.status(400).json({ message: 'Age must be a valid integer between 0 and 120' });
+      }
+    }
+
     const memberAddress = userRole === 'member' ? normalizeAddress(address) : undefined;
 
     const user = await User.create({
@@ -117,6 +126,7 @@ exports.register = async (req, res) => {
       username,
       full_name,
       phone,
+      age: (age !== undefined && age !== null) ? Number(age) : null,
       role: userRole,
       gender: userRole === 'member' ? normalizedGender : '',
       location: location || '',
@@ -189,6 +199,7 @@ exports.register = async (req, res) => {
         full_name: user.full_name,
         avatar_url: user.avatar_url,
         phone: user.phone,
+        age: user.age,
         gender: user.gender,
         location: user.location,
         ...(userRole === 'member' ? { address: user.address } : {}),
@@ -282,6 +293,7 @@ exports.googleLogin = async (req, res) => {
         username: user.username,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
+        age: user.age,
         gender: user.gender,
         location: user.location,
         role: user.role,
@@ -360,6 +372,7 @@ exports.login = async (req, res) => {
         full_name: user.full_name,
         avatar_url: user.avatar_url,
         phone: user.phone,
+        age: user.age,
         gender: user.gender,
         location: user.location,
         role: user.role,
@@ -405,6 +418,12 @@ exports.getMe = async (req, res) => {
 
     const userData = user.toObject();
     if (userData.password) delete userData.password;
+    
+    // Explicitly ensure age is in the response (though toObject() handles it)
+    if (user.age !== undefined) {
+      userData.age = user.age;
+    }
+    
     if (wallet) {
       userData.wallet = wallet;
     }

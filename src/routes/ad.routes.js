@@ -413,6 +413,9 @@ router.get('/search', auth, searchAds);
  *         gender:
  *           type: string
  *           example: "male"
+ *         age:
+ *           type: integer
+ *           example: 25
  *         location:
  *           type: string
  *           example: "Mumbai, India"
@@ -440,6 +443,34 @@ router.get('/search', auth, searchAds);
  *           $ref: '#/components/schemas/AdGenderBucket'
  *         unknown:
  *           $ref: '#/components/schemas/AdGenderBucket'
+ *
+ *     AdAgeDemographics:
+ *       type: object
+ *       properties:
+ *         Child:
+ *           type: integer
+ *           description: "0–12 years"
+ *           example: 0
+ *         Teen:
+ *           type: integer
+ *           description: "13–19 years"
+ *           example: 5
+ *         Adult:
+ *           type: integer
+ *           description: "20–39 years"
+ *           example: 15
+ *         Middle Age:
+ *           type: integer
+ *           description: "40–59 years"
+ *           example: 10
+ *         Senior:
+ *           type: integer
+ *           description: "60+ years"
+ *           example: 2
+ *         Unknown:
+ *           type: integer
+ *           description: "Age not provided"
+ *           example: 6
  *
  *     AdDislikeGenderCount:
  *       type: object
@@ -520,6 +551,8 @@ router.get('/search', auth, searchAds);
  *               example: 38
  *             by_gender:
  *               $ref: '#/components/schemas/AdLikesByGender'
+ *             by_age:
+ *               $ref: '#/components/schemas/AdAgeDemographics'
  *             user_ids:
  *               type: array
  *               items:
@@ -533,6 +566,8 @@ router.get('/search', auth, searchAds);
  *               example: 5
  *             by_gender:
  *               $ref: '#/components/schemas/AdDislikesByGender'
+ *             by_age:
+ *               $ref: '#/components/schemas/AdAgeDemographics'
  *             user_ids:
  *               type: array
  *               items:
@@ -553,6 +588,8 @@ router.get('/search', auth, searchAds);
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/AdViewByLocation'
+ *             by_age:
+ *               $ref: '#/components/schemas/AdAgeDemographics'
  */
 
 /**
@@ -599,6 +636,7 @@ router.get('/search', auth, searchAds);
  *                       - _id: "664f1a2b3c4d5e6f7a8b9c01"
  *                         username: "rahul_m"
  *                         gender: "male"
+ *                         age: 25
  *                         location: "Delhi, India"
  *                   female:
  *                     count: 15
@@ -606,6 +644,7 @@ router.get('/search', auth, searchAds);
  *                       - _id: "664f1a2b3c4d5e6f7a8b9c02"
  *                         username: "priya_s"
  *                         gender: "female"
+ *                         age: 28
  *                         location: "Mumbai, India"
  *                   other:
  *                     count: 1
@@ -613,6 +652,13 @@ router.get('/search', auth, searchAds);
  *                   unknown:
  *                     count: 2
  *                     users: []
+ *                 by_age:
+ *                   Child: 0
+ *                   Teen: 5
+ *                   Adult: 20
+ *                   "Middle Age": 10
+ *                   Senior: 1
+ *                   Unknown: 2
  *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
  *               dislikes:
  *                 total: 5
@@ -621,10 +667,18 @@ router.get('/search', auth, searchAds);
  *                   female: { count: 2 }
  *                   other: { count: 0 }
  *                   unknown: { count: 0 }
+ *                 by_age:
+ *                   Child: 0
+ *                   Teen: 1
+ *                   Adult: 2
+ *                   "Middle Age": 1
+ *                   Senior: 0
+ *                   Unknown: 1
  *                 users:
  *                   - _id: "664f1a2b3c4d5e6f7a8b9c03"
  *                     username: "viewer_99"
  *                     gender: "male"
+ *                     age: 32
  *                     location: "Pune, India"
  *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c03"]
  *               views:
@@ -650,6 +704,13 @@ router.get('/search', auth, searchAds);
  *                     completed_views: 65
  *                     rewarded_views: 50
  *                     total_coins_rewarded: 500
+ *                 by_age:
+ *                   Child: 10
+ *                   Teen: 40
+ *                   Adult: 250
+ *                   "Middle Age": 150
+ *                   Senior: 30
+ *                   Unknown: 20
  *       400:
  *         description: Invalid ad ID format
  *         content:

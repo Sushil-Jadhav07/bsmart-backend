@@ -57,6 +57,7 @@ const auth = require('../middleware/auth');
  *                       full_name: "John Doe"
  *                       avatar_url: ""
  *                       phone: "+910000000000"
+ *                       age: 25
  *                       gender: "male"
  *                       location: "Mumbai, India"
  *                       role: "member"
@@ -109,6 +110,7 @@ router.get('/', auth, listUsersProfiles);
  *                   full_name: "John Doe"
  *                   avatar_url: ""
  *                   phone: "+910000000000"
+ *                   age: 25
  *                   gender: "male"
  *                   location: "Mumbai, India"
  *                   role: "member"
@@ -187,6 +189,10 @@ router.get('/:id/saved', auth, getSavedPostsByUser);
  *                 type: string
  *               username:
  *                 type: string
+ *               age:
+ *                 type: integer
+ *                 description: User age
+ *                 example: 25
  *               gender:
  *                 type: string
  *                 description: User gender (e.g. male, female, other)

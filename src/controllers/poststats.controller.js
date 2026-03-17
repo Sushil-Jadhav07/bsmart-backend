@@ -34,17 +34,33 @@ exports.getPostStats = async (req, res) => {
 
     const likedUsers = await User.find(
       { _id: { $in: likedUserIds } },
-      { _id: 1, username: 1, full_name: 1, avatar_url: 1, gender: 1, location: 1 }
+      { _id: 1, username: 1, full_name: 1, avatar_url: 1, gender: 1, location: 1, age: 1 }
     ).lean();
 
-    // Build gender buckets
+    const getAgeGroup = (age) => {
+      if (age === undefined || age === null || age === '') return 'Unknown';
+      const a = Number(age);
+      if (isNaN(a)) return 'Unknown';
+      if (a <= 12) return 'Child';
+      if (a <= 19) return 'Teen';
+      if (a <= 39) return 'Adult';
+      if (a <= 59) return 'Middle Age';
+      return 'Senior';
+    };
+
+    // Build gender and age buckets
     const genderBuckets = { male: [], female: [], other: [], unknown: [] };
+    const likeAgeBuckets = { Child: 0, Teen: 0, Adult: 0, 'Middle Age': 0, Senior: 0, Unknown: 0 };
+
     for (const u of likedUsers) {
       const g = (u.gender || '').toLowerCase();
       if (g === 'male') genderBuckets.male.push(u);
       else if (g === 'female') genderBuckets.female.push(u);
       else if (g) genderBuckets.other.push(u);
       else genderBuckets.unknown.push(u);
+
+      const ageGroup = getAgeGroup(u.age);
+      likeAgeBuckets[ageGroup]++;
     }
 
     const likesByGender = {
@@ -66,17 +82,22 @@ exports.getPostStats = async (req, res) => {
 
     const dislikedUsers = await User.find(
       { _id: { $in: dislikedIds } },
-      { _id: 1, username: 1, full_name: 1, avatar_url: 1, gender: 1, location: 1 }
+      { _id: 1, username: 1, full_name: 1, avatar_url: 1, gender: 1, location: 1, age: 1 }
     ).lean();
 
-    // Gender breakdown for dislikes too
+    // Gender and age breakdown for dislikes too
     const dislikeGenderBuckets = { male: 0, female: 0, other: 0, unknown: 0 };
+    const dislikeAgeBuckets = { Child: 0, Teen: 0, Adult: 0, 'Middle Age': 0, Senior: 0, Unknown: 0 };
+
     for (const u of dislikedUsers) {
       const g = (u.gender || '').toLowerCase();
       if (g === 'male') dislikeGenderBuckets.male++;
       else if (g === 'female') dislikeGenderBuckets.female++;
       else if (g) dislikeGenderBuckets.other++;
       else dislikeGenderBuckets.unknown++;
+
+      const ageGroup = getAgeGroup(u.age);
+      dislikeAgeBuckets[ageGroup]++;
     }
 
     const dislikesByGender = {
@@ -105,7 +126,7 @@ exports.getPostStats = async (req, res) => {
 
     // ── 5. Views — group by user location ────────────────────────────────
     // Join PostView → User to get location
-    const viewsWithLocation = await PostView.aggregate([
+    const viewStats = await PostView.aggregate([
       { $match: { post_id: new mongoose.Types.ObjectId(id) } },
       {
         $lookup: {
@@ -117,26 +138,69 @@ exports.getPostStats = async (req, res) => {
       },
       { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
       {
-        $group: {
-          _id: { $ifNull: ['$user.location', 'Unknown'] },
-          views: { $sum: '$view_count' },
-          unique_viewers: { $addToSet: '$user_id' },
-          completed_views: {
-            $sum: { $cond: [{ $eq: ['$completed', true] }, 1, 0] },
-          },
+        $facet: {
+          byLocation: [
+            {
+              $group: {
+                _id: { $ifNull: ['$user.location', 'Unknown'] },
+                views: { $sum: '$view_count' },
+                unique_viewers: { $addToSet: '$user_id' },
+                completed_views: {
+                  $sum: { $cond: [{ $eq: ['$completed', true] }, 1, 0] },
+                },
+              },
+            },
+            {
+              $project: {
+                location: '$_id',
+                views: 1,
+                unique_viewers: { $size: '$unique_viewers' },
+                completed_views: 1,
+                _id: 0,
+              },
+            },
+            { $sort: { views: -1 } },
+          ],
+          byAge: [
+            {
+              $project: {
+                age: '$user.age',
+                view_count: '$view_count',
+              },
+            },
+            {
+              $addFields: {
+                ageGroup: {
+                  $switch: {
+                    branches: [
+                      { case: { $lte: ['$age', 12] }, then: 'Child' },
+                      { case: { $lte: ['$age', 19] }, then: 'Teen' },
+                      { case: { $lte: ['$age', 39] }, then: 'Adult' },
+                      { case: { $lte: ['$age', 59] }, then: 'Middle Age' },
+                      { case: { $gte: ['$age', 60] }, then: 'Senior' },
+                    ],
+                    default: 'Unknown',
+                  },
+                },
+              },
+            },
+            {
+              $group: {
+                _id: '$ageGroup',
+                count: { $sum: 1 },
+              },
+            },
+          ],
         },
       },
-      {
-        $project: {
-          location: '$_id',
-          views: 1,
-          unique_viewers: { $size: '$unique_viewers' },
-          completed_views: 1,
-          _id: 0,
-        },
-      },
-      { $sort: { views: -1 } },
     ]);
+
+    const viewsWithLocation = viewStats[0].byLocation || [];
+    const viewsByAgeRaw = viewStats[0].byAge || [];
+    const viewsByAge = { Child: 0, Teen: 0, Adult: 0, 'Middle Age': 0, Senior: 0, Unknown: 0 };
+    viewsByAgeRaw.forEach((item) => {
+      viewsByAge[item._id] = item.count;
+    });
 
     // ── 6. Build final response ───────────────────────────────────────────
     res.json({
@@ -148,12 +212,14 @@ exports.getPostStats = async (req, res) => {
       likes: {
         total: likedUserIds.length,
         by_gender: likesByGender,
+        by_age: likeAgeBuckets,
         user_ids: likedUserIds,           // raw ObjectId array
       },
 
       dislikes: {
         total: dislikedIds.length,
         by_gender: dislikesByGender,
+        by_age: dislikeAgeBuckets,
       },
 
       comments: {
@@ -168,6 +234,7 @@ exports.getPostStats = async (req, res) => {
         unique: post.unique_views_count || 0,
         completed: post.completed_views_count || 0,
         by_location: viewsWithLocation,
+        by_age: viewsByAge,
       },
     });
   } catch (error) {
