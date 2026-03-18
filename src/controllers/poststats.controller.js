@@ -41,16 +41,23 @@ exports.getPostStats = async (req, res) => {
       if (age === undefined || age === null || age === '') return 'Unknown';
       const a = Number(age);
       if (isNaN(a)) return 'Unknown';
-      if (a <= 12) return 'Child';
-      if (a <= 19) return 'Teen';
-      if (a <= 39) return 'Adult';
-      if (a <= 59) return 'Middle Age';
-      return 'Senior';
+      if (a <= 12) return 'Child (0–12 years)';
+      if (a <= 19) return 'Teen (13–19 years)';
+      if (a <= 39) return 'Adult (20–39 years)';
+      if (a <= 59) return 'Middle Age (40–59 years)';
+      return 'Senior (60+ years)';
     };
 
     // Build gender and age buckets
     const genderBuckets = { male: [], female: [], other: [], unknown: [] };
-    const likeAgeBuckets = { Child: 0, Teen: 0, Adult: 0, 'Middle Age': 0, Senior: 0, Unknown: 0 };
+    const likeAgeBuckets = {
+      'Child (0–12 years)': 0,
+      'Teen (13–19 years)': 0,
+      'Adult (20–39 years)': 0,
+      'Middle Age (40–59 years)': 0,
+      'Senior (60+ years)': 0,
+      Unknown: 0,
+    };
 
     for (const u of likedUsers) {
       const g = (u.gender || '').toLowerCase();
@@ -87,7 +94,14 @@ exports.getPostStats = async (req, res) => {
 
     // Gender and age breakdown for dislikes too
     const dislikeGenderBuckets = { male: 0, female: 0, other: 0, unknown: 0 };
-    const dislikeAgeBuckets = { Child: 0, Teen: 0, Adult: 0, 'Middle Age': 0, Senior: 0, Unknown: 0 };
+    const dislikeAgeBuckets = {
+      'Child (0–12 years)': 0,
+      'Teen (13–19 years)': 0,
+      'Adult (20–39 years)': 0,
+      'Middle Age (40–59 years)': 0,
+      'Senior (60+ years)': 0,
+      Unknown: 0,
+    };
 
     for (const u of dislikedUsers) {
       const g = (u.gender || '').toLowerCase();
@@ -173,12 +187,12 @@ exports.getPostStats = async (req, res) => {
                 ageGroup: {
                   $switch: {
                     branches: [
-                      { case: { $lte: ['$age', 12] }, then: 'Child' },
-                      { case: { $lte: ['$age', 19] }, then: 'Teen' },
-                      { case: { $lte: ['$age', 39] }, then: 'Adult' },
-                      { case: { $lte: ['$age', 59] }, then: 'Middle Age' },
-                      { case: { $gte: ['$age', 60] }, then: 'Senior' },
-                    ],
+                        { case: { $lte: ['$age', 12] }, then: 'Child (0–12 years)' },
+                        { case: { $lte: ['$age', 19] }, then: 'Teen (13–19 years)' },
+                        { case: { $lte: ['$age', 39] }, then: 'Adult (20–39 years)' },
+                        { case: { $lte: ['$age', 59] }, then: 'Middle Age (40–59 years)' },
+                        { case: { $gte: ['$age', 60] }, then: 'Senior (60+ years)' },
+                      ],
                     default: 'Unknown',
                   },
                 },
@@ -197,7 +211,14 @@ exports.getPostStats = async (req, res) => {
 
     const viewsWithLocation = viewStats[0].byLocation || [];
     const viewsByAgeRaw = viewStats[0].byAge || [];
-    const viewsByAge = { Child: 0, Teen: 0, Adult: 0, 'Middle Age': 0, Senior: 0, Unknown: 0 };
+    const viewsByAge = {
+      'Child (0–12 years)': 0,
+      'Teen (13–19 years)': 0,
+      'Adult (20–39 years)': 0,
+      'Middle Age (40–59 years)': 0,
+      'Senior (60+ years)': 0,
+      Unknown: 0,
+    };
     viewsByAgeRaw.forEach((item) => {
       viewsByAge[item._id] = item.count;
     });

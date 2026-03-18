@@ -447,29 +447,23 @@ router.get('/search', auth, searchAds);
  *     AdAgeDemographics:
  *       type: object
  *       properties:
- *         Child:
+ *         "Child (0–12 years)":
  *           type: integer
- *           description: "0–12 years"
  *           example: 0
- *         Teen:
+ *         "Teen (13–19 years)":
  *           type: integer
- *           description: "13–19 years"
  *           example: 5
- *         Adult:
+ *         "Adult (20–39 years)":
  *           type: integer
- *           description: "20–39 years"
  *           example: 15
- *         Middle Age:
+ *         "Middle Age (40–59 years)":
  *           type: integer
- *           description: "40–59 years"
  *           example: 10
- *         Senior:
+ *         "Senior (60+ years)":
  *           type: integer
- *           description: "60+ years"
  *           example: 2
  *         Unknown:
  *           type: integer
- *           description: "Age not provided"
  *           example: 6
  *
  *     AdDislikeGenderCount:
@@ -653,11 +647,11 @@ router.get('/search', auth, searchAds);
  *                     count: 2
  *                     users: []
  *                 by_age:
- *                   Child: 0
- *                   Teen: 5
- *                   Adult: 20
- *                   "Middle Age": 10
- *                   Senior: 1
+ *                   "Child (0–12 years)": 0
+ *                   "Teen (13–19 years)": 5
+ *                   "Adult (20–39 years)": 20
+ *                   "Middle Age (40–59 years)": 10
+ *                   "Senior (60+ years)": 1
  *                   Unknown: 2
  *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
  *               dislikes:
@@ -668,11 +662,11 @@ router.get('/search', auth, searchAds);
  *                   other: { count: 0 }
  *                   unknown: { count: 0 }
  *                 by_age:
- *                   Child: 0
- *                   Teen: 1
- *                   Adult: 2
- *                   "Middle Age": 1
- *                   Senior: 0
+ *                   "Child (0–12 years)": 0
+ *                   "Teen (13–19 years)": 1
+ *                   "Adult (20–39 years)": 2
+ *                   "Middle Age (40–59 years)": 1
+ *                   "Senior (60+ years)": 0
  *                   Unknown: 1
  *                 users:
  *                   - _id: "664f1a2b3c4d5e6f7a8b9c03"
@@ -705,11 +699,11 @@ router.get('/search', auth, searchAds);
  *                     rewarded_views: 50
  *                     total_coins_rewarded: 500
  *                 by_age:
- *                   Child: 10
- *                   Teen: 40
- *                   Adult: 250
- *                   "Middle Age": 150
- *                   Senior: 30
+ *                   "Child (0–12 years)": 10
+ *                   "Teen (13–19 years)": 40
+ *                   "Adult (20–39 years)": 250
+ *                   "Middle Age (40–59 years)": 150
+ *                   "Senior (60+ years)": 30
  *                   Unknown: 20
  *       400:
  *         description: Invalid ad ID format

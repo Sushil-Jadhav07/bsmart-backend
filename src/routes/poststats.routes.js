@@ -529,23 +529,23 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *     PostAgeDemographics:
  *       type: object
  *       properties:
- *         Child:
+ *         "Child (0–12 years)":
  *           type: integer
  *           description: "0–12 years"
  *           example: 0
- *         Teen:
+ *         "Teen (13–19 years)":
  *           type: integer
  *           description: "13–19 years"
  *           example: 5
- *         Adult:
+ *         "Adult (20–39 years)":
  *           type: integer
  *           description: "20–39 years"
  *           example: 20
- *         Middle Age:
+ *         "Middle Age (40–59 years)":
  *           type: integer
  *           description: "40–59 years"
  *           example: 10
- *         Senior:
+ *         "Senior (60+ years)":
  *           type: integer
  *           description: "60+ years"
  *           example: 1
@@ -775,11 +775,11 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *                     count: 2
  *                     users: []
  *                 by_age:
- *                   Child: 0
- *                   Teen: 5
- *                   Adult: 20
- *                   "Middle Age": 10
- *                   Senior: 1
+ *                   "Child (0–12 years)": 0
+ *                   "Teen (13–19 years)": 5
+ *                   "Adult (20–39 years)": 20
+ *                   "Middle Age (40–59 years)": 10
+ *                   "Senior (60+ years)": 1
  *                   Unknown: 2
  *                 user_ids:
  *                   - "664f1a2b3c4d5e6f7a8b9c01"
@@ -826,11 +826,11 @@ router.get('/saved', verifyToken, listMySavedPosts);
  *                     unique_viewers: 140
  *                     completed_views: 65
  *                 by_age:
- *                   Child: 10
- *                   Teen: 40
- *                   Adult: 250
- *                   "Middle Age": 150
- *                   Senior: 30
+ *                   "Child (0–12 years)": 10
+ *                   "Teen (13–19 years)": 40
+ *                   "Adult (20–39 years)": 250
+ *                   "Middle Age (40–59 years)": 150
+ *                   "Senior (60+ years)": 30
  *                   Unknown: 20
  *       400:
  *         description: Invalid post ID format
