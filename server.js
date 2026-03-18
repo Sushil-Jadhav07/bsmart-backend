@@ -39,6 +39,7 @@ const walletRoutes       = require('./src/routes/wallet.routes');
 const notificationRoutes = require('./src/routes/notification.routes');
 const memberV1Routes     = require('./src/routes/member.v1.routes');
 const vendorV1Routes     = require('./src/routes/vendor.v1.routes');
+const salesRoutes        = require('./src/routes/sales.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -116,6 +117,7 @@ app.use('/api/wallet',         walletRoutes);
 app.use('/api/notifications',  notificationRoutes);
 app.use('/api/v1/member',      memberV1Routes);
 app.use('/api/v1/vendor',      vendorV1Routes);
+app.use('/api/sales',          salesRoutes);
 
 // Health check — used by PM2 / uptime monitors
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'ok', uptime: process.uptime() }));

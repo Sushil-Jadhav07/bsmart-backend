@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 
 const vendorSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-  
+
   // Basic Info (from registration) - 30%
   business_name: { type: String, required: true },
   logo_url: { type: String },
-  
+
   // Company Details
   company_details: {
     company_name: { type: String },
@@ -57,13 +57,20 @@ const vendorSchema = new mongoose.Schema({
   profile_completion_percentage: { type: Number, default: 30, min: 0, max: 100 },
   credits: { type: Number, default: 0 },
   credits_expires_at: { type: Date },
-  
-  // Legacy fields (kept for backward compatibility if needed, but better to migrate)
+
+  // Legacy fields
   description: { type: String },
   category: { type: String },
   phone: { type: String },
   address: { type: String },
-  
+
+  // Assigned Sales Officer
+  assigned_sales_officer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+
   isDeleted: { type: Boolean, default: false },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   deletedAt: { type: Date }

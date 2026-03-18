@@ -8,17 +8,12 @@ const Member = require('../models/Member');
 const Vendor = require('../models/Vendor');
 const sendNotification = require('../utils/sendNotification');
 
-// Helper to generate JWT
 const generateToken = (id) => {
   const secret = process.env.JWT_SECRET || 'default_secret_key_change_me';
-  return jwt.sign({ id }, secret, {
-    expiresIn: '30d',
-  });
+  return jwt.sign({ id }, secret, { expiresIn: '30d' });
 };
 
-// Normalize incoming company_details keys to a consistent structure
 const normalizeCompanyDetails = (raw = {}) => {
-  // Build a lookup by lowercased key with non-alphanumerics removed
   const map = {};
   Object.keys(raw || {}).forEach((k) => {
     const norm = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -78,8 +73,8 @@ exports.register = async (req, res) => {
     } = req.body;
 
     // 0. Role Validation
-    if (role && !['member', 'vendor', 'admin'].includes(role)) {
-      return res.status(400).json({ message: 'Invalid role. Allowed: member, vendor, admin' });
+    if (role && !['member', 'vendor', 'admin', 'sales'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Allowed: member, vendor, admin, sales' });
     }
 
     // 1. Manual Password Validation
@@ -110,7 +105,6 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'Invalid gender. Allowed: male, female' });
     }
 
-    // Age validation
     if (age !== undefined && age !== null) {
       const parsedAge = Number(age);
       if (!Number.isInteger(parsedAge) || parsedAge < 0 || parsedAge > 120) {
@@ -153,13 +147,14 @@ exports.register = async (req, res) => {
 
     if (userRole === 'member') {
       await Member.create({ user_id: user._id });
+    } else if (userRole === 'sales') {
+      const Sales = require('../models/Sales');
+      await Sales.create({ user_id: user._id });
     } else if (userRole === 'vendor') {
       const creditsExpiresAt = initialCredits > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null;
-      
-      // Extract fields from company_details with support for custom keys/aliases
+
       const normalizedCompanyDetails = normalizeCompanyDetails(company_details || {});
 
-      // Persist a snapshot on the User record as requested
       await User.findByIdAndUpdate(user._id, { company_details: normalizedCompanyDetails });
 
       await Vendor.create({
@@ -176,7 +171,6 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Fetch the created vendor to return in response if role is vendor
     let vendorData = null;
     if (userRole === 'vendor') {
       const vendor = await Vendor.findOne({ user_id: user._id });
@@ -232,11 +226,8 @@ exports.googleLogin = async (req, res) => {
     const client = new OAuth2Client();
     let ticket;
     try {
-      // Verify the token. 
-      // If you have specific CLIENT_IDs to allow, pass them in audience: [CLIENT_ID_1, CLIENT_ID_2]
       ticket = await client.verifyIdToken({
         idToken: id_token,
-        // audience: process.env.GOOGLE_CLIENT_ID 
       });
     } catch (e) {
       console.error('Google token verification failed:', e.message);
@@ -250,17 +241,13 @@ exports.googleLogin = async (req, res) => {
       return res.status(400).json({ message: 'Google token does not contain email' });
     }
 
-    // Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
-      // Create new user
-      // Since Google doesn't provide username, we generate one or use email prefix
-      // And we generate a random password since they use Google login
       const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(randomPassword, salt);
-      
+
       const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
 
       user = await User.create({
@@ -269,20 +256,13 @@ exports.googleLogin = async (req, res) => {
         full_name: name,
         avatar_url: picture,
         password: hashedPassword,
-        role: 'member' // Default role for Google signups
+        role: 'member'
       });
 
-      // Initialize Wallet
-      await Wallet.create({
-        user_id: user._id,
-        balance: 0
-      });
-
-      // Initialize Member profile
+      await Wallet.create({ user_id: user._id, balance: 0 });
       await Member.create({ user_id: user._id });
     }
 
-    // Generate JWT
     const token = generateToken(user._id);
 
     res.json({
@@ -332,7 +312,6 @@ exports.login = async (req, res) => {
 
     const wallet = await Wallet.findOne({ user_id: user._id });
 
-    // Notify all admins when a user logs in
     try {
       const admins = await User.find({ role: 'admin' }).select('_id').lean();
       for (const admin of admins) {
@@ -394,14 +373,12 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    // req.user is already attached by auth middleware
     const user = req.user;
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Fetch wallet explicitly since it's not embedded anymore
     const wallet = await Wallet.findOne({ user_id: user._id });
 
     let vendorData = null;
@@ -418,12 +395,11 @@ exports.getMe = async (req, res) => {
 
     const userData = user.toObject();
     if (userData.password) delete userData.password;
-    
-    // Explicitly ensure age is in the response (though toObject() handles it)
+
     if (user.age !== undefined) {
       userData.age = user.age;
     }
-    
+
     if (wallet) {
       userData.wallet = wallet;
     }
@@ -446,8 +422,7 @@ exports.getMe = async (req, res) => {
 exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword, user_id } = req.body;
-    
-    // If user_id is provided in body, use it; otherwise fallback to req.userId (authenticated user)
+
     const targetUserId = user_id || req.userId;
 
     if (!currentPassword || !newPassword) {
@@ -458,23 +433,19 @@ exports.changePassword = async (req, res) => {
       return res.status(400).json({ message: 'New password must be at least 6 characters long' });
     }
 
-    // Get user with password field
     const user = await User.findById(targetUserId).select('+password');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Check current password
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid current password' });
     }
 
-    // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update password
     user.password = hashedPassword;
     await user.save();
 
