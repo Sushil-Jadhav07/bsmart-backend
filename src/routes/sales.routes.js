@@ -26,12 +26,15 @@ const {
  *   schemas:
  *     SalesProfile:
  *       type: object
+ *       description: Sales profile merged with user info. All endpoints returning a sales profile include user fields (email, username, full_name, avatar_url, phone, location).
  *       properties:
  *         _id:
  *           type: string
+ *           description: Sales profile document ID
  *           example: "64a1b2c3d4e5f67890123456"
  *         user_id:
  *           type: string
+ *           description: The User _id this sales profile belongs to
  *           example: "64a1b2c3d4e5f67890123457"
  *         bio:
  *           type: string
@@ -42,6 +45,24 @@ const {
  *         target:
  *           type: number
  *           example: 500000
+ *         email:
+ *           type: string
+ *           example: "john@example.com"
+ *         username:
+ *           type: string
+ *           example: "john_sales"
+ *         full_name:
+ *           type: string
+ *           example: "John Doe"
+ *         avatar_url:
+ *           type: string
+ *           example: ""
+ *         phone:
+ *           type: string
+ *           example: "+919876543210"
+ *         location:
+ *           type: string
+ *           example: "Mumbai, India"
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -187,6 +208,12 @@ const {
  *               bio: "Experienced sales officer covering the western region"
  *               territory: "Mumbai, Pune"
  *               target: 500000
+ *               email: "john@example.com"
+ *               username: "john_sales"
+ *               full_name: "John Doe"
+ *               avatar_url: ""
+ *               phone: "+919876543210"
+ *               location: "Mumbai, India"
  *               createdAt: "2024-01-01T00:00:00.000Z"
  *               updatedAt: "2024-01-01T00:00:00.000Z"
  *       401:
@@ -272,7 +299,7 @@ router.put('/me', auth, requireRole('sales'), updateMySales);
  * /api/sales/users/{id}:
  *   get:
  *     summary: Get sales profile by user ID
- *     description: Fetch the sales profile document for any user by their User _id.
+ *     description: Fetch the sales profile merged with user info (email, username, full_name, phone, location) for any user by their User _id.
  *     tags: [Sales]
  *     security:
  *       - bearerAuth: []
@@ -286,11 +313,25 @@ router.put('/me', auth, requireRole('sales'), updateMySales);
  *         example: "64a1b2c3d4e5f67890123457"
  *     responses:
  *       200:
- *         description: Sales profile retrieved
+ *         description: Sales profile retrieved successfully
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/SalesProfile'
+ *             example:
+ *               _id: "64a1b2c3d4e5f67890123456"
+ *               user_id: "64a1b2c3d4e5f67890123457"
+ *               bio: "Experienced sales officer covering the western region"
+ *               territory: "Mumbai, Pune"
+ *               target: 500000
+ *               email: "john@example.com"
+ *               username: "john_sales"
+ *               full_name: "John Doe"
+ *               avatar_url: ""
+ *               phone: "+919876543210"
+ *               location: "Mumbai, India"
+ *               createdAt: "2024-01-01T00:00:00.000Z"
+ *               updatedAt: "2024-01-01T00:00:00.000Z"
  *       401:
  *         description: Not authorized
  *       404:
