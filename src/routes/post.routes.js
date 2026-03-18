@@ -1,10 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
+const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createPost, getFeed, getPost, deletePost, createReel, listReels, getReelById } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved.controller');
 const { getPostStats } = require('../controllers/poststats.controller');
+
+// ─── Feed rate limiters (dynamic — values set via query params) ─────────────
+// Pass `limit` in the request query to control the rate limit.
+// Falls back to env vars (FEED_RATE_LIMIT_MAX / FEED_RATE_LIMIT_WINDOW_MS)
+// or defaults (60 req / 60 000 ms) if not supplied.
+const feedRateLimit = dynamicRateLimit({
+  keyPrefix:    'feed',
+  envMaxKey:    'FEED_RATE_LIMIT_MAX',
+  envWindowKey: 'FEED_RATE_LIMIT_WINDOW_MS',
+  defaultMax:    60,
+  defaultWindow: 60 * 1000,
+});
+
+const reelsRateLimit = dynamicRateLimit({
+  keyPrefix:    'reels',
+  envMaxKey:    'REELS_RATE_LIMIT_MAX',
+  envWindowKey: 'REELS_RATE_LIMIT_WINDOW_MS',
+  defaultMax:    60,
+  defaultWindow: 60 * 1000,
+});
 
 /**
  * @swagger
@@ -336,6 +357,13 @@ router.post('/', verifyToken, createPost);
  *     tags: [Posts]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 30
+ *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
  *     responses:
  *       200:
  *         description: List of posts
@@ -345,8 +373,16 @@ router.post('/', verifyToken, createPost);
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Post'
+ *       429:
+ *         description: Too many requests — rate limit exceeded
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Too many requests, please slow down."
+ *               limit: 30
+ *               retry_after_ms: 45000
  */
-router.get('/feed', verifyToken, getFeed);
+router.get('/feed', verifyToken, feedRateLimit, getFeed);
 
 /**
  * @swagger
@@ -408,6 +444,13 @@ router.post('/reels', verifyToken, createReel);
  *     tags: [Reels]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 30
+ *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
  *     responses:
  *       200:
  *         description: List of reels
@@ -417,8 +460,16 @@ router.post('/reels', verifyToken, createReel);
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Post'
+ *       429:
+ *         description: Too many requests — rate limit exceeded
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Too many requests, please slow down."
+ *               limit: 30
+ *               retry_after_ms: 45000
  */
-router.get('/reels', verifyToken, listReels);
+router.get('/reels', verifyToken, reelsRateLimit, listReels);
 
 /**
  * @swagger

@@ -1,8 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
+const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createStory, getStoriesFeed, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory } = require('../controllers/story.controller');
 const upload = require('../config/multer');
+
+// ─── Stories feed rate limiter (dynamic — values set via query params) ───────
+// Pass `limit` in the request query to control the rate limit.
+// Falls back to env vars (STORIES_FEED_RATE_LIMIT_MAX / STORIES_FEED_RATE_LIMIT_WINDOW_MS)
+// or defaults (60 req / 60 000 ms) if not supplied.
+const storiesFeedRateLimit = dynamicRateLimit({
+  keyPrefix:    'stories:feed',
+  envMaxKey:    'STORIES_FEED_RATE_LIMIT_MAX',
+  envWindowKey: 'STORIES_FEED_RATE_LIMIT_WINDOW_MS',
+  defaultMax:    60,
+  defaultWindow: 60 * 1000,
+});
 
 /**
  * @swagger
@@ -40,6 +53,13 @@ router.post('/', verifyToken, createStory);
  *     tags: [Stories]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 30
+ *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
  *     responses:
  *       200:
  *         description: List of active stories
@@ -51,8 +71,16 @@ router.post('/', verifyToken, createStory);
  *                 $ref: '#/components/schemas/StoryFeedItem'
  *       401:
  *         description: Not authorized
+ *       429:
+ *         description: Too many requests — rate limit exceeded
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Too many requests, please slow down."
+ *               limit: 30
+ *               retry_after_ms: 45000
  */
-router.get('/feed', verifyToken, getStoriesFeed);
+router.get('/feed', verifyToken, storiesFeedRateLimit, getStoriesFeed);
 
 /**
  * @swagger

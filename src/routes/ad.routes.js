@@ -98,11 +98,34 @@ router.post('/categories', auth, addAdCategory);
  *         schema:
  *           type: string
  *         description: Filter by category
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 30
+ *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
  *     responses:
  *       200:
  *         description: List of active ads with user status
+ *       429:
+ *         description: Too many requests — rate limit exceeded
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Too many requests, please slow down."
+ *               limit: 30
+ *               retry_after_ms: 45000
  */
-router.get('/feed', auth, getAdsFeed);
+// Falls back to env ADS_FEED_RATE_LIMIT_MAX / ADS_FEED_RATE_LIMIT_WINDOW_MS or defaults (60 / 60000)
+const { dynamicRateLimit } = require('../middleware/rateLimit');
+const adsFeedRateLimit = dynamicRateLimit({
+  keyPrefix:    'ads:feed',
+  envMaxKey:    'ADS_FEED_RATE_LIMIT_MAX',
+  envWindowKey: 'ADS_FEED_RATE_LIMIT_WINDOW_MS',
+  defaultMax:    60,
+  defaultWindow: 60 * 1000,
+});
+router.get('/feed', auth, adsFeedRateLimit, getAdsFeed);
 
 /**
  * @swagger
