@@ -119,6 +119,13 @@ app.use('/api/notifications',  notificationRoutes);
 app.use('/api/v1/member',      memberV1Routes);
 app.use('/api/v1/vendor',      vendorV1Routes);
 app.use('/api/sales',          salesRoutes);
+// ── Country / State / City / Language routes ──────────────────────────────
+// Flat legacy endpoints  →  GET /api/countries  /api/states  /api/cities  /api/languages
+// New nested endpoints   →  GET /api/countries/all
+//                           GET /api/countries/:isoCode
+//                           GET /api/countries/:isoCode/states
+//                           GET /api/countries/:isoCode/states/:stateCode/cities
+//                           GET /api/countries/:isoCode/languages
 app.use('/api/countries',      countryRoutes);
 app.use('/api/states',         countryRoutes);
 app.use('/api/cities',         countryRoutes);

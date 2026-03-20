@@ -1,43 +1,108 @@
-const data = require('../data/countries_states_cities.json');
+const structuredCountries = require('../data/countries_data.json');
 
-// ─── Pre-compute flat lists once at startup (fast, in-memory) ─────────────
-const allCountries = data.map(({ name, isoCode, flag, phonecode, currency, latitude, longitude, timezones, languages }) => ({
-  name, isoCode, flag, phonecode, currency, latitude, longitude, timezones, languages,
-}));
+// ─── Pre-compute flat lists once at startup ───────────────────────────────
 
-const allStates = data.flatMap(({ name: countryName, isoCode: countryCode, states }) =>
-  states.map(({ name, isoCode, languages, latitude, longitude }) => ({
-    name, isoCode, countryCode, countryName, languages, latitude, longitude,
+const allCountriesFlat = structuredCountries.map(
+  ({ country: name, flag, phonecode, currency, languages }) => ({
+    name, flag, phonecode, currency, languages,
+  })
+);
+
+const allStatesFlat = structuredCountries.flatMap(({ country: countryName, states }) =>
+  states.map(({ state: name, languages }) => ({
+    name, countryName, languages,
   }))
 );
 
-const allCities = data.flatMap(({ name: countryName, isoCode: countryCode, states }) =>
-  states.flatMap(({ name: stateName, isoCode: stateCode, cities }) =>
-    cities.map(({ name, latitude, longitude }) => ({
-      name, stateName, stateCode, countryName, countryCode, latitude, longitude,
-    }))
+const allCitiesFlat = structuredCountries.flatMap(({ country: countryName, states }) =>
+  states.flatMap(({ state: stateName, cities }) =>
+    cities.map((name) => ({ name, stateName, countryName }))
   )
 );
 
 const allLanguages = [...new Set(
-  data.flatMap((c) => c.languages)
+  structuredCountries.flatMap((c) => c.languages)
 )].filter(Boolean).sort();
-// ───────────────────────────────────────────────────────────────────────────
 
-// GET /api/countries
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+const findCountry = (name) =>
+  structuredCountries.find(
+    (c) => c.country.toLowerCase() === name.toLowerCase()
+  );
+
+// ─── Controllers ──────────────────────────────────────────────────────────
+
+/** GET /api/countries — flat list */
 const getAllCountries = (req, res) =>
-  res.status(200).json({ success: true, count: allCountries.length, data: allCountries });
+  res.status(200).json({ success: true, count: allCountriesFlat.length, data: allCountriesFlat });
 
-// GET /api/states
+/** GET /api/states — flat list */
 const getAllStates = (req, res) =>
-  res.status(200).json({ success: true, count: allStates.length, data: allStates });
+  res.status(200).json({ success: true, count: allStatesFlat.length, data: allStatesFlat });
 
-// GET /api/cities
+/** GET /api/cities — flat list */
 const getAllCities = (req, res) =>
-  res.status(200).json({ success: true, count: allCities.length, data: allCities });
+  res.status(200).json({ success: true, count: allCitiesFlat.length, data: allCitiesFlat });
 
-// GET /api/languages
+/** GET /api/languages — all unique languages sorted A-Z */
 const getAllLanguages = (req, res) =>
   res.status(200).json({ success: true, count: allLanguages.length, data: allLanguages });
 
-module.exports = { getAllCountries, getAllStates, getAllCities, getAllLanguages };
+/** GET /api/countries/all — all countries nested */
+const getAllCountriesStructured = (req, res) =>
+  res.status(200).json({ success: true, count: structuredCountries.length, data: structuredCountries });
+
+/** GET /api/countries/:country — single country e.g. /api/countries/India */
+const getCountryByName = (req, res) => {
+  const country = findCountry(req.params.country);
+  if (!country) return res.status(404).json({ success: false, message: 'Country not found' });
+  return res.status(200).json({ success: true, data: country });
+};
+
+/** GET /api/countries/:country/states */
+const getStatesByCountry = (req, res) => {
+  const country = findCountry(req.params.country);
+  if (!country) return res.status(404).json({ success: false, message: 'Country not found' });
+  return res.status(200).json({
+    success: true,
+    country: country.country,
+    count: country.states.length,
+    data: country.states,
+  });
+};
+
+/** GET /api/countries/:country/states/:state/cities */
+const getCitiesByState = (req, res) => {
+  const country = findCountry(req.params.country);
+  if (!country) return res.status(404).json({ success: false, message: 'Country not found' });
+  const state = country.states.find(
+    (s) => s.state.toLowerCase() === req.params.state.toLowerCase()
+  );
+  if (!state) return res.status(404).json({ success: false, message: 'State not found' });
+  return res.status(200).json({
+    success: true,
+    country: country.country,
+    state: state.state,
+    count: state.cities.length,
+    data: state.cities,
+  });
+};
+
+/** GET /api/countries/:country/languages */
+const getLanguagesByCountry = (req, res) => {
+  const country = findCountry(req.params.country);
+  if (!country) return res.status(404).json({ success: false, message: 'Country not found' });
+  return res.status(200).json({
+    success: true,
+    country: country.country,
+    count: country.languages.length,
+    data: country.languages,
+  });
+};
+
+module.exports = {
+  getAllCountries, getAllStates, getAllCities, getAllLanguages,
+  getAllCountriesStructured, getCountryByName, getStatesByCountry,
+  getCitiesByState, getLanguagesByCountry,
+};
