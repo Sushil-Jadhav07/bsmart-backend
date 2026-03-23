@@ -41,6 +41,7 @@ const memberV1Routes     = require('./src/routes/member.v1.routes');
 const vendorV1Routes     = require('./src/routes/vendor.v1.routes');
 const salesRoutes        = require('./src/routes/sales.routes');
 const countryRoutes      = require('./src/routes/country.routes');
+const locationRoutes     = require('./src/routes/location.routes'); // ← NEW
 
 const app    = express();
 const server = http.createServer(app);
@@ -119,6 +120,7 @@ app.use('/api/notifications',  notificationRoutes);
 app.use('/api/v1/member',      memberV1Routes);
 app.use('/api/v1/vendor',      vendorV1Routes);
 app.use('/api/sales',          salesRoutes);
+app.use('/api/location',       locationRoutes);  // ← NEW
 // ── Country / State / City / Language routes ──────────────────────────────
 // Flat legacy endpoints  →  GET /api/countries  /api/states  /api/cities  /api/languages
 // New nested endpoints   →  GET /api/countries/all
