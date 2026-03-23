@@ -27,6 +27,7 @@ const DEBIT_TYPES = new Set([
 const VENDOR_WALLET_TYPES = new Set([
   'VENDOR_REGISTRATION_CREDIT',
   'VENDOR_RECHARGE',
+  'VENDOR_PACKAGE_PURCHASE',
   'AD_BUDGET_DEDUCTION',
   'AD_LIKE_BUDGET_REFUND',
   'VENDOR_PROFILE_VIEW_DEDUCTION',
@@ -57,6 +58,7 @@ const AD_DEDUCTION_TYPES = [
 const TRANSACTION_LABELS = {
   VENDOR_REGISTRATION_CREDIT:     'Registration Credit',
   VENDOR_RECHARGE:                'Wallet Recharge',
+  VENDOR_PACKAGE_PURCHASE:        'Package Purchase',
   ADMIN_ADJUSTMENT:               'Admin Adjustment',
   REEL_VIEW_REWARD:               'Reel View Reward',
   AD_REWARD:                      'Ad Reward',

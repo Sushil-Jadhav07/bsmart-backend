@@ -31,6 +31,7 @@ const walletTransactionSchema = new mongoose.Schema(
      * VENDOR WALLET (stored with vendor's user_id)
      *   VENDOR_REGISTRATION_CREDIT  – initial coins when vendor signs up
      *   VENDOR_RECHARGE             – admin tops up vendor wallet
+     *   VENDOR_PACKAGE_PURCHASE     – vendor purchases a package; coins credited
      *   AD_BUDGET_DEDUCTION         – vendor creates ad; budget deducted
      *   AD_LIKE_BUDGET_REFUND       – user un-likes; budget refunded to vendor
      *   ADMIN_ADJUSTMENT            – manual admin credit/debit
@@ -60,6 +61,7 @@ const walletTransactionSchema = new mongoose.Schema(
         // Vendor wallet
         'VENDOR_REGISTRATION_CREDIT',
         'VENDOR_RECHARGE',
+        'VENDOR_PACKAGE_PURCHASE',        // ← NEW: vendor buys a package
         'AD_BUDGET_DEDUCTION',
         'AD_LIKE_BUDGET_REFUND',
         'VENDOR_PROFILE_VIEW_DEDUCTION',

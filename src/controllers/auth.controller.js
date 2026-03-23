@@ -69,7 +69,9 @@ exports.register = async (req, res) => {
       address,
       role,
       company_details,
-      credits
+      // ── `credits` is intentionally removed from destructuring.
+      // All new users (member & vendor) start with 0 coins.
+      // Vendors receive coins only when they purchase a package.
     } = req.body;
 
     // 0. Role Validation
@@ -127,23 +129,14 @@ exports.register = async (req, res) => {
       ...(memberAddress ? { address: memberAddress } : {})
     });
 
-    const initialCredits =
-      userRole === 'vendor' && Number(credits) > 0 ? Number(credits) : 0;
-    const walletBalance = initialCredits;
+    // ── Wallet always starts at 0 for every role ──────────────────────────
     const wallet = await Wallet.create({
       user_id: user._id,
-      balance: walletBalance
+      balance: 0
     });
-
-    if (userRole === 'vendor' && initialCredits > 0) {
-      await WalletTransaction.create({
-        user_id: user._id,
-        type: 'VENDOR_REGISTRATION_CREDIT',
-        amount: initialCredits,
-        status: 'SUCCESS',
-        description: 'Initial credits added on vendor registration'
-      });
-    }
+    // No VENDOR_REGISTRATION_CREDIT transaction is created here.
+    // Coins are granted only when the vendor purchases a package via
+    // POST /api/vendor-packages/:packageId/buy
 
     if (userRole === 'member') {
       await Member.create({ user_id: user._id });
@@ -151,8 +144,6 @@ exports.register = async (req, res) => {
       const Sales = require('../models/Sales');
       await Sales.create({ user_id: user._id });
     } else if (userRole === 'vendor') {
-      const creditsExpiresAt = initialCredits > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null;
-
       const normalizedCompanyDetails = normalizeCompanyDetails(company_details || {});
 
       await User.findByIdAndUpdate(user._id, { company_details: normalizedCompanyDetails });
@@ -166,8 +157,8 @@ exports.register = async (req, res) => {
         social_media_links: {},
         validated: false,
         profile_completion_percentage: 30,
-        credits: initialCredits,
-        credits_expires_at: creditsExpiresAt
+        credits: 0,           // always zero at registration
+        credits_expires_at: null
       });
     }
 
