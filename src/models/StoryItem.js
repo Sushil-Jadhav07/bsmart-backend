@@ -22,11 +22,13 @@ const storyItemSchema = new mongoose.Schema({
   order: { type: Number, required: true },
   media: {
     url: { type: String, required: true },
-    type: { type: String, enum: ['image','reel'], required: true },
+    // 'image' = photo, 'video' = raw video, 'reel' = HLS (.m3u8) stream
+    type: { type: String, enum: ['image', 'video', 'reel'], required: true },
     thumbnail: String,
     durationSec: Number,
     width: Number,
-    height: Number
+    height: Number,
+    hls: { type: Boolean, default: false }  // true when url points to .m3u8
   },
   transform: {
     x: { type: Number, default: 0.5 },

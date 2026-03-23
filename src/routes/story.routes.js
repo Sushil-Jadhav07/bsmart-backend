@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createStory, getStoriesFeed, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory } = require('../controllers/story.controller');
@@ -177,7 +179,11 @@ router.get('/:storyId/views', verifyToken, getStoryViews);
  * @swagger
  * /api/stories/upload:
  *   post:
- *     summary: Upload a file for stories and return media payload
+ *     summary: Upload an image or video for a story item
+ *     description: |
+ *       Accepts images (JPEG, PNG, GIF, WEBP) and videos (MP4, MOV, AVI, MKV, WEBM, FLV, WMV).
+ *       Videos are automatically converted to HLS (.m3u8) for smooth streaming — identical to the post upload flow.
+ *       Use the returned `media` object directly in the `POST /api/stories` items array.
  *     tags: [Stories]
  *     security:
  *       - bearerAuth: []
@@ -191,9 +197,10 @@ router.get('/:storyId/views', verifyToken, getStoryViews);
  *               file:
  *                 type: string
  *                 format: binary
+ *                 description: Image or video file (max 500MB)
  *     responses:
  *       200:
- *         description: Story file uploaded successfully
+ *         description: File uploaded successfully
  *         content:
  *           application/json:
  *             schema:
@@ -203,39 +210,128 @@ router.get('/:storyId/views', verifyToken, getStoryViews);
  *                   type: string
  *                 fileUrl:
  *                   type: string
+ *                 media_type:
+ *                   type: string
+ *                   enum: [image, reel]
+ *                   description: image for photos; reel for videos (HLS)
+ *                 hls:
+ *                   type: boolean
+ *                   description: true when video was converted to HLS stream
  *                 media:
  *                   type: object
+ *                   description: Ready-to-use object for POST /api/stories items[].media[]
  *                   properties:
  *                     url:
  *                       type: string
  *                     type:
  *                       type: string
  *                       enum: [image, reel]
+ *                     hls:
+ *                       type: boolean
+ *             examples:
+ *               image_upload:
+ *                 summary: Image uploaded
+ *                 value:
+ *                   fileName: "1714000000000-123456789.jpg"
+ *                   fileUrl: "https://api.bebsmart.in/uploads/1714000000000-123456789.jpg"
+ *                   media_type: "image"
+ *                   hls: false
+ *                   media:
+ *                     url: "https://api.bebsmart.in/uploads/1714000000000-123456789.jpg"
+ *                     type: "image"
+ *                     hls: false
+ *               video_upload:
+ *                 summary: Video uploaded and converted to HLS
+ *                 value:
+ *                   fileName: "1714000000000-123456789/index.m3u8"
+ *                   fileUrl: "https://api.bebsmart.in/uploads/1714000000000-123456789/index.m3u8"
+ *                   media_type: "reel"
+ *                   hls: true
+ *                   media:
+ *                     url: "https://api.bebsmart.in/uploads/1714000000000-123456789/index.m3u8"
+ *                     type: "reel"
+ *                     hls: true
  *       400:
- *         description: No file uploaded or invalid file type
+ *         description: No file uploaded or unsupported file type
  *       401:
  *         description: Not authorized
+ *       500:
+ *         description: Server error or HLS conversion failed
  */
-router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
+router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Please upload a file' });
     }
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv']);
+    const uploadsDir = path.join(__dirname, '../../uploads');
+
+    const isVideoFile = VIDEO_EXTS.has(
+      path.extname(req.file.originalname || req.file.filename).toLowerCase()
+    );
+
+    // ─── VIDEO → HLS conversion (same as /api/upload) ─────────────────────
+    if (isVideoFile) {
+      const baseName  = path.basename(req.file.filename, path.extname(req.file.filename));
+      const inputPath = req.file.path;
+
+      try {
+        const convertToHls = require('../utils/convertToHls');
+        await convertToHls(inputPath, uploadsDir, baseName);
+
+        // Remove the raw uploaded file after HLS conversion
+        fs.unlink(inputPath, (err) => {
+          if (err) console.warn('[Story Upload] Could not delete original video:', err.message);
+        });
+
+        const hlsUrl = `${baseUrl}/uploads/${baseName}/index.m3u8`;
+        return res.json({
+          fileName:   `${baseName}/index.m3u8`,
+          fileUrl:    hlsUrl,
+          media_type: 'reel',
+          hls:        true,
+          media: {
+            url:  hlsUrl,
+            type: 'reel',
+            hls:  true
+          }
+        });
+      } catch (hlsErr) {
+        console.error('[Story Upload] HLS conversion failed:', hlsErr.message);
+        // HLS failed — fall back to serving the raw video (no delete)
+        const rawUrl = `${baseUrl}/uploads/${req.file.filename}`;
+        return res.json({
+          fileName:   req.file.filename,
+          fileUrl:    rawUrl,
+          media_type: 'reel',
+          hls:        false,
+          media: {
+            url:  rawUrl,
+            type: 'reel',
+            hls:  false
+          }
+        });
+      }
+    }
+
+    // ─── IMAGE ─────────────────────────────────────────────────────────────
     const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
-    const ext = (req.file.originalname || req.file.filename).toLowerCase();
-    const isImage = ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.gif') || ext.endsWith('.webp');
-    const mediaType = isImage ? 'image' : 'reel';
     res.json({
-      fileName: req.file.filename,
+      fileName:   req.file.filename,
       fileUrl,
+      media_type: 'image',
+      hls:        false,
       media: {
-        url: fileUrl,
-        type: mediaType
+        url:  fileUrl,
+        type: 'image',
+        hls:  false
       }
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('[Story Upload] Error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -277,6 +373,7 @@ router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
  *           - media:
  *               url: "http://localhost:5000/uploads/photo.jpg"
  *               type: "image"
+ *               hls: false
  *             transform:
  *               x: 0.5
  *               y: 0.5
@@ -301,10 +398,18 @@ router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
  *                 username: "alice"
  *                 x: 0.2
  *                 y: 0.3
- *               - user_id: "603e2f9d8c9a4b2f88d1e222"
- *                 username: "bob"
- *                 x: 0.7
- *                 y: 0.6
+ *           - media:
+ *               url: "http://localhost:5000/uploads/abc123/index.m3u8"
+ *               type: "reel"
+ *               hls: true
+ *               durationSec: 15
+ *             transform:
+ *               x: 0.5
+ *               y: 0.5
+ *               scale: 1
+ *               rotation: 0
+ *             filter:
+ *               name: "none"
  *     StoryItemPayload:
  *       type: object
  *       required: [media]
@@ -316,11 +421,12 @@ router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
  *             required: [url, type]
  *             properties:
  *               url: { type: string }
- *               type: { type: string, enum: [image, reel] }
+ *               type: { type: string, enum: [image, video, reel], description: 'image = photo; reel = HLS stream; video = raw video fallback' }
  *               thumbnail: { type: string }
- *               durationSec: { type: number, description: 'If image omitted defaults to 15' }
+ *               durationSec: { type: number, description: 'Seconds — images default to 15, videos default to 30' }
  *               width: { type: number }
  *               height: { type: number }
+ *               hls: { type: boolean, description: 'true when url is an HLS .m3u8 stream' }
  *         transform:
  *           type: object
  *           properties:

@@ -36,10 +36,11 @@ exports.createStory = async (req, res) => {
         return res.status(400).json({ message: 'media array with at least one item is required' });
       }
       const media = mediaArr[0] || {};
-      if (!media.url || !media.type || !['image','reel'].includes(media.type)) {
-        return res.status(400).json({ message: 'invalid media' });
+      if (!media.url || !media.type || !['image', 'video', 'reel'].includes(media.type)) {
+        return res.status(400).json({ message: 'invalid media — type must be image, video, or reel' });
       }
-      const durationSec = media.durationSec ?? (media.type === 'image' ? 15 : undefined);
+      // Default duration: 15s for images, 30s for video/reel (actual value sent by client overrides)
+      const durationSec = media.durationSec ?? (media.type === 'image' ? 15 : 30);
       const doc = {
         story_id: story._id,
         user_id: userId,
@@ -50,7 +51,8 @@ exports.createStory = async (req, res) => {
           thumbnail: media.thumbnail,
           durationSec,
           width: media.width,
-          height: media.height
+          height: media.height,
+          hls: media.hls === true || (media.url && media.url.endsWith('.m3u8'))
         },
         transform: {
           x: it.transform?.x ?? 0.5,
