@@ -653,16 +653,20 @@ exports.recordAdView = async (req, res) => {
               );
 
               if (upsertReward.upsertedCount > 0) {
-                // Per-viewer deduction record (plain create — one record per viewer)
-                await WalletTransaction.create([{
-                  user_id: ad.user_id,
-                  vendor_id: ad.vendor_id,
-                  ad_id: ad._id,
-                  type: 'AD_VIEW_DEDUCTION',
-                  amount: -rewardAmount,
-                  status: 'SUCCESS',
-                  description: `Ad budget spent (view by ${actingUserId})`
-                }], { session });
+                // Per-viewer deduction record — use upsert to match the unique index
+                // on (user_id, ad_id, type) so retries never cause E11000
+                await WalletTransaction.updateOne(
+                  { user_id: ad.user_id, ad_id: ad._id, type: 'AD_VIEW_DEDUCTION' },
+                  {
+                    $setOnInsert: {
+                      vendor_id: ad.vendor_id,
+                      amount: -rewardAmount,
+                      status: 'SUCCESS',
+                      description: `Ad budget spent (view by ${actingUserId})`
+                    }
+                  },
+                  { upsert: true, session }
+                );
 
                 // Credit member wallet
                 await Wallet.findOneAndUpdate(
@@ -760,16 +764,19 @@ exports.recordAdView = async (req, res) => {
               );
 
               if (upsertReward.upsertedCount > 0) {
-                // Per-viewer deduction record
-                await WalletTransaction.create({
-                  user_id: ad.user_id,
-                  vendor_id: ad.vendor_id,
-                  ad_id: ad._id,
-                  type: 'AD_VIEW_DEDUCTION',
-                  amount: -rewardAmount,
-                  status: 'SUCCESS',
-                  description: `Ad budget spent (view by ${actingUserId})`
-                });
+                // Per-viewer deduction record — upsert to avoid E11000 on retry
+                await WalletTransaction.updateOne(
+                  { user_id: ad.user_id, ad_id: ad._id, type: 'AD_VIEW_DEDUCTION' },
+                  {
+                    $setOnInsert: {
+                      vendor_id: ad.vendor_id,
+                      amount: -rewardAmount,
+                      status: 'SUCCESS',
+                      description: `Ad budget spent (view by ${actingUserId})`
+                    }
+                  },
+                  { upsert: true }
+                );
 
                 // Credit member wallet
                 await Wallet.findOneAndUpdate(
@@ -889,26 +896,31 @@ exports.completeAdView = async (req, res) => {
             { upsert: true, session }
           );
 
-          await WalletTransaction.create([
+          await WalletTransaction.updateOne(
+            { user_id: userId, ad_id: ad._id, type: 'AD_VIEW_REWARD' },
             {
-              user_id: userId,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_VIEW_REWARD',
-              amount: rewardAmount,
-              status: 'SUCCESS',
-              description: 'Reward for completing ad view'
+              $setOnInsert: {
+                vendor_id: ad.vendor_id,
+                amount: rewardAmount,
+                status: 'SUCCESS',
+                description: 'Reward for completing ad view'
+              }
             },
+            { upsert: true, session }
+          );
+
+          await WalletTransaction.updateOne(
+            { user_id: ad.user_id, ad_id: ad._id, type: 'AD_VIEW_DEDUCTION' },
             {
-              user_id: ad.user_id,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_VIEW_DEDUCTION',
-              amount: -rewardAmount,
-              status: 'SUCCESS',
-              description: 'Ad budget spent (view)'
-            }
-          ], { session });
+              $setOnInsert: {
+                vendor_id: ad.vendor_id,
+                amount: -rewardAmount,
+                status: 'SUCCESS',
+                description: 'Ad budget spent (view)'
+              }
+            },
+            { upsert: true, session }
+          );
 
           rewardPaid = rewardAmount;
         }
@@ -963,26 +975,31 @@ exports.completeAdView = async (req, res) => {
             { upsert: true }
           );
 
-          await WalletTransaction.create([
+          await WalletTransaction.updateOne(
+            { user_id: userId, ad_id: ad._id, type: 'AD_VIEW_REWARD' },
             {
-              user_id: userId,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_VIEW_REWARD',
-              amount: rewardAmount,
-              status: 'SUCCESS',
-              description: 'Reward for completing ad view'
+              $setOnInsert: {
+                vendor_id: ad.vendor_id,
+                amount: rewardAmount,
+                status: 'SUCCESS',
+                description: 'Reward for completing ad view'
+              }
             },
+            { upsert: true }
+          );
+
+          await WalletTransaction.updateOne(
+            { user_id: ad.user_id, ad_id: ad._id, type: 'AD_VIEW_DEDUCTION' },
             {
-              user_id: ad.user_id,
-              vendor_id: ad.vendor_id,
-              ad_id: ad._id,
-              type: 'AD_VIEW_DEDUCTION',
-              amount: -rewardAmount,
-              status: 'SUCCESS',
-              description: 'Ad budget spent (view)'
-            }
-          ]);
+              $setOnInsert: {
+                vendor_id: ad.vendor_id,
+                amount: -rewardAmount,
+                status: 'SUCCESS',
+                description: 'Ad budget spent (view)'
+              }
+            },
+            { upsert: true }
+          );
 
           rewardPaid = rewardAmount;
         }
@@ -1828,4 +1845,3 @@ exports.searchAds = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
-
