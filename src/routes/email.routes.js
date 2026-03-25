@@ -4,7 +4,9 @@ const {
   verifyOtp,
   forgotPassword,
   resetPassword,
+  sendCustomEmail,
 } = require('../controllers/email.controller');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -183,5 +185,57 @@ router.post('/forgot-password', forgotPassword);
  *         description: Server error
  */
 router.post('/reset-password', resetPassword);
+
+/**
+ * @swagger
+ * /api/email/send:
+ *   post:
+ *     summary: Send an email to another user or external recipient
+ *     tags: [Email]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - to
+ *               - subject
+ *             properties:
+ *               to:
+ *                 type: string
+ *                 format: email
+ *                 example: recipient@example.com
+ *               subject:
+ *                 type: string
+ *                 example: Hello from B-Smart
+ *               message:
+ *                 type: string
+ *                 example: This is a plain text message sent from the API.
+ *               html:
+ *                 type: string
+ *                 example: "<p>This is a <strong>custom HTML</strong> email.</p>"
+ *             description: Provide either `message` or `html`. If both are provided, `html` is used for the email body.
+ *     responses:
+ *       200:
+ *         description: Email sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Email sent successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Authentication required
+ *       500:
+ *         description: Failed to send email
+ */
+router.post('/send', auth, sendCustomEmail);
 
 module.exports = router;

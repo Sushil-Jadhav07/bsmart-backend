@@ -112,6 +112,7 @@ const welcomeVendorTemplate = ({ full_name, company_name }) =>
 
 const otpTemplate = ({ full_name, otp, purpose = 'verify_email', expiresInMinutes = 10 }) => {
   const isVerify = purpose === 'verify_email';
+  const otpColor = '#EC1C44';
 
   return baseTemplate(`
     ${h2(isVerify ? 'Verify your email address' : 'Your password reset OTP')}
@@ -122,15 +123,15 @@ const otpTemplate = ({ full_name, otp, purpose = 'verify_email', expiresInMinute
         : `You requested a password reset. Enter the code below to continue. This code expires in <strong>${expiresInMinutes} minutes</strong>.`
     )}
     <div style="text-align:center;margin:32px 0;">
-      <div style="display:inline-block;background:#f0f0ff;border:2px dashed #4F46E5;border-radius:12px;padding:20px 40px;">
-        <span style="font-size:40px;font-weight:800;letter-spacing:14px;color:#4F46E5;font-family:'Courier New',monospace;">
+      <div style="display:inline-block;background:#fff1f4;border:2px dashed ${otpColor};border-radius:12px;padding:20px 40px;">
+        <span style="font-size:40px;font-weight:800;letter-spacing:14px;color:${otpColor};font-family:'Courier New',monospace;">
           ${otp}
         </span>
       </div>
     </div>
     ${note('Never share this code with anyone. B-Smart will never ask you for your OTP.')}
     ${note(`This code expires in ${expiresInMinutes} minutes.`)}
-  `);
+  `, otpColor);
 };
 
 const forgotPasswordTemplate = ({ full_name, resetLink }) =>
@@ -367,6 +368,21 @@ const newAdPendingTemplate = ({ vendor_name, ad_caption, submitted_at }) =>
     ${btn('Review Ad in Admin Panel', `${CLIENT}/admin/ads`)}
   `);
 
+const customSendEmailTemplate = ({ subject, senderName, message, html }) =>
+  baseTemplate(
+    `
+      ${h2(subject || 'Message from B-Smart')}
+      <p style="margin:0 0 18px;color:#555555;font-size:14px;line-height:1.6;">
+        From: <strong>${senderName || 'B-Smart User'}</strong>
+      </p>
+      <div style="background:#fff1f4;border-left:4px solid #EC1C44;border-radius:10px;padding:20px 22px;color:#333333;font-size:15px;line-height:1.7;white-space:pre-wrap;">
+        ${html || (message || '').replace(/\n/g, '<br />')}
+      </div>
+      ${note('Sent via B-Smart')}
+    `,
+    '#EC1C44'
+  );
+
 module.exports = {
   welcomeMemberTemplate,
   welcomeVendorTemplate,
@@ -381,4 +397,5 @@ module.exports = {
   coinsLowTemplate,
   newVendorAlertTemplate,
   newAdPendingTemplate,
+  customSendEmailTemplate,
 };

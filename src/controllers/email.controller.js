@@ -17,6 +17,7 @@ const {
   coinsLowTemplate,
   newVendorAlertTemplate,
   newAdPendingTemplate,
+  customSendEmailTemplate,
 } = require('../templates/email.templates');
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
@@ -325,6 +326,43 @@ exports.resetPassword = async (req, res) => {
   } catch (err) {
     console.error('[Email] resetPassword error:', err);
     return res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.sendCustomEmail = async (req, res) => {
+  try {
+    const { to, subject, message, html } = req.body;
+
+    if (!to || !subject || (!message && !html)) {
+      return res.status(400).json({
+        message: 'to, subject and either message or html are required',
+      });
+    }
+
+    const senderName =
+      req.user?.full_name ||
+      req.user?.username ||
+      req.user?.email ||
+      'B-Smart User';
+
+    const emailHtml = customSendEmailTemplate({
+      subject,
+      senderName,
+      message,
+      html,
+    });
+
+    await sendEmail({
+      to,
+      subject,
+      html: emailHtml,
+      text: message,
+    });
+
+    return res.json({ message: 'Email sent successfully' });
+  } catch (err) {
+    console.error('[Email] sendCustomEmail error:', err);
+    return res.status(500).json({ message: 'Failed to send email', error: err.message });
   }
 };
 
