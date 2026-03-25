@@ -13,6 +13,8 @@ const Notification = require('../models/notification.model');
 const sendNotification = require('../utils/sendNotification');
 const runMongoTransaction = require('../utils/runMongoTransaction');
 const MemberAdAction = require('../models/MemberAdAction');
+const recordAdClick = require('../utils/recordAdClick');
+const recordAdEngagement = require('../utils/recordAdEngagement');
 const {
   sendAdApprovedEmail,
   sendAdRejectedEmail,
@@ -459,6 +461,33 @@ exports.getAdById = async (req, res) => {
   } catch (error) {
     console.error('Get ad error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.recordClick = async (req, res) => {
+  try {
+    const adId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findOne({ _id: adId, isDeleted: false }).select('_id vendor_id status');
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    recordAdClick({
+      ad,
+      userId: req.userId,
+      user: req.user,
+      coinsSpent: 0,
+    });
+
+    return res.json({ success: true, message: 'Ad click recorded' });
+  } catch (error) {
+    console.error('Record ad click error:', error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -1387,6 +1416,7 @@ exports.saveAd = async (req, res) => {
     try {
       await SavedAd.create({ user_id: userId, ad_id: adId });
       created = true;
+      recordAdEngagement({ ad, userId, user: req.user, action: 'save' });
     } catch (e) {
       if (e.code === 11000) {
         return res.status(409).json({ message: 'Already saved' });
@@ -1540,6 +1570,7 @@ exports.unsaveAd = async (req, res) => {
     }
 
     await SavedAd.deleteOne({ _id: rel._id });
+    recordAdEngagement({ ad, userId, user: req.user, action: 'unsave' });
     const saved_count = await SavedAd.countDocuments({ ad_id: adId });
     res.json({ success: true, message: 'Ad unsaved', saved: false, saved_count });
   } catch (error) {

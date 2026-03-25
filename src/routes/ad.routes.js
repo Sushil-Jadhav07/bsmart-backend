@@ -12,6 +12,7 @@ const {
   getAdCategories,
   addAdCategory,
   recordAdView,
+  recordClick,
   likeAd,
   dislikeAd,
   saveAd,
@@ -851,6 +852,44 @@ router.delete('/:id', auth, deleteAd);
  *         description: View recorded (and reward applied if eligible)
  */
 router.post('/:id/view', auth, recordAdView);
+
+/**
+ * @swagger
+ * /api/ads/{id}/click:
+ *   post:
+ *     summary: Record an ad CTA or product-link click
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ad ID
+ *     responses:
+ *       200:
+ *         description: Click recorded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Ad click recorded
+ *       400:
+ *         description: Invalid ad ID
+ *       404:
+ *         description: Ad not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/:id/click', auth, recordClick);
 
 /**
  * @swagger
