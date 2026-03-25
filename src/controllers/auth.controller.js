@@ -7,6 +7,10 @@ const WalletTransaction = require('../models/WalletTransaction');
 const Member = require('../models/Member');
 const Vendor = require('../models/Vendor');
 const sendNotification = require('../utils/sendNotification');
+const {
+  sendWelcomeEmail,
+  sendNewVendorAlert,
+} = require('./email.controller');
 
 const generateToken = (id) => {
   const secret = process.env.JWT_SECRET || 'default_secret_key_change_me';
@@ -53,6 +57,10 @@ const normalizeAddress = (raw = {}) => {
     state: toStr(obj.state),
     country: toStr(obj.country),
   };
+};
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
 };
 
 exports.register = async (req, res) => {
@@ -196,6 +204,34 @@ exports.register = async (req, res) => {
       }
     });
 
+    fireAndForget('Welcome email', sendWelcomeEmail({
+      ...user.toObject(),
+      company_details: userRole === 'vendor'
+        ? (vendorData?.company_details || normalizeCompanyDetails(company_details || {}))
+        : user.company_details,
+    }));
+
+    if (userRole === 'vendor') {
+      const adminUsers = await User.find({ role: 'admin' }).select('email').lean();
+      const companyName = vendorData?.company_details?.company_name
+        || company_details?.company_name
+        || username;
+
+      adminUsers
+        .filter((admin) => admin.email)
+        .forEach((admin) => {
+          fireAndForget(
+            'New vendor admin alert',
+            sendNewVendorAlert({
+              adminEmail: admin.email,
+              company_name: companyName,
+              email: user.email,
+              registered_at: user.createdAt,
+            })
+          );
+        });
+    }
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -252,6 +288,8 @@ exports.googleLogin = async (req, res) => {
 
       await Wallet.create({ user_id: user._id, balance: 0 });
       await Member.create({ user_id: user._id });
+
+      fireAndForget('Welcome email', sendWelcomeEmail(user));
     }
 
     const token = generateToken(user._id);

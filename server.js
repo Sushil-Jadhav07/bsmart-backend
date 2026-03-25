@@ -42,7 +42,8 @@ const vendorV1Routes         = require('./src/routes/vendor.v1.routes');
 const salesRoutes            = require('./src/routes/sales.routes');
 const countryRoutes          = require('./src/routes/country.routes');
 const locationRoutes         = require('./src/routes/location.routes');
-const vendorPackageRoutes    = require('./src/routes/vendorPackage.routes'); // ← NEW
+const vendorPackageRoutes    = require('./src/routes/vendorPackage.routes');
+const emailRoutes            = require('./src/routes/email.routes');  // ← EMAIL
 
 const app    = express();
 const server = http.createServer(app);
@@ -122,7 +123,8 @@ app.use('/api/v1/member',         memberV1Routes);
 app.use('/api/v1/vendor',         vendorV1Routes);
 app.use('/api/sales',             salesRoutes);
 app.use('/api/location',          locationRoutes);
-app.use('/api/vendor-packages',   vendorPackageRoutes); // ← NEW
+app.use('/api/vendor-packages',   vendorPackageRoutes);
+app.use('/api/email',             emailRoutes);            // ← EMAIL
 
 // ── Country / State / City / Language routes ──────────────────────────────
 // Flat legacy endpoints  →  GET /api/countries  /api/states  /api/cities  /api/languages

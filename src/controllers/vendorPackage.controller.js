@@ -7,6 +7,17 @@ const WalletTransaction      = require('../models/WalletTransaction');
 const VendorPackage          = require('../models/VendorPackage');
 const VendorPackagePurchase  = require('../models/VendorPackagePurchase');
 const runMongoTransaction    = require('../utils/runMongoTransaction');
+const User                   = require('../models/User');
+const {
+  sendPackagePurchasedEmail,
+  sendCoinsLowEmail,
+} = require('./email.controller');
+
+const LOW_COIN_THRESHOLD = 500;
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
+};
 
 // ─────────────────────────────────────────────────────────────
 // Coin calculation helpers  (matches the user-story spec)
@@ -369,6 +380,36 @@ exports.purchasePackage = async (req, res) => {
         return { purchase, wallet };
       },
     });
+
+    const user = await User.findById(userId).select('email full_name username').lean();
+    if (user?.email) {
+      fireAndForget(
+        'Package purchased email',
+        sendPackagePurchasedEmail({
+          email: user.email,
+          full_name: user.full_name || user.username,
+          company_name: vendor.company_details?.company_name || vendor.business_name,
+          package_name: pkg.name,
+          tier: pkg.tier,
+          final_price: pkg.final_price,
+          coins_granted: coinsToCredit,
+          validity_days: pkg.validity_days,
+          expires_at: expiresAt,
+        })
+      );
+
+      if (Number(result.wallet?.balance || 0) <= LOW_COIN_THRESHOLD) {
+        fireAndForget(
+          'Coins low email',
+          sendCoinsLowEmail({
+            email: user.email,
+            full_name: user.full_name || user.username,
+            current_balance: result.wallet.balance,
+            threshold: LOW_COIN_THRESHOLD,
+          })
+        );
+      }
+    }
 
     return res.status(201).json({
       success: true,

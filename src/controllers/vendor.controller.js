@@ -3,6 +3,16 @@ const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const VendorContact = require('../models/VendorContact');
 const sendNotification = require('../utils/sendNotification');
+const {
+  sendWelcomeEmail,
+  sendVendorApprovedEmail,
+  sendVendorRejectedEmail,
+  sendNewVendorAlert,
+} = require('./email.controller');
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
+};
 
 const calculateProfilePercentage = (vendor) => {
   let percentage = 30; // Base percentage for registered vendor
@@ -266,6 +276,8 @@ exports.adminProcessVendorVerification = async (req, res) => {
       return res.status(404).json({ message: 'Vendor profile not found' });
     }
 
+    const vendorUser = await User.findById(userId).select('email full_name username').lean();
+
     if (action === 'approve') {
       vendor.verification_status = 'approved';
       vendor.validated = true;
@@ -282,6 +294,17 @@ exports.adminProcessVendorVerification = async (req, res) => {
         message: 'Your vendor account has been approved!',
         link: '/vendor/dashboard'
       });
+
+      if (vendorUser?.email) {
+        fireAndForget(
+          'Vendor approved email',
+          sendVendorApprovedEmail({
+            email: vendorUser.email,
+            full_name: vendorUser.full_name || vendorUser.username,
+            company_name: vendor.company_details?.company_name || vendor.business_name,
+          })
+        );
+      }
 
     } else if (action === 'reject') {
       vendor.verification_status = 'rejected';
@@ -301,6 +324,18 @@ exports.adminProcessVendorVerification = async (req, res) => {
         });
       } catch (notifErr) {
         console.error('Vendor rejected notification error:', notifErr);
+      }
+
+      if (vendorUser?.email) {
+        fireAndForget(
+          'Vendor rejected email',
+          sendVendorRejectedEmail({
+            email: vendorUser.email,
+            full_name: vendorUser.full_name || vendorUser.username,
+            company_name: vendor.company_details?.company_name || vendor.business_name,
+            reason: vendor.rejection_reason,
+          })
+        );
       }
     } else {
       return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject"' });
@@ -492,6 +527,34 @@ exports.createVendor = async (req, res) => {
     const wallet = await Wallet.findOne({ user_id: userId });
     const payload = vendor.toObject();
     payload.wallet = wallet;
+
+    const user = await User.findById(userId).select('email full_name username').lean();
+    if (user?.email) {
+      fireAndForget(
+        'Vendor welcome email',
+        sendWelcomeEmail({
+          ...user,
+          role: 'vendor',
+          company_details: { company_name: company_name || business_name },
+        })
+      );
+    }
+
+    const adminUsers = await User.find({ role: 'admin' }).select('email').lean();
+    adminUsers
+      .filter((admin) => admin.email)
+      .forEach((admin) => {
+        fireAndForget(
+          'New vendor admin alert',
+          sendNewVendorAlert({
+            adminEmail: admin.email,
+            company_name: company_name || business_name,
+            email: user?.email || '',
+            registered_at: vendor.createdAt,
+          })
+        );
+      });
+
     return res.status(201).json(payload);
   } catch (error) {
     console.error(error);
@@ -549,6 +612,7 @@ exports.updateVendorValidation = async (req, res) => {
     if (!vendor) {
       return res.status(404).json({ message: 'Vendor not found' });
     }
+    const vendorUser = await User.findById(vendor.user_id).select('email full_name username').lean();
     vendor.validated = validated;
     vendor.verification_status = validated ? 'approved' : 'rejected';
     if (validated) {
@@ -560,6 +624,30 @@ exports.updateVendorValidation = async (req, res) => {
       vendor.rejected_at = new Date();
     }
     await vendor.save();
+
+    if (vendorUser?.email) {
+      if (validated) {
+        fireAndForget(
+          'Vendor approved email',
+          sendVendorApprovedEmail({
+            email: vendorUser.email,
+            full_name: vendorUser.full_name || vendorUser.username,
+            company_name: vendor.company_details?.company_name || vendor.business_name,
+          })
+        );
+      } else {
+        fireAndForget(
+          'Vendor rejected email',
+          sendVendorRejectedEmail({
+            email: vendorUser.email,
+            full_name: vendorUser.full_name || vendorUser.username,
+            company_name: vendor.company_details?.company_name || vendor.business_name,
+            reason: vendor.rejection_reason,
+          })
+        );
+      }
+    }
+
     return res.json({ id: vendor._id, validated: vendor.validated });
   } catch (error) {
     console.error(error);

@@ -13,8 +13,19 @@ const Notification = require('../models/notification.model');
 const sendNotification = require('../utils/sendNotification');
 const runMongoTransaction = require('../utils/runMongoTransaction');
 const MemberAdAction = require('../models/MemberAdAction');
+const {
+  sendAdApprovedEmail,
+  sendAdRejectedEmail,
+  sendCoinsLowEmail,
+  sendNewAdPendingAlert,
+} = require('./email.controller');
 
 const REWARD_COINS = 10; // Coins given to user when they like/comment/reply/save an ad (deducted from ad creator)
+const LOW_COIN_THRESHOLD = 500;
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
+};
 
 /**
  * Create a new ad (Vendor only)
@@ -111,6 +122,8 @@ exports.createAd = async (req, res) => {
     }
 
     let createdAd;
+    let resultingWalletBalance = null;
+    let vendorForAlerts = null;
 
     await runMongoTransaction({
       work: async (session) => {
@@ -127,6 +140,7 @@ exports.createAd = async (req, res) => {
         }
 
         adData.vendor_id = vendor._id;
+        vendorForAlerts = vendor;
 
         const wallet = await Wallet.findOneAndUpdate(
           { user_id: vendor.user_id, balance: { $gte: budget } },
@@ -138,6 +152,7 @@ exports.createAd = async (req, res) => {
           err.statusCode = 400;
           throw err;
         }
+        resultingWalletBalance = wallet.balance;
 
         const [adDoc] = await Ad.create([adData], { session });
         createdAd = adDoc;
@@ -166,6 +181,7 @@ exports.createAd = async (req, res) => {
         }
 
         adData.vendor_id = vendor._id;
+        vendorForAlerts = vendor;
 
         const wallet = await Wallet.findOneAndUpdate(
           { user_id: vendor.user_id, balance: { $gte: budget } },
@@ -177,6 +193,7 @@ exports.createAd = async (req, res) => {
           err.statusCode = 400;
           throw err;
         }
+        resultingWalletBalance = wallet.balance;
 
         let adDoc;
         try {
@@ -207,6 +224,40 @@ exports.createAd = async (req, res) => {
     });
 
     if (createdAd) {
+      const vendorUser = await User.findById(userId).select('email full_name username').lean();
+
+      const adminUsers = await User.find({ role: 'admin' }).select('email').lean();
+      adminUsers
+        .filter((admin) => admin.email)
+        .forEach((admin) => {
+          fireAndForget(
+            'New ad pending admin alert',
+            sendNewAdPendingAlert({
+              adminEmail: admin.email,
+              vendor_name:
+                vendorForAlerts?.company_details?.company_name
+                || vendorForAlerts?.business_name
+                || vendorUser?.full_name
+                || vendorUser?.username
+                || 'Vendor',
+              ad_caption: createdAd.caption,
+              submitted_at: createdAd.createdAt,
+            })
+          );
+        });
+
+      if (vendorUser?.email && resultingWalletBalance !== null && resultingWalletBalance <= LOW_COIN_THRESHOLD) {
+        fireAndForget(
+          'Coins low email',
+          sendCoinsLowEmail({
+            email: vendorUser.email,
+            full_name: vendorUser.full_name || vendorUser.username,
+            current_balance: resultingWalletBalance,
+            threshold: LOW_COIN_THRESHOLD,
+          })
+        );
+      }
+
       res.status(201).json(createdAd);
     }
   } catch (error) {
@@ -1516,7 +1567,9 @@ exports.adminUpdateAdStatus = async (req, res) => {
 
     await ad.save();
 
-    if (status === 'approved') {
+    const adOwner = await User.findById(ad.user_id).select('email full_name username').lean();
+
+    if (status === 'active') {
       await sendNotification(req.app, {
         recipient: ad.user_id,
         sender: null,
@@ -1524,6 +1577,18 @@ exports.adminUpdateAdStatus = async (req, res) => {
         message: 'Your ad has been approved and is now live!',
         link: `/ads/${ad._id}`
       });
+
+      if (adOwner?.email) {
+        fireAndForget(
+          'Ad approved email',
+          sendAdApprovedEmail({
+            email: adOwner.email,
+            full_name: adOwner.full_name || adOwner.username,
+            ad_caption: ad.caption,
+            ad_id: ad._id,
+          })
+        );
+      }
     }
 
     if (status === 'rejected') {
@@ -1537,6 +1602,19 @@ exports.adminUpdateAdStatus = async (req, res) => {
         });
       } catch (notifErr) {
         console.error('Ad rejected notification error:', notifErr);
+      }
+
+      if (adOwner?.email) {
+        fireAndForget(
+          'Ad rejected email',
+          sendAdRejectedEmail({
+            email: adOwner.email,
+            full_name: adOwner.full_name || adOwner.username,
+            ad_caption: ad.caption,
+            ad_id: ad._id,
+            reason: ad.rejection_reason,
+          })
+        );
       }
     }
 

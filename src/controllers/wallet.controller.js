@@ -8,6 +8,7 @@ const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const sendNotification = require('../utils/sendNotification');
 const runMongoTransaction = require('../utils/runMongoTransaction');
+const { sendCoinsLowEmail } = require('./email.controller');
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -46,6 +47,12 @@ const MEMBER_WALLET_TYPES = new Set([
   'VENDOR_PROFILE_VIEW_REWARD',
   'ADMIN_ADJUSTMENT',
 ]);
+
+const LOW_COIN_THRESHOLD = 500;
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
+};
 
 const AD_DEDUCTION_TYPES = [
   'AD_VIEW_DEDUCTION',
@@ -669,6 +676,21 @@ exports.updateWalletBalance = async (req, res) => {
       });
     } catch (notifErr) {
       console.error('[updateWalletBalance] Notification error:', notifErr);
+    }
+
+    if (coins < 0 && wallet.balance <= LOW_COIN_THRESHOLD) {
+      const user = await User.findById(userId).select('email full_name username role').lean();
+      if (user?.email && user.role === 'vendor') {
+        fireAndForget(
+          'Coins low email',
+          sendCoinsLowEmail({
+            email: user.email,
+            full_name: user.full_name || user.username,
+            current_balance: wallet.balance,
+            threshold: LOW_COIN_THRESHOLD,
+          })
+        );
+      }
     }
 
     res.json({
