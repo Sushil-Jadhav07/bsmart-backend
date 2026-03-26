@@ -2,6 +2,7 @@
 
 - POST /api/stories — Create/append story items (auth)
 - GET /api/stories/feed — Active stories feed (auth)
+- GET /api/stories/user/{userId} — Active stories for a specific user (auth)
 - GET /api/stories/{storyId}/items — List story items (auth)
 - POST /api/stories/items/{itemId}/view — Mark item viewed (auth)
 - GET /api/stories/{storyId}/views — Viewers list (auth, owner-only)
@@ -113,6 +114,32 @@ This is the API documentation for the story system, including story creation, vi
 ##### Responses
 
 - **200**: List of active stories
+
+###### Example Response (200)
+```json
+[
+  {
+    "_id": "string",
+    "user": { "username": "string", "avatar_url": "string" },
+    "items_count": 2,
+    "views_count": 10,
+    "preview_item": { "_id": "string", "order": 1, "media": [{ "url": "string", "type": "image" }] },
+    "seen": false
+  }
+]
+```
+
+---
+
+#### Get Active Stories By User ID
+
+**GET** `/api/stories/user/{userId}`
+
+##### Responses
+
+- **200**: List of active stories for the requested user
+- **400**: Invalid userId
+- **404**: User not found
 
 ###### Example Response (200)
 ```json

@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createStory, getStoriesFeed, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory } = require('../controllers/story.controller');
+const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory } = require('../controllers/story.controller');
 const upload = require('../config/multer');
 
 // ─── Stories feed rate limiter (dynamic — values set via query params) ───────
@@ -83,6 +83,39 @@ router.post('/', verifyToken, createStory);
  *               retry_after_ms: 45000
  */
 router.get('/feed', verifyToken, storiesFeedRateLimit, getStoriesFeed);
+
+/**
+ * @swagger
+ * /api/stories/user/{userId}:
+ *   get:
+ *     summary: Get active stories by userId
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID whose active stories should be returned
+ *     responses:
+ *       200:
+ *         description: List of active stories for the requested user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/StoryFeedItem'
+ *       400:
+ *         description: Invalid userId
+ *       401:
+ *         description: Not authorized
+ *       404:
+ *         description: User not found
+ */
+router.get('/user/:userId', verifyToken, getStoriesByUserId);
 
 /**
  * @swagger

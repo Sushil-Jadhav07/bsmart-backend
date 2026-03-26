@@ -3,9 +3,36 @@ const StoryItem = require('../models/StoryItem');
 const StoryView = require('../models/StoryView');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
+const mongoose = require('mongoose');
 
 const nowUtc = () => new Date();
 const addHours = (date, h) => new Date(date.getTime() + h * 60 * 60 * 1000);
+
+const normalizeStoryItemMedia = (item) => {
+  if (!item) return null;
+  const obj = item.toObject ? item.toObject() : item;
+  obj.media = obj.media ? [obj.media] : [];
+  return obj;
+};
+
+const buildStoryFeedItem = async (story, viewerId) => {
+  const preview = await StoryItem.findOne({ story_id: story._id, isDeleted: false }).sort({ order: 1 });
+  const itemIds = await StoryItem.find({ story_id: story._id, isDeleted: false }).select('_id').lean();
+  const ids = itemIds.map((item) => item._id);
+  const viewedCount = viewerId
+    ? await StoryView.countDocuments({ story_item_id: { $in: ids }, viewer_id: viewerId })
+    : 0;
+  const seen = viewerId ? ids.length > 0 && viewedCount === ids.length : false;
+
+  return {
+    _id: story._id,
+    user: story.user_id,
+    items_count: story.items_count,
+    views_count: story.views_count || 0,
+    preview_item: normalizeStoryItemMedia(preview),
+    seen
+  };
+};
 
 exports.createStory = async (req, res) => {
   try {
@@ -106,23 +133,43 @@ exports.getStoriesFeed = async (req, res) => {
 
     const results = [];
     for (const s of stories) {
-      const preview = await StoryItem.findOne({ story_id: s._id, isDeleted: false }).sort({ order: 1 });
-      const itemIds = await StoryItem.find({ story_id: s._id, isDeleted: false }).select('_id').lean();
-      const ids = itemIds.map(i => i._id);
-      const viewedCount = await StoryView.countDocuments({ story_item_id: { $in: ids }, viewer_id: userId });
-      const seen = ids.length > 0 && viewedCount === ids.length;
-      const previewObj = preview ? (preview.toObject ? preview.toObject() : preview) : null;
-      if (previewObj && previewObj.media) {
-        previewObj.media = [previewObj.media];
-      }
-      results.push({
-        _id: s._id,
-        user: s.user_id,
-        items_count: s.items_count,
-        views_count: s.views_count || 0,
-        preview_item: previewObj,
-        seen
-      });
+      results.push(await buildStoryFeedItem(s, userId));
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getStoriesByUserId = async (req, res) => {
+  try {
+    const viewerId = req.userId;
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    const user = await User.findById(userId).select('username avatar_url followers_count following_count gender location').lean();
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const now = nowUtc();
+    const stories = await Story.find({
+      user_id: userId,
+      expiresAt: { $gt: now },
+      isArchived: false,
+      items_count: { $gt: 0 }
+    })
+      .sort({ createdAt: -1 })
+      .populate('user_id', 'username avatar_url followers_count following_count gender location');
+
+    const results = [];
+    for (const story of stories) {
+      results.push(await buildStoryFeedItem(story, viewerId));
     }
 
     res.json(results);
@@ -144,11 +191,7 @@ exports.getStoryItems = async (req, res) => {
       await story.save();
     }
     const items = await StoryItem.find({ story_id: storyId, isDeleted: false }).sort({ order: 1 });
-    const itemsResponse = items.map(it => {
-      const obj = it.toObject ? it.toObject() : it;
-      obj.media = obj.media ? [obj.media] : [];
-      return obj;
-    });
+    const itemsResponse = items.map(normalizeStoryItemMedia);
     res.json(itemsResponse);
   } catch (error) {
     console.error(error);
