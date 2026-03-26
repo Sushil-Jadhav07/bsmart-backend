@@ -832,3 +832,211 @@ exports.getGeographicReport = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFORMANCE SUMMARY REPORT  (date-wise)
+// GET /api/reports/performance-summary
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @desc   Performance Summary — date-wise impressions, clicks, CTR, reach, frequency.
+ * @access Vendor (own ads) | Admin (all or filtered by vendor_id)
+ *
+ * Query params
+ * ────────────
+ *  startDate   string   ISO date  e.g. "2025-01-01"
+ *  endDate     string   ISO date  e.g. "2025-03-31"
+ *  ad_id       string   Filter to a single ad
+ *  vendor_id   string   Admin only — scope to a specific vendor
+ *  country     string   Filter by viewer country (case-insensitive)
+ *  gender      string   Filter by viewer gender  (male|female|other)
+ *  language    string   Filter by viewer language (case-insensitive)
+ *
+ * Response shape
+ * ──────────────
+ *  data: [
+ *    {
+ *      date:        "2025-01-01",          // YYYY-MM-DD
+ *      impressions: 12400,                 // total view_count for that day
+ *      clicks:      320,                   // total click events for that day
+ *      ctr:         2.58,                  // clicks / impressions * 100  (%)
+ *      reach:       9800,                  // distinct users who saw the ad
+ *      frequency:   1.26,                  // impressions / reach
+ *    },
+ *    ...
+ *  ]
+ */
+exports.getPerformanceSummaryReport = async (req, res) => {
+  try {
+    const { startDate, endDate, ad_id, country, gender, language } = req.query;
+
+    // ── 1. Resolve vendor scope ───────────────────────────────────────────
+    let vendorId;
+    try {
+      vendorId = await resolveVendorId(req);
+    } catch (e) {
+      return res.status(e.status || 500).json({ message: e.message });
+    }
+
+    const dateFilter = buildDateFilter(startDate, endDate);
+
+    // ── 2. Resolve matching ad IDs (honours vendor scope + demographic filters)
+    const adIds = await resolveFilteredAdIds({
+      vendorId,
+      adId: ad_id,
+      dateFilter,
+      country,
+      gender,
+      language,
+    });
+
+    if (adIds.length === 0) {
+      return res.json({
+        filters: {
+          startDate: startDate || null,
+          endDate:   endDate   || null,
+          ad_id:     ad_id     || null,
+          country:   country   || null,
+          gender:    gender    || null,
+          language:  language  || null,
+        },
+        total_days: 0,
+        data: [],
+      });
+    }
+
+    const adObjectIds = adIds.map((id) => new mongoose.Types.ObjectId(id));
+
+    // ── 3. Date-wise IMPRESSIONS + REACH from AdView ──────────────────────
+    const viewMatch = { ad_id: { $in: adObjectIds } };
+    if (dateFilter) viewMatch.createdAt = dateFilter;
+
+    const viewPipeline = [{ $match: viewMatch }];
+
+    if (country || gender || language) {
+      viewPipeline.push(
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user_id',
+            foreignField: '_id',
+            as: '_viewer',
+          },
+        },
+        { $unwind: { path: '$_viewer', preserveNullAndEmptyArrays: true } }
+      );
+
+      const demographicMatch = {};
+      if (country) {
+        demographicMatch['$or'] = [
+          { '_viewer.address.country': new RegExp(country, 'i') },
+          { '_viewer.location': new RegExp(country, 'i') },
+        ];
+      }
+      if (gender) {
+        demographicMatch['_viewer.gender'] = String(gender).toLowerCase();
+      }
+      if (language) {
+        demographicMatch['_viewer.language'] = new RegExp(language, 'i');
+      }
+      viewPipeline.push({ $match: demographicMatch });
+    }
+
+    viewPipeline.push(
+      {
+        $group: {
+          _id: {
+            year:  { $year:        '$createdAt' },
+            month: { $month:       '$createdAt' },
+            day:   { $dayOfMonth:  '$createdAt' },
+          },
+          impressions: { $sum: '$view_count' },
+          viewers:     { $addToSet: '$user_id' },
+        },
+      },
+      {
+        $project: {
+          _id:         1,
+          impressions: 1,
+          reach:       { $size: '$viewers' },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+    );
+
+    // ── 4. Date-wise CLICKS from AdClick ──────────────────────────────────
+    const clickMatch = { ad_id: { $in: adObjectIds } };
+    if (vendorId)   clickMatch.vendor_id  = vendorId;
+    if (country)    clickMatch.country    = new RegExp(country, 'i');
+    if (gender)     clickMatch.gender     = String(gender).toLowerCase();
+    if (language)   clickMatch.language   = new RegExp(language, 'i');
+    if (dateFilter) clickMatch.createdAt  = dateFilter;
+
+    const clickPipeline = [
+      { $match: clickMatch },
+      {
+        $group: {
+          _id: {
+            year:  { $year:       '$createdAt' },
+            month: { $month:      '$createdAt' },
+            day:   { $dayOfMonth: '$createdAt' },
+          },
+          clicks: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+    ];
+
+    // ── 5. Run both aggregations in parallel ──────────────────────────────
+    const [viewRows, clickRows] = await Promise.all([
+      AdView.aggregate(viewPipeline),
+      AdClick.aggregate(clickPipeline),
+    ]);
+
+    // ── 6. Merge into a single date-keyed map ─────────────────────────────
+    const padded = (n) => String(n).padStart(2, '0');
+    const toKey  = ({ year, month, day }) =>
+      `${year}-${padded(month)}-${padded(day)}`;
+
+    const dayMap = {};
+
+    for (const row of viewRows) {
+      const key = toKey(row._id);
+      dayMap[key] = { impressions: row.impressions || 0, reach: row.reach || 0, clicks: 0 };
+    }
+
+    for (const row of clickRows) {
+      const key = toKey(row._id);
+      if (!dayMap[key]) {
+        dayMap[key] = { impressions: 0, reach: 0, clicks: 0 };
+      }
+      dayMap[key].clicks = row.clicks || 0;
+    }
+
+    // ── 7. Build final sorted array ───────────────────────────────────────
+    const data = Object.entries(dayMap)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([date, metrics]) => {
+        const { impressions, clicks, reach } = metrics;
+        const ctr       = impressions > 0 ? +((clicks / impressions) * 100).toFixed(2) : 0;
+        const frequency = reach       > 0 ? +(impressions / reach).toFixed(2)          : 0;
+        return { date, impressions, clicks, ctr, reach, frequency };
+      });
+
+    return res.json({
+      filters: {
+        startDate: startDate || null,
+        endDate:   endDate   || null,
+        ad_id:     ad_id     || null,
+        country:   country   || null,
+        gender:    gender    || null,
+        language:  language  || null,
+      },
+      total_days: data.length,
+      data,
+    });
+  } catch (err) {
+    console.error('[PerformanceSummaryReport]', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};

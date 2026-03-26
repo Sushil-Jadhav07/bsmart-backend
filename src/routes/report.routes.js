@@ -7,6 +7,7 @@ const {
   getClickReport,
   getEngagementReport,
   getGeographicReport,
+  getPerformanceSummaryReport,
 } = require('../controllers/report.controller');
 
 // Both vendor AND admin can access report routes
@@ -395,5 +396,104 @@ router.get('/engagement', auth, allowReports, getEngagementReport);
  *         description: Server error
  */
 router.get('/geographic', auth, allowReports, getGeographicReport);
+
+
+/**
+ * @swagger
+ * /api/reports/performance-summary:
+ *   get:
+ *     summary: Performance Summary — date-wise impressions, clicks, CTR, reach & frequency
+ *     description: |
+ *       Returns one row per calendar day with the following metrics for the selected
+ *       date window and optional filters:
+ *
+ *       - **impressions** — total ad views (`AdView.view_count` sum) for that day
+ *       - **clicks**      — total click events (`AdClick` count) for that day
+ *       - **ctr**         — Click-Through Rate = clicks / impressions × 100 (%)
+ *       - **reach**       — distinct users who saw the ad on that day
+ *       - **frequency**   — average times each reached user saw the ad = impressions / reach
+ *
+ *       Vendors see only their own ads. Admins see all (or filter by `vendor_id`).
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/reportStartDate'
+ *       - $ref: '#/components/parameters/reportEndDate'
+ *       - $ref: '#/components/parameters/reportAdId'
+ *       - $ref: '#/components/parameters/reportVendorId'
+ *       - $ref: '#/components/parameters/reportCountry'
+ *       - $ref: '#/components/parameters/reportGender'
+ *       - $ref: '#/components/parameters/reportLanguage'
+ *     responses:
+ *       200:
+ *         description: Performance summary data grouped by date
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 filters:
+ *                   type: object
+ *                 total_days:
+ *                   type: integer
+ *                   example: 5
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       date:
+ *                         type: string
+ *                         format: date
+ *                         example: "2025-01-01"
+ *                       impressions:
+ *                         type: integer
+ *                         example: 12400
+ *                       clicks:
+ *                         type: integer
+ *                         example: 320
+ *                       ctr:
+ *                         type: number
+ *                         description: Click-Through Rate (%)
+ *                         example: 2.58
+ *                       reach:
+ *                         type: integer
+ *                         description: Distinct users who viewed the ad
+ *                         example: 9800
+ *                       frequency:
+ *                         type: number
+ *                         description: Average impressions per reached user
+ *                         example: 1.26
+ *             example:
+ *               filters:
+ *                 startDate: "2025-01-01"
+ *                 endDate: "2025-01-05"
+ *                 ad_id: null
+ *                 country: null
+ *                 gender: null
+ *                 language: null
+ *               total_days: 5
+ *               data:
+ *                 - date: "2025-01-01"
+ *                   impressions: 12400
+ *                   clicks: 320
+ *                   ctr: 2.58
+ *                   reach: 9800
+ *                   frequency: 1.26
+ *                 - date: "2025-01-02"
+ *                   impressions: 15200
+ *                   clicks: 410
+ *                   ctr: 2.70
+ *                   reach: 11200
+ *                   frequency: 1.36
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ */
+router.get('/performance-summary', auth, allowReports, getPerformanceSummaryReport);
 
 module.exports = router;
