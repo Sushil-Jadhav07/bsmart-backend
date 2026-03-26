@@ -3,6 +3,7 @@
 - POST /api/vendors — Create vendor profile (auth)
 - GET /api/vendors/me — Get my vendor profile (auth)
 - GET /api/vendors/users/{id} — Get vendor by user ID
+- POST /api/vendors/profile/{vendorUserId}/viewProfile — Reward member for qualifying vendor profile view and deduct 10 coins from vendor wallet
 - GET /api/vendors/validate — List validated vendors (auth, admin)
 - GET /api/vendors/invalidate — List invalidated vendors (auth, admin)
 
@@ -44,6 +45,28 @@ Responses
 Responses
 - 200: Vendor object with wallet
 - 404: Vendor not found
+
+---
+
+## View Profile
+
+**POST** `/api/vendors/profile/{vendorUserId}/viewProfile`
+
+Auth: Bearer
+
+Notes
+- Only `member` users can earn coins.
+- Viewer receives `10` coins after the qualifying profile view.
+- `10` coins are deducted from the vendor's main wallet balance.
+- No ad budget wallet is used by this API.
+- The same member can earn again from the same vendor only after the 3 minute cooldown.
+
+Responses
+- 200: `{ "success": true, "coins_earned": 10, "deduction_source": "vendor_wallet", "wallet": { "new_balance": 120, "currency": "Coins" } }`
+- 400: Invalid vendor user id, self-view, or insufficient vendor wallet balance
+- 403: Only members can earn
+- 404: Vendor not found
+- 429: Cooldown not finished
 
 ---
 

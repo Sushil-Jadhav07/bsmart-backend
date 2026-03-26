@@ -27,14 +27,14 @@ const COOLDOWN_MINUTES = 3;              // Minutes between rewards for the same
 const COOLDOWN_MS = COOLDOWN_MINUTES * 60 * 1000;
 
 /**
- * POST /api/vendors/:vendorUserId/profile-view
+ * POST /api/vendors/profile/:vendorUserId/viewProfile
  *
  * Call this from the frontend after a member has been on the vendor profile
  * page for 3+ minutes.
  *
  * @access Private (member only)
  */
-exports.recordVendorProfileView = async (req, res) => {
+exports.viewProfile = async (req, res) => {
   try {
     const viewerUserId = String(req.userId);
     const { vendorUserId } = req.params;
@@ -122,7 +122,7 @@ exports.recordVendorProfileView = async (req, res) => {
             type: 'VENDOR_PROFILE_VIEW_DEDUCTION',
             amount: -PROFILE_VIEW_REWARD,
             status: 'SUCCESS',
-            description: `Vendor charged ${PROFILE_VIEW_REWARD} coins for profile view reward`,
+            description: `Deducted ${PROFILE_VIEW_REWARD} coins from vendor wallet balance for profile view reward. No ad budget wallet was used.`,
           },
         ], { session });
 
@@ -130,7 +130,7 @@ exports.recordVendorProfileView = async (req, res) => {
         await VendorProfileView.findOneAndUpdate(
           { viewer_user_id: viewerUserId, vendor_user_id: vendorUserId },
           {
-            $inc: { view_count: existing ? 1 : 0, total_coins_earned: PROFILE_VIEW_REWARD },
+            $inc: { view_count: 1, total_coins_earned: PROFILE_VIEW_REWARD },
             $set: { last_rewarded_at: now },
             $setOnInsert: { view_count: 1 },
           },
@@ -169,14 +169,14 @@ exports.recordVendorProfileView = async (req, res) => {
             type: 'VENDOR_PROFILE_VIEW_DEDUCTION',
             amount: -PROFILE_VIEW_REWARD,
             status: 'SUCCESS',
-            description: `Vendor charged ${PROFILE_VIEW_REWARD} coins for profile view reward`,
+            description: `Deducted ${PROFILE_VIEW_REWARD} coins from vendor wallet balance for profile view reward. No ad budget wallet was used.`,
           },
         ]);
 
         await VendorProfileView.findOneAndUpdate(
           { viewer_user_id: viewerUserId, vendor_user_id: vendorUserId },
           {
-            $inc: { total_coins_earned: PROFILE_VIEW_REWARD },
+            $inc: { view_count: 1, total_coins_earned: PROFILE_VIEW_REWARD },
             $set: { last_rewarded_at: now },
             $setOnInsert: { view_count: 1 },
           },
@@ -189,6 +189,8 @@ exports.recordVendorProfileView = async (req, res) => {
       success: true,
       message: `You earned ${PROFILE_VIEW_REWARD} coins for viewing this vendor's profile!`,
       coins_earned: PROFILE_VIEW_REWARD,
+      deduction_source: 'vendor_wallet',
+      deduction_note: 'Coins were deducted from the vendor wallet balance, not from any ad budget wallet.',
       wallet: {
         new_balance: newBalance,
         currency: 'Coins',
@@ -199,7 +201,7 @@ exports.recordVendorProfileView = async (req, res) => {
     if (status !== 500) {
       return res.status(status).json({ success: false, message: err.message });
     }
-    console.error('[recordVendorProfileView]', err);
+    console.error('[viewProfile]', err);
     res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };

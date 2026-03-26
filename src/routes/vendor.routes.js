@@ -19,7 +19,7 @@ const {
 } = require('../controllers/vendor.controller');
 const requireAdmin = require('../middleware/requireAdmin');
 const { deleteVendorByAdmin } = require('../controllers/admin.controller');
-const { recordVendorProfileView } = require('../controllers/vendorProfileView.controller');
+const { viewProfile } = require('../controllers/vendorProfileView.controller');
 /**
  * @swagger
  * tags:
@@ -298,9 +298,9 @@ router.delete('/admin/user/:userId', requireAdmin, deleteVendorByUserId);
 
 /**
  * @swagger
- * /api/vendors/profile/{vendorUserId}/view:
+ * /api/vendors/profile/{vendorUserId}/viewProfile:
  *   post:
- *     summary: Record a vendor profile view (credits member, deducts from vendor wallet)
+ *     summary: Record a vendor profile view (credits member, deducts 10 coins from vendor wallet balance)
  *     tags: [Vendors]
  *     security:
  *       - bearerAuth: []
@@ -313,6 +313,31 @@ router.delete('/admin/user/:userId', requireAdmin, deleteVendorByUserId);
  *     responses:
  *       200:
  *         description: Profile view reward recorded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 coins_earned:
+ *                   type: number
+ *                   example: 10
+ *                 deduction_source:
+ *                   type: string
+ *                   example: vendor_wallet
+ *                 deduction_note:
+ *                   type: string
+ *                   example: Coins were deducted from the vendor wallet balance, not from any ad budget wallet.
+ *                 wallet:
+ *                   type: object
+ *                   properties:
+ *                     new_balance:
+ *                       type: number
+ *                     currency:
+ *                       type: string
  *       400:
  *         description: Invalid vendorUserId / insufficient vendor wallet balance
  *       403:
@@ -322,7 +347,7 @@ router.delete('/admin/user/:userId', requireAdmin, deleteVendorByUserId);
  *       429:
  *         description: Cooldown not finished
  */
-router.post('/profile/:vendorUserId/view', auth, recordVendorProfileView);
+router.post('/profile/:vendorUserId/viewProfile', auth, viewProfile);
 
 
 module.exports = router;
