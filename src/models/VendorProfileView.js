@@ -19,6 +19,17 @@ const vendorProfileViewSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    /** Denormalized viewer display fields for reporting */
+    viewer_name: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    viewer_username: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     /** The vendor's user_id (User._id of the vendor) */
     vendor_user_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -40,6 +51,23 @@ const vendorProfileViewSchema = new mongoose.Schema(
     total_coins_earned: {
       type: Number,
       default: 0,
+    },
+    /** Denormalized location/demographic fields for reporting */
+    country: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    language: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    gender: {
+      type: String,
+      enum: ['male', 'female', 'other', ''],
+      default: '',
+      index: true,
     },
   },
   { timestamps: true }

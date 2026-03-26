@@ -29,10 +29,14 @@ async function recordAdClick({ ad, userId, user, coinsSpent = 0 }) {
     const language = user?.language ? String(user.language) : '';
     const rawGender = String(user?.gender || '').toLowerCase();
     const gender = ['male', 'female', 'other'].includes(rawGender) ? rawGender : '';
+    const viewer_name = String(user?.full_name || user?.username || '');
+    const viewer_username = String(user?.username || '');
 
-    await AdClick.create({
+    const clickDoc = await AdClick.create({
       ad_id: ad._id,
       user_id: userId,
+      viewer_name,
+      viewer_username,
       vendor_id: ad.vendor_id,
       is_unique,
       is_invalid,
@@ -41,8 +45,22 @@ async function recordAdClick({ ad, userId, user, coinsSpent = 0 }) {
       language,
       gender,
     });
+    return {
+      _id: clickDoc._id,
+      ad_id: clickDoc.ad_id,
+      user_id: clickDoc.user_id,
+      vendor_id: clickDoc.vendor_id,
+      is_unique: clickDoc.is_unique,
+      is_invalid: clickDoc.is_invalid,
+      coins_spent: clickDoc.coins_spent,
+      country: clickDoc.country,
+      language: clickDoc.language,
+      gender: clickDoc.gender,
+      created_at: clickDoc.createdAt,
+    };
   } catch (err) {
     console.error('[recordAdClick] Failed to record click:', err.message);
+    return null;
   }
 }
 

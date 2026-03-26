@@ -32,6 +32,16 @@ const adClickSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    viewer_name: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    viewer_username: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     vendor_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Vendor',

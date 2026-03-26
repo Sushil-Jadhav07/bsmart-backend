@@ -6,6 +6,7 @@ const {
   getSummaryReport,
   getClickReport,
   getEngagementReport,
+  getGeographicReport,
 } = require('../controllers/report.controller');
 
 // Both vendor AND admin can access report routes
@@ -364,5 +365,35 @@ router.get('/clicks', auth, allowReports, getClickReport);
  *         description: Server error
  */
 router.get('/engagement', auth, allowReports, getEngagementReport);
+
+/**
+ * @swagger
+ * /api/reports/geographic:
+ *   get:
+ *     summary: Geographic Report - country-wise impressions, clicks, CTR and reach
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/reportStartDate'
+ *       - $ref: '#/components/parameters/reportEndDate'
+ *       - $ref: '#/components/parameters/reportAdId'
+ *       - $ref: '#/components/parameters/reportVendorId'
+ *       - $ref: '#/components/parameters/reportCountry'
+ *       - $ref: '#/components/parameters/reportGender'
+ *       - $ref: '#/components/parameters/reportLanguage'
+ *       - $ref: '#/components/parameters/reportPage'
+ *       - $ref: '#/components/parameters/reportLimit'
+ *     responses:
+ *       200:
+ *         description: Geographic report data
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ */
+router.get('/geographic', auth, allowReports, getGeographicReport);
 
 module.exports = router;

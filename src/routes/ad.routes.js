@@ -882,6 +882,32 @@ router.post('/:id/view', auth, recordAdView);
  *                 message:
  *                   type: string
  *                   example: Ad click recorded
+ *                 click:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     ad_id:
+ *                       type: string
+ *                     user_id:
+ *                       type: string
+ *                     vendor_id:
+ *                       type: string
+ *                     is_unique:
+ *                       type: boolean
+ *                     is_invalid:
+ *                       type: boolean
+ *                     coins_spent:
+ *                       type: number
+ *                     country:
+ *                       type: string
+ *                     language:
+ *                       type: string
+ *                     gender:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
  *       400:
  *         description: Invalid ad ID
  *       404:

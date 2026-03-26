@@ -6,6 +6,8 @@ const AdComment  = require('../models/AdComment');
 const AdEngagement = require('../models/AdEngagement');
 const MemberAdAction = require('../models/MemberAdAction');
 const WalletTransaction = require('../models/WalletTransaction');
+const VendorProfileView = require('../models/VendorProfileView');
+const Vendor = require('../models/Vendor');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -627,6 +629,206 @@ exports.getEngagementReport = async (req, res) => {
     });
   } catch (err) {
     console.error('[EngagementReport]', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// Geographic report
+exports.getGeographicReport = async (req, res) => {
+  try {
+    const {
+      startDate, endDate,
+      ad_id,
+      country, gender, language,
+      page = 1, limit = 50,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, parseInt(limit, 10) || 50);
+    const skip = (pageNum - 1) * limitNum;
+
+    let vendorId;
+    try {
+      vendorId = await resolveVendorId(req);
+    } catch (e) {
+      return res.status(e.status || 500).json({ message: e.message });
+    }
+
+    const dateFilter = buildDateFilter(startDate, endDate);
+    const adIds = await resolveFilteredAdIds({
+      vendorId,
+      adId: ad_id,
+      dateFilter,
+      country,
+      gender,
+      language,
+    });
+
+    if (adIds.length === 0) {
+      return res.json({ total: 0, page: pageNum, limit: limitNum, totalPages: 0, data: [] });
+    }
+
+    const adObjectIds = adIds.map((id) => new mongoose.Types.ObjectId(id));
+
+    const clickMatch = { ad_id: { $in: adObjectIds } };
+    if (vendorId) clickMatch.vendor_id = vendorId;
+    if (country) clickMatch.country = new RegExp(country, 'i');
+    if (gender) clickMatch.gender = String(gender).toLowerCase();
+    if (language) clickMatch.language = new RegExp(language, 'i');
+    if (dateFilter) clickMatch.createdAt = dateFilter;
+
+    const clickRows = await AdClick.aggregate([
+      { $match: clickMatch },
+      {
+        $group: {
+          _id: { $ifNull: ['$country', 'Unknown'] },
+          ad_clicks: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const profileViewMatch = {};
+    if (req.user.role === 'vendor') {
+      profileViewMatch.vendor_user_id = new mongoose.Types.ObjectId(req.user._id);
+    } else if (vendorId) {
+      const vendorDoc = await Vendor.findById(vendorId).select('user_id').lean();
+      if (vendorDoc?.user_id) {
+        profileViewMatch.vendor_user_id = new mongoose.Types.ObjectId(vendorDoc.user_id);
+      }
+    }
+    if (country) profileViewMatch.country = new RegExp(country, 'i');
+    if (gender) profileViewMatch.gender = String(gender).toLowerCase();
+    if (language) profileViewMatch.language = new RegExp(language, 'i');
+    if (dateFilter) profileViewMatch.updatedAt = dateFilter;
+
+    const profileViewRows = await VendorProfileView.aggregate([
+      { $match: profileViewMatch },
+      {
+        $group: {
+          _id: { $ifNull: ['$country', 'Unknown'] },
+          profile_views: { $sum: '$view_count' },
+          profile_viewers: { $addToSet: '$viewer_user_id' },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          profile_views: 1,
+          profile_unique_viewers: { $size: '$profile_viewers' },
+        },
+      },
+    ]);
+
+    const viewMatch = { ad_id: { $in: adObjectIds } };
+    if (dateFilter) viewMatch.createdAt = dateFilter;
+
+    const viewRows = await AdView.aggregate([
+      { $match: viewMatch },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user_id',
+          foreignField: '_id',
+          as: 'viewer',
+        },
+      },
+      { $unwind: { path: '$viewer', preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          viewer_country: {
+            $ifNull: [
+              '$viewer.address.country',
+              { $ifNull: ['$viewer.location', 'Unknown'] },
+            ],
+          },
+          viewer_gender: { $toLower: { $ifNull: ['$viewer.gender', ''] } },
+          viewer_language: { $ifNull: ['$viewer.language', ''] },
+        },
+      },
+      ...(country ? [{ $match: { viewer_country: new RegExp(country, 'i') } }] : []),
+      ...(gender ? [{ $match: { viewer_gender: String(gender).toLowerCase() } }] : []),
+      ...(language ? [{ $match: { viewer_language: new RegExp(language, 'i') } }] : []),
+      {
+        $group: {
+          _id: '$viewer_country',
+          impressions: { $sum: '$view_count' },
+          viewers: { $addToSet: '$user_id' },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          impressions: 1,
+          reach: { $size: '$viewers' },
+        },
+      },
+    ]);
+
+    const countryMap = {};
+    clickRows.forEach((row) => {
+      const key = row._id || 'Unknown';
+      countryMap[key] = {
+        country: key,
+        impressions: 0,
+        clicks: row.ad_clicks || 0,
+        ad_clicks: row.ad_clicks || 0,
+        profile_views: 0,
+        profile_unique_viewers: 0,
+        reach: 0,
+      };
+    });
+    viewRows.forEach((row) => {
+      const key = row._id || 'Unknown';
+      if (!countryMap[key]) {
+        countryMap[key] = {
+          country: key,
+          impressions: 0,
+          clicks: 0,
+          ad_clicks: 0,
+          profile_views: 0,
+          profile_unique_viewers: 0,
+          reach: 0,
+        };
+      }
+      countryMap[key].impressions = row.impressions || 0;
+      countryMap[key].reach = row.reach || 0;
+    });
+    profileViewRows.forEach((row) => {
+      const key = row._id || 'Unknown';
+      if (!countryMap[key]) {
+        countryMap[key] = {
+          country: key,
+          impressions: 0,
+          clicks: 0,
+          ad_clicks: 0,
+          profile_views: 0,
+          profile_unique_viewers: 0,
+          reach: 0,
+        };
+      }
+      countryMap[key].profile_views = row.profile_views || 0;
+      countryMap[key].profile_unique_viewers = row.profile_unique_viewers || 0;
+      countryMap[key].clicks += row.profile_views || 0;
+    });
+
+    const allRows = Object.values(countryMap)
+      .map((row) => ({
+        ...row,
+        ctr: row.impressions > 0 ? +((row.clicks / row.impressions) * 100).toFixed(2) : 0,
+      }))
+      .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
+
+    const pagedRows = allRows.slice(skip, skip + limitNum);
+
+    return res.json({
+      total: allRows.length,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(allRows.length / limitNum),
+      data: pagedRows,
+    });
+  } catch (err) {
+    console.error('[GeographicReport]', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };

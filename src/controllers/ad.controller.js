@@ -477,14 +477,21 @@ exports.recordClick = async (req, res) => {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
-    recordAdClick({
+    const click = await recordAdClick({
       ad,
       userId: req.userId,
       user: req.user,
       coinsSpent: 0,
     });
 
-    return res.json({ success: true, message: 'Ad click recorded' });
+    return res.json({
+      success: true,
+      message: 'Ad click recorded',
+      click: click || {
+        ad_id: ad._id,
+        user_id: req.userId,
+      },
+    });
   } catch (error) {
     console.error('Record ad click error:', error);
     return res.status(500).json({ message: 'Server error' });

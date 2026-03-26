@@ -26,6 +26,14 @@ const PROFILE_VIEW_REWARD = 10;          // Coins given to member per qualifying
 const COOLDOWN_MINUTES = 3;              // Minutes between rewards for the same vendor
 const COOLDOWN_MS = COOLDOWN_MINUTES * 60 * 1000;
 
+const resolveCountry = (user) => {
+  if (user?.address?.country) return String(user.address.country);
+  if (user?.location && typeof user.location === 'object' && user.location.country) {
+    return String(user.location.country);
+  }
+  return typeof user?.location === 'string' ? user.location : '';
+};
+
 /**
  * POST /api/vendors/profile/:vendorUserId/viewProfile
  *
@@ -71,6 +79,12 @@ exports.viewProfile = async (req, res) => {
     }).lean();
 
     const now = new Date();
+    const country = resolveCountry(viewer);
+    const language = viewer?.language ? String(viewer.language) : '';
+    const rawGender = String(viewer?.gender || '').toLowerCase();
+    const gender = ['male', 'female', 'other'].includes(rawGender) ? rawGender : '';
+    const viewerName = String(viewer?.full_name || viewer?.username || '');
+    const viewerUsername = String(viewer?.username || '');
 
     if (existing && existing.last_rewarded_at) {
       const elapsed = now.getTime() - new Date(existing.last_rewarded_at).getTime();
@@ -131,7 +145,14 @@ exports.viewProfile = async (req, res) => {
           { viewer_user_id: viewerUserId, vendor_user_id: vendorUserId },
           {
             $inc: { view_count: 1, total_coins_earned: PROFILE_VIEW_REWARD },
-            $set: { last_rewarded_at: now },
+            $set: {
+              last_rewarded_at: now,
+              viewer_name: viewerName,
+              viewer_username: viewerUsername,
+              country,
+              language,
+              gender,
+            },
             $setOnInsert: { view_count: 1 },
           },
           { upsert: true, new: true, session }
@@ -177,7 +198,14 @@ exports.viewProfile = async (req, res) => {
           { viewer_user_id: viewerUserId, vendor_user_id: vendorUserId },
           {
             $inc: { view_count: 1, total_coins_earned: PROFILE_VIEW_REWARD },
-            $set: { last_rewarded_at: now },
+            $set: {
+              last_rewarded_at: now,
+              viewer_name: viewerName,
+              viewer_username: viewerUsername,
+              country,
+              language,
+              gender,
+            },
             $setOnInsert: { view_count: 1 },
           },
           { upsert: true, new: true }
@@ -191,6 +219,14 @@ exports.viewProfile = async (req, res) => {
       coins_earned: PROFILE_VIEW_REWARD,
       deduction_source: 'vendor_wallet',
       deduction_note: 'Coins were deducted from the vendor wallet balance, not from any ad budget wallet.',
+      viewer: {
+        user_id: viewerUserId,
+        name: viewerName,
+        username: viewerUsername,
+        country,
+        language,
+        gender,
+      },
       wallet: {
         new_balance: newBalance,
         currency: 'Coins',
