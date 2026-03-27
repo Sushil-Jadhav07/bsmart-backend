@@ -313,3 +313,53 @@ exports.deleteStory = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+exports.deleteStoryItem = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { itemId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ message: 'Invalid itemId' });
+    }
+
+    const item = await StoryItem.findById(itemId);
+    if (!item) return res.status(404).json({ message: 'Story item not found' });
+
+    const story = await Story.findById(item.story_id);
+    if (!story) return res.status(404).json({ message: 'Story not found' });
+
+    if (story.user_id.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    await StoryView.deleteMany({ story_item_id: item._id });
+    await item.deleteOne();
+
+    const remainingItems = await StoryItem.countDocuments({ story_id: story._id, isDeleted: false });
+
+    if (remainingItems <= 0) {
+      await StoryView.deleteMany({ story_id: story._id });
+      await story.deleteOne();
+      return res.json({
+        success: true,
+        message: 'Story item deleted successfully',
+        story_deleted: true,
+        items_count: 0,
+      });
+    }
+
+    story.items_count = remainingItems;
+    await story.save();
+
+    res.json({
+      success: true,
+      message: 'Story item deleted successfully',
+      story_deleted: false,
+      items_count: remainingItems,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};

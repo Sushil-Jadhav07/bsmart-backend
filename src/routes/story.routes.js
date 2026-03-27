@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory } = require('../controllers/story.controller');
+const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem } = require('../controllers/story.controller');
 const upload = require('../config/multer');
 
 // ─── Stories feed rate limiter (dynamic — values set via query params) ───────
@@ -588,6 +588,51 @@ router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
  *           type: number
  */
 router.get('/archive', verifyToken, getStoriesArchive);
+
+/**
+ * @swagger
+ * /api/stories/items/{itemId}:
+ *   delete:
+ *     summary: Delete a single story item (owner only)
+ *     description: |
+ *       Deletes only the selected story item, not the full parent story.
+ *       If the deleted item was the last remaining item in the story,
+ *       the parent story is removed automatically.
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Story item deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 story_deleted:
+ *                   type: boolean
+ *                 items_count:
+ *                   type: integer
+ *       400:
+ *         description: Invalid itemId
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Story item not found
+ */
+router.delete('/items/:itemId', verifyToken, deleteStoryItem);
 
 /**
  * @swagger
