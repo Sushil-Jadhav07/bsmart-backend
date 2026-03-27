@@ -32,6 +32,189 @@ router.post('/',              auth, ctrl.createHighlight);
 
 /**
  * @swagger
+ * /api/highlights/user/{userId}/stories:
+ *   get:
+ *     summary: Get all highlights with story items by userId
+ *     tags: [Highlights]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Highlights with their story items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user_id:
+ *                   type: string
+ *                   example: "67e3aa001122334455667711"
+ *                 total_highlights:
+ *                   type: integer
+ *                   example: 2
+ *                 highlights:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: "67e3aa001122334455667700"
+ *                       user_id:
+ *                         type: string
+ *                         example: "67e3aa001122334455667711"
+ *                       title:
+ *                         type: string
+ *                         example: "Travel"
+ *                       cover_url:
+ *                         type: string
+ *                         example: "https://example.com/cover.jpg"
+ *                       items_count:
+ *                         type: integer
+ *                         example: 2
+ *                       order:
+ *                         type: integer
+ *                         example: 0
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       items:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             _id:
+ *                               type: string
+ *                               example: "67e3aa001122334455667810"
+ *                             _itemId:
+ *                               type: string
+ *                               example: "67e3aa001122334455667900"
+ *                             story_id:
+ *                               type: string
+ *                               example: "67e3aa001122334455667820"
+ *                             user_id:
+ *                               type: string
+ *                               example: "67e3aa001122334455667711"
+ *                             highlight_id:
+ *                               type: string
+ *                               example: "67e3aa001122334455667700"
+ *                             order:
+ *                               type: integer
+ *                               example: 0
+ *                             media:
+ *                               type: object
+ *                               properties:
+ *                                 url:
+ *                                   type: string
+ *                                   example: "https://example.com/story-image.jpg"
+ *                                 type:
+ *                                   type: string
+ *                                   example: "image"
+ *                                 thumbnail:
+ *                                   type: string
+ *                                   example: "https://example.com/story-thumb.jpg"
+ *                             transform:
+ *                               type: object
+ *                               properties:
+ *                                 x:
+ *                                   type: number
+ *                                   example: 0.5
+ *                                 y:
+ *                                   type: number
+ *                                   example: 0.5
+ *                                 scale:
+ *                                   type: number
+ *                                   example: 1
+ *                                 rotation:
+ *                                   type: number
+ *                                   example: 0
+ *                             filter:
+ *                               type: object
+ *                               properties:
+ *                                 name:
+ *                                   type: string
+ *                                   example: "none"
+ *                             texts:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                             mentions:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                             likes_count:
+ *                               type: integer
+ *                               example: 0
+ *                             expiresAt:
+ *                               type: string
+ *                               format: date-time
+ *                             createdAt:
+ *                               type: string
+ *                               format: date-time
+ *                             updatedAt:
+ *                               type: string
+ *                               format: date-time
+ *             example:
+ *               user_id: "67e3aa001122334455667711"
+ *               total_highlights: 2
+ *               highlights:
+ *                 - _id: "67e3aa001122334455667700"
+ *                   user_id: "67e3aa001122334455667711"
+ *                   title: "Travel"
+ *                   cover_url: "https://example.com/cover.jpg"
+ *                   items_count: 2
+ *                   order: 0
+ *                   createdAt: "2026-03-27T10:00:00.000Z"
+ *                   updatedAt: "2026-03-27T10:15:00.000Z"
+ *                   items:
+ *                     - _id: "67e3aa001122334455667810"
+ *                       _itemId: "67e3aa001122334455667900"
+ *                       story_id: "67e3aa001122334455667820"
+ *                       user_id: "67e3aa001122334455667711"
+ *                       highlight_id: "67e3aa001122334455667700"
+ *                       order: 0
+ *                       media:
+ *                         url: "https://example.com/story-image.jpg"
+ *                         type: "image"
+ *                         thumbnail: "https://example.com/story-thumb.jpg"
+ *                       transform:
+ *                         x: 0.5
+ *                         y: 0.5
+ *                         scale: 1
+ *                         rotation: 0
+ *                       filter:
+ *                         name: "none"
+ *                       texts: []
+ *                       mentions: []
+ *                       likes_count: 0
+ *                       expiresAt: "2026-03-28T10:00:00.000Z"
+ *                       createdAt: "2026-03-27T09:50:00.000Z"
+ *                       updatedAt: "2026-03-27T09:50:00.000Z"
+ *                 - _id: "67e3aa001122334455667701"
+ *                   user_id: "67e3aa001122334455667711"
+ *                   title: "Work"
+ *                   cover_url: ""
+ *                   items_count: 1
+ *                   order: 1
+ *                   createdAt: "2026-03-27T10:05:00.000Z"
+ *                   updatedAt: "2026-03-27T10:05:00.000Z"
+ *                   items: []
+ *       401:
+ *         description: Not authorized
+ */
+router.get('/user/:userId/stories', auth, ctrl.getUserHighlightsWithStories);
+
+/**
+ * @swagger
  * /api/highlights/user/{userId}:
  *   get:
  *     summary: Get highlights of a user
@@ -89,6 +272,14 @@ router.get('/user/:userId',   auth, ctrl.getUserHighlights);  // public-ish: any
  *               properties:
  *                 success:
  *                   type: boolean
+ *                 user_id:
+ *                   type: string
+ *                 highlight_id:
+ *                   type: string
+ *                 title:
+ *                   type: string
+ *                 cover_url:
+ *                   type: string
  *                 items_count:
  *                   type: integer
  *       400:
@@ -119,7 +310,16 @@ router.get('/user/:userId',   auth, ctrl.getUserHighlights);  // public-ish: any
  *             schema:
  *               type: array
  *               items:
- *                 $ref: '#/components/schemas/StoryItem'
+ *                 allOf:
+ *                   - $ref: '#/components/schemas/StoryItem'
+ *                   - type: object
+ *                     properties:
+ *                       _itemId:
+ *                         type: string
+ *                       user_id:
+ *                         type: string
+ *                       highlight_id:
+ *                         type: string
  *       401:
  *         description: Not authorized
  */
@@ -182,6 +382,10 @@ router.get('/:id/items',      auth, ctrl.getItems);
  *               properties:
  *                 message:
  *                   type: string
+ *                 user_id:
+ *                   type: string
+ *                 highlight_id:
+ *                   type: string
  *       401:
  *         description: Not authorized
  *       403:
@@ -220,6 +424,12 @@ router.get('/:id/items',      auth, ctrl.getItems);
  *               properties:
  *                 success:
  *                   type: boolean
+ *                 user_id:
+ *                   type: string
+ *                 highlight_id:
+ *                   type: string
+ *                 items_count:
+ *                   type: integer
  *       401:
  *         description: Not authorized
  *       403:
@@ -273,6 +483,9 @@ router.get('/:id/items',      auth, ctrl.getItems);
  *       type: object
  *       required: [story_item_ids]
  *       properties:
+ *         title:
+ *           type: string
+ *           example: Travel
  *         story_item_ids:
  *           type: array
  *           items:

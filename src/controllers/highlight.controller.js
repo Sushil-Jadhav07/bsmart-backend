@@ -2,6 +2,11 @@ const Highlight     = require('../models/Highlight');
 const HighlightItem = require('../models/HighlightItem');
 const StoryItem     = require('../models/StoryItem');
 
+const serializeHighlight = (highlight) => {
+  const obj = highlight?.toObject ? highlight.toObject() : highlight;
+  return obj ? { ...obj, user_id: obj.user_id } : obj;
+};
+
 // POST /api/highlights
 exports.createHighlight = async (req, res) => {
   try {
@@ -11,7 +16,7 @@ exports.createHighlight = async (req, res) => {
     const highlight = await Highlight.create({
       user_id: req.userId, title, cover_url: cover_url || '', order: count
     });
-    res.status(201).json(highlight);
+    res.status(201).json(serializeHighlight(highlight));
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
 
@@ -20,7 +25,44 @@ exports.getUserHighlights = async (req, res) => {
   try {
     const highlights = await Highlight.find({ user_id: req.params.userId })
       .sort({ order: 1 }).lean();
-    res.json(highlights);
+    res.json(highlights.map(serializeHighlight));
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+};
+
+// GET /api/highlights/user/:userId/stories
+exports.getUserHighlightsWithStories = async (req, res) => {
+  try {
+    const highlights = await Highlight.find({ user_id: req.params.userId })
+      .sort({ order: 1 })
+      .lean();
+
+    const highlightIds = highlights.map((highlight) => highlight._id);
+    const items = await HighlightItem.find({ highlight_id: { $in: highlightIds } })
+      .sort({ order: 1 })
+      .populate('story_item_id')
+      .lean();
+
+    const itemsByHighlight = {};
+    items.forEach((item) => {
+      const key = String(item.highlight_id);
+      if (!itemsByHighlight[key]) itemsByHighlight[key] = [];
+      itemsByHighlight[key].push({
+        ...(item.story_item_id || {}),
+        _itemId: item._id,
+        order: item.order,
+        user_id: item.user_id,
+        highlight_id: item.highlight_id,
+      });
+    });
+
+    res.json({
+      user_id: req.params.userId,
+      total_highlights: highlights.length,
+      highlights: highlights.map((highlight) => ({
+        ...serializeHighlight(highlight),
+        items: itemsByHighlight[String(highlight._id)] || [],
+      })),
+    });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
 
@@ -34,6 +76,8 @@ exports.addItems = async (req, res) => {
 
     const ids = Array.isArray(req.body.story_item_ids) ? req.body.story_item_ids : [];
     if (!ids.length) return res.status(400).json({ message: 'story_item_ids required' });
+    const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+    if (title) highlight.title = title;
 
     const currentCount = highlight.items_count;
     const docs = ids.map((sid, i) => ({
@@ -52,7 +96,14 @@ exports.addItems = async (req, res) => {
       if (firstItem) highlight.cover_url = firstItem.media?.thumbnail || firstItem.media?.url || '';
     }
     await highlight.save();
-    res.json({ success: true, items_count: highlight.items_count });
+    res.json({
+      success: true,
+      user_id: highlight.user_id,
+      highlight_id: highlight._id,
+      title: highlight.title,
+      cover_url: highlight.cover_url,
+      items_count: highlight.items_count,
+    });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
 
@@ -63,7 +114,13 @@ exports.getItems = async (req, res) => {
       .sort({ order: 1 })
       .populate('story_item_id')   // gets the full media, texts etc.
       .lean();
-    res.json(items.map(i => ({ ...i.story_item_id, _itemId: i._id, order: i.order })));
+    res.json(items.map(i => ({
+      ...i.story_item_id,
+      _itemId: i._id,
+      order: i.order,
+      user_id: i.user_id,
+      highlight_id: i.highlight_id,
+    })));
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
 
@@ -78,7 +135,7 @@ exports.updateHighlight = async (req, res) => {
     if (title)     highlight.title     = title;
     if (cover_url) highlight.cover_url = cover_url;
     await highlight.save();
-    res.json(highlight);
+    res.json(serializeHighlight(highlight));
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
 
@@ -93,7 +150,12 @@ exports.removeItem = async (req, res) => {
     await item.deleteOne();
     highlight.items_count = Math.max(0, highlight.items_count - 1);
     await highlight.save();
-    res.json({ success: true });
+    res.json({
+      success: true,
+      user_id: highlight.user_id,
+      highlight_id: highlight._id,
+      items_count: highlight.items_count,
+    });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
 
@@ -106,6 +168,6 @@ exports.deleteHighlight = async (req, res) => {
       return res.status(403).json({ message: 'Forbidden' });
     await HighlightItem.deleteMany({ highlight_id: highlight._id });
     await highlight.deleteOne();
-    res.json({ message: 'Deleted' });
+    res.json({ message: 'Deleted', user_id: highlight.user_id, highlight_id: highlight._id });
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 };
