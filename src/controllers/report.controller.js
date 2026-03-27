@@ -359,11 +359,6 @@ exports.getClickReport = async (req, res) => {
     if (ad_id && mongoose.Types.ObjectId.isValid(ad_id)) {
       adFilter._id = new mongoose.Types.ObjectId(ad_id);
     }
-    // If click filters restrict to a subset of ads, only return those ads
-    if (Object.keys(clickMap).length > 0 && (country || gender || language || dateFilter)) {
-      adFilter._id = { $in: Object.keys(clickMap).map(id => new mongoose.Types.ObjectId(id)) };
-    }
-
     const totalAds = await Ad.countDocuments(adFilter);
     const ads = await Ad.find(adFilter, {
       _id: 1, caption: 1, status: 1, category: 1,
