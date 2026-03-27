@@ -46,6 +46,7 @@ const vendorPackageRoutes    = require('./src/routes/vendorPackage.routes');
 const emailRoutes            = require('./src/routes/email.routes');  // <- EMAIL
 const reportRoutes           = require('./src/routes/report.routes');
 const highlightRoutes        = require('./src/routes/highlight.routes');
+const searchRoutes           = require('./src/routes/search.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -128,6 +129,7 @@ app.use('/api/vendor-packages',   vendorPackageRoutes);
 app.use('/api/email',             emailRoutes);            // <- EMAIL
 app.use('/api/reports',           reportRoutes);
 app.use('/api/highlights',        highlightRoutes);
+app.use('/api/search',            searchRoutes);
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
