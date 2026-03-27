@@ -17,6 +17,7 @@ const normalizeUser = (user) => ({
   avatar_url: user.avatar_url || '',
   role: user.role || '',
   bio: user.bio || '',
+  location: user.location || '',
 });
 
 const normalizePost = (post) => ({
@@ -49,10 +50,11 @@ exports.searchAll = async (req, res) => {
       $or: [
         { username: regex },
         { full_name: regex },
+        { location: regex },
         ...(exactId ? [{ _id: exactId }] : []),
       ],
     })
-      .select('_id username full_name avatar_url role bio')
+      .select('_id username full_name avatar_url role bio location')
       .sort({ followers_count: -1, createdAt: -1 })
       .limit(limit)
       .lean();

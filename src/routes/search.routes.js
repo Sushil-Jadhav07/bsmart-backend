@@ -23,7 +23,7 @@ const ctrl = require('../controllers/search.controller');
  *         required: true
  *         schema:
  *           type: string
- *         description: Search keyword. Matches username, full name, user id and post/reel caption.
+ *         description: Search keyword. Matches username, full name, location, user id and post/reel caption.
  *       - in: query
  *         name: limit
  *         schema:
@@ -50,6 +50,7 @@ const ctrl = require('../controllers/search.controller');
  *                     avatar_url: "https://example.com/avatar.jpg"
  *                     role: "member"
  *                     bio: "Creator"
+ *                     location: "Pune"
  *                 posts:
  *                   - _id: "67e3aa001122334455667801"
  *                     user_id: "67e3aa001122334455667711"
