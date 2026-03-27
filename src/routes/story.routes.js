@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem } = require('../controllers/story.controller');
+const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
 const upload = require('../config/multer');
 
 // ─── Stories feed rate limiter (dynamic — values set via query params) ───────
@@ -177,6 +177,50 @@ router.get('/:storyId/items', verifyToken, getStoryItems);
  *         description: Story item not found
  */
 router.post('/items/:itemId/view', verifyToken, viewStoryItem);
+
+/**
+ * @swagger
+ * /api/stories/items/{itemId}/like:
+ *   post:
+ *     summary: Like or unlike a story item
+ *     description: |
+ *       Toggles the current user's like on a story item.
+ *       If the user already liked it, the like is removed.
+ *       If not, the like is added.
+ *       Story owners cannot like their own story items.
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Story item like toggled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 liked:
+ *                   type: boolean
+ *                 likes_count:
+ *                   type: integer
+ *                 story_item_id:
+ *                   type: string
+ *       400:
+ *         description: Invalid itemId or own-story like attempt
+ *       401:
+ *         description: Not authorized
+ *       404:
+ *         description: Story item not found
+ */
+router.post('/items/:itemId/like', verifyToken, toggleStoryItemLike);
 
 /**
  * @swagger
@@ -539,6 +583,8 @@ router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
  *               username: { type: string }
  *               x: { type: number }
  *               y: { type: number }
+ *         likes_count: { type: number }
+ *         is_liked: { type: boolean }
  *         expiresAt: { type: string, format: date-time }
  *         isDeleted: { type: boolean }
  *         createdAt: { type: string, format: date-time }

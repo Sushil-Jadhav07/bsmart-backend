@@ -1,6 +1,7 @@
 const Story = require('../models/Story');
 const StoryItem = require('../models/StoryItem');
 const StoryView = require('../models/StoryView');
+const StoryLike = require('../models/StoryLike');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 const mongoose = require('mongoose');
@@ -8,11 +9,11 @@ const mongoose = require('mongoose');
 const nowUtc = () => new Date();
 const addHours = (date, h) => new Date(date.getTime() + h * 60 * 60 * 1000);
 
-const normalizeStoryItemMedia = (item) => {
+const normalizeStoryItemMedia = (item, extra = {}) => {
   if (!item) return null;
   const obj = item.toObject ? item.toObject() : item;
   obj.media = obj.media ? [obj.media] : [];
-  return obj;
+  return { ...obj, ...extra };
 };
 
 const buildStoryFeedItem = async (story, viewerId) => {
@@ -191,7 +192,12 @@ exports.getStoryItems = async (req, res) => {
       await story.save();
     }
     const items = await StoryItem.find({ story_id: storyId, isDeleted: false }).sort({ order: 1 });
-    const itemsResponse = items.map(normalizeStoryItemMedia);
+    const itemIds = items.map((item) => item._id);
+    const likedIds = req.userId
+      ? await StoryLike.distinct('story_item_id', { story_item_id: { $in: itemIds }, user_id: req.userId })
+      : [];
+    const likedSet = new Set(likedIds.map((id) => String(id)));
+    const itemsResponse = items.map((item) => normalizeStoryItemMedia(item, { is_liked: likedSet.has(String(item._id)) }));
     res.json(itemsResponse);
   } catch (error) {
     console.error(error);
@@ -306,6 +312,7 @@ exports.deleteStory = async (req, res) => {
     }
     await StoryItem.deleteMany({ story_id: storyId });
     await StoryView.deleteMany({ story_id: storyId });
+    await StoryLike.deleteMany({ story_id: storyId });
     await story.deleteOne();
     res.json({ message: 'Story deleted successfully' });
   } catch (error) {
@@ -334,6 +341,7 @@ exports.deleteStoryItem = async (req, res) => {
     }
 
     await StoryView.deleteMany({ story_item_id: item._id });
+    await StoryLike.deleteMany({ story_item_id: item._id });
     await item.deleteOne();
 
     const remainingItems = await StoryItem.countDocuments({ story_id: story._id, isDeleted: false });
@@ -357,6 +365,76 @@ exports.deleteStoryItem = async (req, res) => {
       message: 'Story item deleted successfully',
       story_deleted: false,
       items_count: remainingItems,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.toggleStoryItemLike = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { itemId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ message: 'Invalid itemId' });
+    }
+
+    const item = await StoryItem.findById(itemId);
+    if (!item || item.isDeleted) {
+      return res.status(404).json({ message: 'Story item not found' });
+    }
+
+    const story = await Story.findById(item.story_id);
+    if (!story) {
+      return res.status(404).json({ message: 'Story not found' });
+    }
+
+    if (String(story.user_id) === String(userId)) {
+      return res.status(400).json({ message: 'You cannot like your own story' });
+    }
+
+    const existing = await StoryLike.findOne({ story_item_id: item._id, user_id: userId });
+    let liked = false;
+
+    if (existing) {
+      await existing.deleteOne();
+      item.likes_count = Math.max(0, Number(item.likes_count || 0) - 1);
+      await item.save();
+    } else {
+      await StoryLike.create({
+        story_id: story._id,
+        story_item_id: item._id,
+        owner_id: story.user_id,
+        user_id: userId,
+        likedAt: nowUtc(),
+      });
+      item.likes_count = Number(item.likes_count || 0) + 1;
+      await item.save();
+      liked = true;
+
+      try {
+        const viewer = await User.findById(userId).select('username').lean();
+        if (viewer) {
+          await sendNotification(req.app, {
+            recipient: story.user_id,
+            sender: userId,
+            type: 'story_like',
+            message: `${viewer.username} liked your story`,
+            link: `/stories/${story._id}`,
+          });
+        }
+      } catch (notifErr) {
+        console.error('Story like notification error:', notifErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      liked,
+      likes_count: item.likes_count,
+      story_item_id: item._id,
     });
   } catch (error) {
     console.error(error);

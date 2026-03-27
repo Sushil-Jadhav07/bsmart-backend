@@ -52,6 +52,7 @@ const storyItemSchema = new mongoose.Schema({
     }],
     default: []
   },
+  likes_count: { type: Number, default: 0 },
   expiresAt: { type: Date, required: true, index: true },
   isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
