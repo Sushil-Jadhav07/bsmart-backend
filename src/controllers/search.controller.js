@@ -10,26 +10,46 @@ const canAccessHistory = (requestUser, targetUserId) =>
 
 const buildRegex = (value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-const normalizeUser = (user) => ({
-  _id: user._id,
-  username: user.username || '',
-  full_name: user.full_name || '',
-  avatar_url: user.avatar_url || '',
-  role: user.role || '',
-  bio: user.bio || '',
-  location: user.location || '',
-});
+const sanitizeUser = (user) => {
+  if (!user) return null;
+  return {
+    _id: user._id,
+    email: user.email || '',
+    googleId: user.googleId || '',
+    provider: user.provider || '',
+    username: user.username || '',
+    full_name: user.full_name || '',
+    bio: user.bio || '',
+    posts_count: user.posts_count || 0,
+    followers_count: user.followers_count || 0,
+    following_count: user.following_count || 0,
+    is_active: typeof user.is_active === 'boolean' ? user.is_active : true,
+    role: user.role || '',
+    avatar_url: user.avatar_url || '',
+    phone: user.phone || '',
+    age: user.age ?? null,
+    gender: user.gender || '',
+    location: user.location || '',
+    address: user.address || {},
+    company_details: user.company_details || {},
+    isDeleted: !!user.isDeleted,
+    deletedBy: user.deletedBy || null,
+    deletedAt: user.deletedAt || null,
+    createdAt: user.createdAt || null,
+    updatedAt: user.updatedAt || null,
+  };
+};
 
-const normalizePost = (post) => ({
-  _id: post._id,
-  user_id: post.user_id?._id || post.user_id,
-  username: post.user_id?.username || '',
-  full_name: post.user_id?.full_name || '',
-  avatar_url: post.user_id?.avatar_url || '',
-  caption: post.caption || '',
-  type: post.type || 'post',
+const sanitizePost = (post) => ({
+  ...post,
+  user_id: post.user_id && typeof post.user_id === 'object'
+    ? sanitizeUser(post.user_id)
+    : post.user_id,
   media: Array.isArray(post.media) ? post.media : [],
-  createdAt: post.createdAt,
+  tags: Array.isArray(post.tags) ? post.tags : [],
+  people_tags: Array.isArray(post.people_tags) ? post.people_tags : [],
+  likes: Array.isArray(post.likes) ? post.likes : [],
+  latest_comments: Array.isArray(post.latest_comments) ? post.latest_comments : [],
 });
 
 exports.searchAll = async (req, res) => {
@@ -54,7 +74,7 @@ exports.searchAll = async (req, res) => {
         ...(exactId ? [{ _id: exactId }] : []),
       ],
     })
-      .select('_id username full_name avatar_url role bio location')
+      .select('email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
       .sort({ followers_count: -1, createdAt: -1 })
       .limit(limit)
       .lean();
@@ -72,12 +92,12 @@ exports.searchAll = async (req, res) => {
 
     const [posts, reels] = await Promise.all([
       Post.find({ ...postQueryBase, type: 'post' })
-        .populate('user_id', 'username full_name avatar_url')
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),
       Post.find({ ...postQueryBase, type: 'reel' })
-        .populate('user_id', 'username full_name avatar_url')
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),
@@ -105,9 +125,9 @@ exports.searchAll = async (req, res) => {
         reels: reels.length,
       },
       results: {
-        users: matchedUsers.map(normalizeUser),
-        posts: posts.map(normalizePost),
-        reels: reels.map(normalizePost),
+        users: matchedUsers.map(sanitizeUser),
+        posts: posts.map(sanitizePost),
+        reels: reels.map(sanitizePost),
       },
     });
   } catch (error) {

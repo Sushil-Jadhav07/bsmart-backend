@@ -45,32 +45,166 @@ const ctrl = require('../controllers/search.controller');
  *               results:
  *                 users:
  *                   - _id: "67e3aa001122334455667711"
+ *                     email: "suraj@example.com"
+ *                     googleId: ""
+ *                     provider: "local"
  *                     username: "suraj"
  *                     full_name: "Suraj Kumar"
- *                     avatar_url: "https://example.com/avatar.jpg"
- *                     role: "member"
  *                     bio: "Creator"
+ *                     posts_count: 14
+ *                     followers_count: 300
+ *                     following_count: 120
+ *                     is_active: true
+ *                     role: "member"
+ *                     avatar_url: "https://example.com/avatar.jpg"
+ *                     phone: "9876543210"
+ *                     age: 24
+ *                     gender: "male"
  *                     location: "Pune"
+ *                     address:
+ *                       address_line1: "MG Road"
+ *                       address_line2: ""
+ *                       pincode: "411001"
+ *                       city: "Pune"
+ *                       state: "Maharashtra"
+ *                       country: "India"
+ *                     company_details:
+ *                       company_name: ""
+ *                       registered_name: ""
+ *                       industry: ""
+ *                       registration_number: ""
+ *                       tax_id: ""
+ *                       year_established: ""
+ *                       company_type: ""
+ *                     isDeleted: false
+ *                     deletedBy: null
+ *                     deletedAt: null
+ *                     createdAt: "2026-03-20T08:00:00.000Z"
+ *                     updatedAt: "2026-03-27T10:00:00.000Z"
  *                 posts:
  *                   - _id: "67e3aa001122334455667801"
- *                     user_id: "67e3aa001122334455667711"
- *                     username: "suraj"
- *                     full_name: "Suraj Kumar"
- *                     avatar_url: "https://example.com/avatar.jpg"
+ *                     user_id:
+ *                       _id: "67e3aa001122334455667711"
+ *                       email: "suraj@example.com"
+ *                       googleId: ""
+ *                       provider: "local"
+ *                       username: "suraj"
+ *                       full_name: "Suraj Kumar"
+ *                       bio: "Creator"
+ *                       posts_count: 14
+ *                       followers_count: 300
+ *                       following_count: 120
+ *                       is_active: true
+ *                       role: "member"
+ *                       avatar_url: "https://example.com/avatar.jpg"
+ *                       phone: "9876543210"
+ *                       age: 24
+ *                       gender: "male"
+ *                       location: "Pune"
+ *                       address:
+ *                         address_line1: "MG Road"
+ *                         address_line2: ""
+ *                         pincode: "411001"
+ *                         city: "Pune"
+ *                         state: "Maharashtra"
+ *                         country: "India"
+ *                       company_details:
+ *                         company_name: ""
+ *                         registered_name: ""
+ *                         industry: ""
+ *                         registration_number: ""
+ *                         tax_id: ""
+ *                         year_established: ""
+ *                         company_type: ""
+ *                       isDeleted: false
+ *                       deletedBy: null
+ *                       deletedAt: null
+ *                       createdAt: "2026-03-20T08:00:00.000Z"
+ *                       updatedAt: "2026-03-27T10:00:00.000Z"
  *                     caption: "My first post"
  *                     type: "post"
- *                     media: []
+ *                     location: "Pune"
+ *                     media:
+ *                       - fileName: "post-1.jpg"
+ *                         type: "image"
+ *                     tags: ["travel"]
+ *                     people_tags: []
+ *                     hide_likes_count: false
+ *                     turn_off_commenting: false
+ *                     likes_count: 10
+ *                     comments_count: 2
+ *                     views_count: 50
+ *                     unique_views_count: 35
+ *                     completed_views_count: 20
+ *                     latest_comments: []
+ *                     likes: []
+ *                     isDeleted: false
+ *                     deletedBy: null
+ *                     deletedAt: null
  *                     createdAt: "2026-03-27T10:00:00.000Z"
+ *                     updatedAt: "2026-03-27T10:10:00.000Z"
  *                 reels:
  *                   - _id: "67e3aa001122334455667802"
- *                     user_id: "67e3aa001122334455667711"
- *                     username: "suraj"
- *                     full_name: "Suraj Kumar"
- *                     avatar_url: "https://example.com/avatar.jpg"
+ *                     user_id:
+ *                       _id: "67e3aa001122334455667711"
+ *                       email: "suraj@example.com"
+ *                       googleId: ""
+ *                       provider: "local"
+ *                       username: "suraj"
+ *                       full_name: "Suraj Kumar"
+ *                       bio: "Creator"
+ *                       posts_count: 14
+ *                       followers_count: 300
+ *                       following_count: 120
+ *                       is_active: true
+ *                       role: "member"
+ *                       avatar_url: "https://example.com/avatar.jpg"
+ *                       phone: "9876543210"
+ *                       age: 24
+ *                       gender: "male"
+ *                       location: "Pune"
+ *                       address:
+ *                         address_line1: "MG Road"
+ *                         address_line2: ""
+ *                         pincode: "411001"
+ *                         city: "Pune"
+ *                         state: "Maharashtra"
+ *                         country: "India"
+ *                       company_details:
+ *                         company_name: ""
+ *                         registered_name: ""
+ *                         industry: ""
+ *                         registration_number: ""
+ *                         tax_id: ""
+ *                         year_established: ""
+ *                         company_type: ""
+ *                       isDeleted: false
+ *                       deletedBy: null
+ *                       deletedAt: null
+ *                       createdAt: "2026-03-20T08:00:00.000Z"
+ *                       updatedAt: "2026-03-27T10:00:00.000Z"
  *                     caption: "My first reel"
  *                     type: "reel"
- *                     media: []
+ *                     location: "Pune"
+ *                     media:
+ *                       - fileName: "reel-1.mp4"
+ *                         type: "video"
+ *                     tags: ["music"]
+ *                     people_tags: []
+ *                     hide_likes_count: false
+ *                     turn_off_commenting: false
+ *                     likes_count: 20
+ *                     comments_count: 4
+ *                     views_count: 220
+ *                     unique_views_count: 160
+ *                     completed_views_count: 90
+ *                     latest_comments: []
+ *                     likes: []
+ *                     isDeleted: false
+ *                     deletedBy: null
+ *                     deletedAt: null
  *                     createdAt: "2026-03-27T10:05:00.000Z"
+ *                     updatedAt: "2026-03-27T10:20:00.000Z"
  *       400:
  *         description: q is required
  *       401:
