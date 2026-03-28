@@ -4,6 +4,7 @@ const Post = require('../models/Post');
 const SearchHistory = require('../models/SearchHistory');
 
 const HISTORY_LIMIT = 20;
+const NOT_DELETED_FILTER = { $ne: true };
 
 const canAccessHistory = (requestUser, targetUserId) =>
   requestUser?.role === 'admin' || String(requestUser?._id) === String(targetUserId);
@@ -66,7 +67,7 @@ exports.searchAll = async (req, res) => {
     const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
 
     const matchedUsers = await User.find({
-      isDeleted: false,
+      isDeleted: NOT_DELETED_FILTER,
       $or: [
         { username: regex },
         { full_name: regex },
@@ -82,9 +83,10 @@ exports.searchAll = async (req, res) => {
     const matchedUserIds = matchedUsers.map((user) => user._id);
 
     const postQueryBase = {
-      isDeleted: false,
+      isDeleted: NOT_DELETED_FILTER,
       $or: [
         { caption: regex },
+        { location: regex },
         ...(matchedUserIds.length ? [{ user_id: { $in: matchedUserIds } }] : []),
         ...(exactId ? [{ user_id: exactId }, { _id: exactId }] : []),
       ],
@@ -103,18 +105,21 @@ exports.searchAll = async (req, res) => {
         .lean(),
     ]);
 
-    await SearchHistory.findOneAndUpdate(
-      { user_id: req.userId, normalized_query: q.toLowerCase() },
-      {
-        $set: {
-          query: q,
-          normalized_query: q.toLowerCase(),
-          searched_at: new Date(),
+    const searchUserId = req.userId || req.user?._id;
+    if (searchUserId) {
+      await SearchHistory.findOneAndUpdate(
+        { user_id: searchUserId, normalized_query: q.toLowerCase() },
+        {
+          $set: {
+            query: q,
+            normalized_query: q.toLowerCase(),
+            searched_at: new Date(),
+          },
+          $inc: { searches_count: 1 },
         },
-        $inc: { searches_count: 1 },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
 
     return res.json({
       success: true,
