@@ -47,6 +47,7 @@ const emailRoutes            = require('./src/routes/email.routes');  // <- EMAI
 const reportRoutes           = require('./src/routes/report.routes');
 const highlightRoutes        = require('./src/routes/highlight.routes');
 const searchRoutes           = require('./src/routes/search.routes');
+const contentReportRoutes    = require('./src/routes/contentReport.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -130,6 +131,7 @@ app.use('/api/email',             emailRoutes);            // <- EMAIL
 app.use('/api/reports',           reportRoutes);
 app.use('/api/highlights',        highlightRoutes);
 app.use('/api/search',            searchRoutes);
+app.use('/api/content-reports',   contentReportRoutes);
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
