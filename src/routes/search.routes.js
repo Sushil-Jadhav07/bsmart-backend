@@ -127,6 +127,11 @@ const ctrl = require('../controllers/search.controller');
  *                     media:
  *                       - fileName: "post-1.jpg"
  *                         type: "image"
+ *                         fileUrl: "https://api.bebsmart.in/uploads/post-1.jpg"
+ *                         thumbnails:
+ *                           - fileName: "post-1-thumb.jpg"
+ *                             type: "image"
+ *                             fileUrl: "https://api.bebsmart.in/uploads/post-1-thumb.jpg"
  *                     tags: ["travel"]
  *                     people_tags: []
  *                     hide_likes_count: false
@@ -189,6 +194,11 @@ const ctrl = require('../controllers/search.controller');
  *                     media:
  *                       - fileName: "reel-1.mp4"
  *                         type: "video"
+ *                         fileUrl: "https://api.bebsmart.in/uploads/reel-1.mp4"
+ *                         thumbnails:
+ *                           - fileName: "reel-1-thumb.jpg"
+ *                             type: "image"
+ *                             fileUrl: "https://api.bebsmart.in/uploads/reel-1-thumb.jpg"
  *                     tags: ["music"]
  *                     people_tags: []
  *                     hide_likes_count: false

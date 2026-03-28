@@ -41,12 +41,43 @@ const sanitizeUser = (user) => {
   };
 };
 
-const sanitizePost = (post) => ({
+const withAbsoluteUploadUrl = (value, baseUrl) => {
+  if (!value) return '';
+  if (String(value).startsWith('http')) return value;
+  if (String(value).startsWith('/')) return `${baseUrl}${value}`;
+  return `${baseUrl}/uploads/${value}`;
+};
+
+const sanitizeMedia = (media = [], baseUrl = '') =>
+  Array.isArray(media)
+    ? media.map((item) => {
+        const thumbnails = Array.isArray(item.thumbnails)
+          ? item.thumbnails.map((thumb) => ({
+              ...thumb,
+              fileUrl: withAbsoluteUploadUrl(thumb.fileUrl || thumb.fileName, baseUrl),
+            }))
+          : item.thumbnail && (item.thumbnail.fileName || item.thumbnail.fileUrl)
+            ? [{
+                ...item.thumbnail,
+                fileUrl: withAbsoluteUploadUrl(item.thumbnail.fileUrl || item.thumbnail.fileName, baseUrl),
+              }]
+            : [];
+
+        return {
+          ...item,
+          fileUrl: withAbsoluteUploadUrl(item.fileUrl || item.fileName, baseUrl),
+          thumbnails,
+          thumbnail: thumbnails,
+        };
+      })
+    : [];
+
+const sanitizePost = (post, baseUrl) => ({
   ...post,
   user_id: post.user_id && typeof post.user_id === 'object'
     ? sanitizeUser(post.user_id)
     : post.user_id,
-  media: Array.isArray(post.media) ? post.media : [],
+  media: sanitizeMedia(post.media, baseUrl),
   tags: Array.isArray(post.tags) ? post.tags : [],
   people_tags: Array.isArray(post.people_tags) ? post.people_tags : [],
   likes: Array.isArray(post.likes) ? post.likes : [],
@@ -121,6 +152,8 @@ exports.searchAll = async (req, res) => {
       );
     }
 
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
     return res.json({
       success: true,
       query: q,
@@ -131,8 +164,8 @@ exports.searchAll = async (req, res) => {
       },
       results: {
         users: matchedUsers.map(sanitizeUser),
-        posts: posts.map(sanitizePost),
-        reels: reels.map(sanitizePost),
+        posts: posts.map((post) => sanitizePost(post, baseUrl)),
+        reels: reels.map((reel) => sanitizePost(reel, baseUrl)),
       },
     });
   } catch (error) {
