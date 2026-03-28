@@ -6,7 +6,10 @@ const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const Member = require('../models/Member');
 const Vendor = require('../models/Vendor');
+const Otp = require('../models/Otp');
 const sendNotification = require('../utils/sendNotification');
+const { sendEmail } = require('../services/email.service');
+const { otpTemplate, passwordChangedTemplate } = require('../templates/email.templates');
 const {
   sendWelcomeEmail,
   sendNewVendorAlert,
@@ -197,6 +200,9 @@ exports.register = async (req, res) => {
         location: user.location,
         ...(userRole === 'member' ? { address: user.address } : {}),
         role: user.role,
+        twoFA: {
+          enabled: !!user.twoFA?.enabled
+        },
         followers_count: user.followers_count,
         following_count: user.following_count,
         wallet: wallet,
@@ -306,6 +312,9 @@ exports.googleLogin = async (req, res) => {
         gender: user.gender,
         location: user.location,
         role: user.role,
+        twoFA: {
+          enabled: !!user.twoFA?.enabled
+        },
         createdAt: user.createdAt
       }
     });
@@ -384,6 +393,9 @@ exports.login = async (req, res) => {
         gender: user.gender,
         location: user.location,
         role: user.role,
+        twoFA: {
+          enabled: !!user.twoFA?.enabled
+        },
         followers_count: user.followers_count,
         following_count: user.following_count,
         wallet: wallet,
@@ -432,6 +444,9 @@ exports.getMe = async (req, res) => {
     if (wallet) {
       userData.wallet = wallet;
     }
+    userData.twoFA = {
+      enabled: !!user.twoFA?.enabled
+    };
     if (vendorData) {
       Object.assign(userData, vendorData);
     }
@@ -482,5 +497,88 @@ exports.changePassword = async (req, res) => {
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.forgotPasswordCheck = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() })
+      .select('email full_name twoFA isDeleted');
+
+    if (!user || user.isDeleted)
+      return res.status(404).json({ message: 'No account found with this email.' });
+
+    if (!user.twoFA?.enabled)
+      return res.status(403).json({
+        message: '2FA is not enabled on this account. You must enable 2FA to reset your password. Please contact support.',
+        twoFA_required: true,
+      });
+
+    await Otp.deleteMany({ email: user.email, purpose: 'forgot_password_2fa' });
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await Otp.create({ email: user.email, otp, purpose: 'forgot_password_2fa', expiresAt });
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Your B-Smart password reset verification code',
+      html: otpTemplate({ full_name: user.full_name || '', otp, purpose: 'forgot_password_2fa', expiresInMinutes: 10 }),
+    });
+
+    return res.json({ success: true, message: 'A verification code has been sent to your email.', email: user.email });
+  } catch (err) {
+    console.error('[Auth] forgotPasswordCheck error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.forgotPasswordVerifyAndReset = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword)
+      return res.status(400).json({ message: 'email, otp and newPassword are required' });
+
+    if (newPassword.length < 6)
+      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+
+    const record = await Otp.findOne({ email: email.toLowerCase(), purpose: 'forgot_password_2fa', used: false });
+
+    if (!record)
+      return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new one.' });
+
+    if (new Date() > record.expiresAt) {
+      await record.deleteOne();
+      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+    }
+
+    if (record.otp !== String(otp))
+      return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
+
+    record.used = true;
+    await record.save();
+
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    sendEmail({
+      to: user.email,
+      subject: 'Your B-Smart password was changed',
+      html: passwordChangedTemplate({ full_name: user.full_name }),
+    }).catch(err => console.error('[Auth] passwordChanged email failed:', err.message));
+
+    return res.json({ success: true, message: 'Password reset successfully. You can now log in.' });
+  } catch (err) {
+    console.error('[Auth] forgotPasswordVerifyAndReset error:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
 };

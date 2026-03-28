@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createPost, getFeed, getPost, deletePost, createReel, listReels, getReelById } = require('../controllers/post.controller');
+const { createPost, getFeed, getPost, deletePost, createReel, listReels, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved.controller');
 const { getPostStats } = require('../controllers/poststats.controller');
@@ -525,6 +525,66 @@ router.get('/saved', verifyToken, listMySavedPosts);
 
 router.get('/:id/stats', verifyToken, getPostStats);
 
+/**
+ * @swagger
+ * /api/posts/{id}/metadata:
+ *   patch:
+ *     summary: Update post caption, location, tags and advanced settings
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               caption:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               people_tags:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     user_id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     x:
+ *                       type: number
+ *                     y:
+ *                       type: number
+ *               hide_likes_count:
+ *                 type: boolean
+ *               turn_off_commenting:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Post updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Post'
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Post not found
+ */
+router.patch('/:id/metadata', verifyToken, updatePostMetadata);
+
 router.get('/:id', verifyToken, getPost);
 
 /**
@@ -550,6 +610,66 @@ router.get('/:id', verifyToken, getPost);
  *         description: Post not found
  */
 router.delete('/:id', verifyToken, deletePost);
+
+/**
+ * @swagger
+ * /api/posts/reels/{id}/metadata:
+ *   patch:
+ *     summary: Update reel caption, location, tags and advanced settings
+ *     tags: [Reels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               caption:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               people_tags:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     user_id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     x:
+ *                       type: number
+ *                     y:
+ *                       type: number
+ *               hide_likes_count:
+ *                 type: boolean
+ *               turn_off_commenting:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Reel updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Post'
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Reel not found
+ */
+router.patch('/reels/:id/metadata', verifyToken, updateReelMetadata);
 
 /**
  * @swagger

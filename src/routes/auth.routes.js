@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, googleLogin, getMe, changePassword } = require('../controllers/auth.controller');
+const { register, login, googleLogin, getMe, changePassword, forgotPasswordCheck, forgotPasswordVerifyAndReset } = require('../controllers/auth.controller');
 const { getAllUsers } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 const passport = require('passport');
@@ -260,11 +260,31 @@ router.post('/google/token', googleLogin);
  *                   type: string
  *                 user:
  *                   $ref: '#/components/schemas/User'
+ *             example:
+ *               token: "jwt_token_here"
+ *               user:
+ *                 id: "60f1b2c3d4e5f67890123456"
+ *                 email: "member@example.com"
+ *                 username: "member123"
+ *                 full_name: "Member Name"
+ *                 avatar_url: ""
+ *                 phone: "+911234567890"
+ *                 age: 25
+ *                 gender: "male"
+ *                 location: "Mumbai, India"
+ *                 role: "member"
+ *                 twoFA:
+ *                   enabled: false
+ *                 followers_count: 0
+ *                 following_count: 0
+ *                 wallet:
+ *                   balance: 0
+ *                   currency: "Coins"
  *       400:
  *         description: Invalid credentials
  *       500:
  *         description: Server error
- */
+*/
 router.post('/login', login);
 
 /**
@@ -301,6 +321,8 @@ router.post('/login', login);
  *                     state: "Karnataka"
  *                     country: "India"
  *                   role: "member"
+ *                   twoFA:
+ *                     enabled: false
  *                   wallet:
  *                     balance: 0
  *                     currency: "Coins"
@@ -453,6 +475,12 @@ router.get(
  *         role:
  *           type: string
  *           enum: [member, vendor, admin]
+ *         twoFA:
+ *           type: object
+ *           properties:
+ *             enabled:
+ *               type: boolean
+ *               example: false
  *         validated:
  *           type: boolean
  *           description: Vendor validation status (true if vendor is validated; false otherwise)
@@ -482,5 +510,8 @@ router.get(
  *               items:
  *                 $ref: '#/components/schemas/Post'
  */
+
+router.post('/forgot-password/check', forgotPasswordCheck);
+router.post('/forgot-password/verify-reset', forgotPasswordVerifyAndReset);
 
 module.exports = router;

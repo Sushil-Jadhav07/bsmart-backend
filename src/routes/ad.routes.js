@@ -18,6 +18,7 @@ const {
   saveAd,
   unsaveAd,
   deleteAd,
+  updateAdMetadata,
   searchAds
 } = require('../controllers/ad.controller');
 const {
@@ -795,6 +796,86 @@ router.get('/:id/stats', auth, getAdStats);
  *         description: Ad not found
  */
 router.get('/:id', auth, getAdById);
+
+/**
+ * @swagger
+ * /api/ads/{id}/metadata:
+ *   patch:
+ *     summary: Update ad caption, targeting and advanced settings
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               caption:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               hashtags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               tagged_users:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     user_id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     position_x:
+ *                       type: number
+ *                     position_y:
+ *                       type: number
+ *               engagement_controls:
+ *                 type: object
+ *                 properties:
+ *                   hide_likes_count:
+ *                     type: boolean
+ *                   disable_comments:
+ *                     type: boolean
+ *               content_type:
+ *                 type: string
+ *                 enum: [post, reel]
+ *               category:
+ *                 type: string
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               target_language:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               target_location:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               target_preferences:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Ad updated successfully
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Ad not found
+ */
+router.patch('/:id/metadata', auth, updateAdMetadata);
 
 /**
  * @swagger

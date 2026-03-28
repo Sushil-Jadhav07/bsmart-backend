@@ -20,7 +20,7 @@ const otpSchema = new mongoose.Schema({
   // 'forgot_password' → used in the forgot-password flow
   purpose: {
     type: String,
-    enum: ['verify_email', 'forgot_password'],
+    enum: ['verify_email', 'forgot_password', 'two_factor', 'forgot_password_2fa'],
     required: true,
   },
   expiresAt: {

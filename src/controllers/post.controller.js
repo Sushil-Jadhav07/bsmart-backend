@@ -378,3 +378,76 @@ exports.getReelById = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+const buildPostMetadataUpdates = (body = {}) => {
+  const updates = {};
+
+  if (typeof body.caption !== 'undefined') updates.caption = body.caption || '';
+  if (typeof body.location !== 'undefined') updates.location = body.location || '';
+  if (typeof body.tags !== 'undefined') updates.tags = Array.isArray(body.tags) ? body.tags : [];
+  if (typeof body.people_tags !== 'undefined') updates.people_tags = Array.isArray(body.people_tags) ? body.people_tags : [];
+  if (typeof body.hide_likes_count !== 'undefined') updates.hide_likes_count = !!body.hide_likes_count;
+  if (typeof body.turn_off_commenting !== 'undefined') updates.turn_off_commenting = !!body.turn_off_commenting;
+
+  return updates;
+};
+
+exports.updatePostMetadata = async (req, res) => {
+  try {
+    const post = await Post.findOne({ _id: req.params.id, type: 'post' });
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update this post' });
+    }
+
+    const updates = buildPostMetadataUpdates(req.body);
+    Object.assign(post, updates);
+    await post.save();
+
+    const populatedPost = await Post.findById(post._id)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json(transformPost(populatedPost, baseUrl, req.userId));
+  } catch (error) {
+    console.error('[Post] updatePostMetadata error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.updateReelMetadata = async (req, res) => {
+  try {
+    const post = await Post.findOne({ _id: req.params.id, type: 'reel' });
+
+    if (!post) {
+      return res.status(404).json({ message: 'Reel not found' });
+    }
+
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update this reel' });
+    }
+
+    const updates = buildPostMetadataUpdates(req.body);
+    Object.assign(post, updates);
+    await post.save();
+
+    const populatedPost = await Post.findById(post._id)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json(transformPost(populatedPost, baseUrl, req.userId));
+  } catch (error) {
+    console.error('[Post] updateReelMetadata error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Reel not found' });
+    }
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};

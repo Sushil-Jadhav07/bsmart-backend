@@ -306,6 +306,76 @@ exports.deleteAd = async (req, res) => {
   }
 };
 
+exports.updateAdMetadata = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const adId = req.params.id;
+
+    const ad = await Ad.findById(adId);
+
+    if (!ad || ad.isDeleted) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    if (ad.user_id.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update this ad' });
+    }
+
+    const {
+      caption,
+      location,
+      hashtags,
+      tagged_users,
+      engagement_controls,
+      content_type,
+      category,
+      tags,
+      target_language,
+      target_location,
+      target_preferences
+    } = req.body;
+
+    if (typeof caption !== 'undefined') ad.caption = caption || '';
+    if (typeof location !== 'undefined') ad.location = location || '';
+    if (typeof hashtags !== 'undefined') ad.hashtags = Array.isArray(hashtags) ? hashtags : [];
+    if (typeof tagged_users !== 'undefined') ad.tagged_users = Array.isArray(tagged_users) ? tagged_users : [];
+    if (typeof engagement_controls !== 'undefined') {
+      ad.engagement_controls = {
+        hide_likes_count: !!engagement_controls?.hide_likes_count,
+        disable_comments: !!engagement_controls?.disable_comments
+      };
+    }
+    if (typeof content_type !== 'undefined' && ['post', 'reel'].includes(content_type)) {
+      ad.content_type = content_type;
+    }
+    if (typeof category !== 'undefined') ad.category = category;
+    if (typeof tags !== 'undefined') ad.tags = Array.isArray(tags) ? tags : [];
+    if (typeof target_language !== 'undefined') {
+      ad.target_language = Array.isArray(target_language) ? target_language : (target_language ? [target_language] : []);
+    }
+    if (typeof target_location !== 'undefined') {
+      ad.target_location = Array.isArray(target_location) ? target_location : (target_location ? [target_location] : []);
+    }
+    if (typeof target_preferences !== 'undefined') {
+      ad.target_preferences = Array.isArray(target_preferences) ? target_preferences : [];
+    }
+
+    await ad.save();
+
+    const updatedAd = await Ad.findById(ad._id)
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url gender location');
+
+    return res.json(updatedAd);
+  } catch (error) {
+    console.error('Update ad metadata error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 /**
  * List all ads (Admin only)
  * @route GET /api/ads/admin/all
