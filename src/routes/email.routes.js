@@ -21,7 +21,7 @@ const router = express.Router();
  * @swagger
  * /api/email/send-otp:
  *   post:
- *     summary: Send OTP for email verification or forgot-password flow
+ *     summary: Send OTP for email verification, login 2FA, or forgot-password flow
  *     tags: [Email]
  *     requestBody:
  *       required: true
@@ -39,7 +39,7 @@ const router = express.Router();
  *                 example: user@example.com
  *               purpose:
  *                 type: string
- *                 enum: [verify_email, forgot_password]
+ *                 enum: [verify_email, forgot_password, two_factor]
  *                 example: verify_email
  *     responses:
  *       200:
@@ -85,7 +85,7 @@ router.post('/send-otp', sendOtp);
  *                 example: "123456"
  *               purpose:
  *                 type: string
- *                 enum: [verify_email, forgot_password]
+ *                 enum: [verify_email, forgot_password, two_factor]
  *                 example: verify_email
  *     responses:
  *       200:

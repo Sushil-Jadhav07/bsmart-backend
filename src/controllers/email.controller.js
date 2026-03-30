@@ -173,8 +173,8 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ message: 'email and purpose are required' });
     }
 
-    if (!['verify_email', 'forgot_password'].includes(purpose)) {
-      return res.status(400).json({ message: 'purpose must be verify_email or forgot_password' });
+    if (!['verify_email', 'forgot_password', 'two_factor'].includes(purpose)) {
+      return res.status(400).json({ message: 'purpose must be verify_email, forgot_password or two_factor' });
     }
 
     if (purpose === 'forgot_password') {
@@ -196,6 +196,8 @@ exports.sendOtp = async (req, res) => {
       subject:
         purpose === 'verify_email'
           ? 'Your B-Smart email verification code'
+          : purpose === 'two_factor'
+          ? 'Your B-Smart login verification code'
           : 'Your B-Smart password reset OTP',
       html: otpTemplate({
         full_name: user?.full_name || '',

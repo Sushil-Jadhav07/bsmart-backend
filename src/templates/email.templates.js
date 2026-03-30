@@ -1,7 +1,11 @@
 const CLIENT = process.env.CLIENT_URL || 'http://localhost:5173';
 const YEAR = new Date().getFullYear();
+const BRAND_PRIMARY = '#EC4899';
+const BRAND_SECONDARY = '#F97316';
+const BRAND_LIGHT = '#FFF1F2';
+const BRAND_LIGHT_ALT = '#FFF7ED';
 
-const baseTemplate = (content, accentColor = '#4F46E5') => `
+const baseTemplate = (content, accentColor = BRAND_PRIMARY) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,7 +19,7 @@ const baseTemplate = (content, accentColor = '#4F46E5') => `
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);max-width:600px;width:100%;">
           <tr>
-            <td style="background:${accentColor};padding:28px 36px;">
+            <td style="background:${accentColor};background-image:linear-gradient(135deg,${BRAND_SECONDARY} 0%,${BRAND_PRIMARY} 100%);padding:28px 36px;">
               <span style="color:#ffffff;font-size:26px;font-weight:800;letter-spacing:1.5px;">B-Smart</span>
               <span style="color:rgba(255,255,255,0.55);font-size:13px;margin-left:10px;">Smart Advertising Platform</span>
             </td>
@@ -41,14 +45,14 @@ const baseTemplate = (content, accentColor = '#4F46E5') => `
 </body>
 </html>`;
 
-const btn = (label, href, color = '#4F46E5') =>
+const btn = (label, href, color = BRAND_PRIMARY) =>
   `<div style="text-align:center;margin:28px 0;">
     <a href="${href}" style="display:inline-block;background:${color};color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;letter-spacing:0.3px;">
       ${label}
     </a>
   </div>`;
 
-const infoBox = (content, bgColor = '#f0f0ff', borderColor = '#4F46E5') =>
+const infoBox = (content, bgColor = BRAND_LIGHT, borderColor = BRAND_PRIMARY) =>
   `<div style="background:${bgColor};border-left:4px solid ${borderColor};border-radius:8px;padding:20px 24px;margin:24px 0;">
     ${content}
   </div>`;
@@ -97,29 +101,32 @@ const welcomeVendorTemplate = ({ full_name, company_name }) =>
     ${hi(full_name)}
     ${p(`Thanks for registering <strong>${company_name || 'your business'}</strong> on B-Smart. Your account is under review. Our team typically approves vendors within <strong>24-48 hours</strong>.`)}
     ${infoBox(`
-      <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#4F46E5;">While you wait, complete your profile</p>
+      <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:${BRAND_PRIMARY};">While you wait, complete your profile</p>
       <ul style="margin:0;padding-left:18px;color:#444444;font-size:13px;line-height:2;">
         <li>Add business details and industry category</li>
         <li>Upload your logo and company description</li>
         <li>Add your website and social media links</li>
       </ul>
       <p style="margin:10px 0 0;font-size:12px;color:#888888;">A complete profile gets approved faster and ranks higher in search.</p>
-    `)}
-    ${btn('Complete My Profile', `${CLIENT}/vendor/profile`)}
+    `, BRAND_LIGHT, BRAND_SECONDARY)}
+    ${btn('Complete My Profile', `${CLIENT}/vendor/profile`, BRAND_PRIMARY)}
     ${divider()}
     ${note('You will receive another email as soon as your account is approved.')}
-  `);
+  `, BRAND_PRIMARY);
 
 const otpTemplate = ({ full_name, otp, purpose = 'verify_email', expiresInMinutes = 10 }) => {
   const isVerify = purpose === 'verify_email';
-  const otpColor = '#EC1C44';
+  const isTwoFactor = purpose === 'two_factor' || purpose === 'forgot_password_2fa';
+  const otpColor = BRAND_PRIMARY;
 
   return baseTemplate(`
-    ${h2(isVerify ? 'Verify your email address' : 'Your password reset OTP')}
+    ${h2(isVerify ? 'Verify your email address' : isTwoFactor ? 'Your login verification code' : 'Your password reset OTP')}
     ${hi(full_name)}
     ${p(
       isVerify
         ? `Use the one-time code below to verify your B-Smart email address. This code expires in <strong>${expiresInMinutes} minutes</strong>.`
+        : isTwoFactor
+        ? `Use the one-time code below to complete your login to B-Smart. This code expires in <strong>${expiresInMinutes} minutes</strong>.`
         : `You requested a password reset. Enter the code below to continue. This code expires in <strong>${expiresInMinutes} minutes</strong>.`
     )}
     <div style="text-align:center;margin:32px 0;">
@@ -140,7 +147,7 @@ const forgotPasswordTemplate = ({ full_name, resetLink }) =>
       ${h2('Reset your password')}
       ${hi(full_name)}
       ${p('We received a request to reset the password for your B-Smart account. Click the button below to choose a new password.')}
-      ${btn('Reset My Password', resetLink, '#DC2626')}
+      ${btn('Reset My Password', resetLink, BRAND_PRIMARY)}
       ${infoBox(
         `
           <p style="margin:0;font-size:13px;color:#666666;">
@@ -148,12 +155,12 @@ const forgotPasswordTemplate = ({ full_name, resetLink }) =>
             If you did not request this, you can safely ignore this email and your password will not change.
           </p>
         `,
-        '#fff5f5',
-        '#DC2626'
+        BRAND_LIGHT,
+        BRAND_PRIMARY
       )}
       ${note('For security, never share this link with anyone.')}
     `,
-    '#DC2626'
+    BRAND_PRIMARY
   );
 
 const passwordChangedTemplate = ({ full_name }) =>
@@ -164,17 +171,17 @@ const passwordChangedTemplate = ({ full_name }) =>
       ${p('This is a confirmation that the password for your B-Smart account was successfully updated.')}
       ${infoBox(
         `
-          <p style="margin:0;font-size:13px;color:#7f1d1d;font-weight:600;">Was this not you? Act immediately.</p>
+          <p style="margin:0;font-size:13px;color:${BRAND_PRIMARY};font-weight:600;">Was this not you? Act immediately.</p>
           <p style="margin:8px 0 0;font-size:13px;color:#666666;">
             If you did not make this change, your account may be compromised. Reset your password right away and contact our support team.
           </p>
         `,
-        '#fff5f5',
-        '#DC2626'
+        BRAND_LIGHT,
+        BRAND_PRIMARY
       )}
-      ${btn("This Was Not Me - Reset Password", `${CLIENT}/forgot-password`, '#DC2626')}
+      ${btn("This Was Not Me - Reset Password", `${CLIENT}/forgot-password`, BRAND_PRIMARY)}
     `,
-    '#DC2626'
+    BRAND_PRIMARY
   );
 
 const vendorApprovedTemplate = ({ full_name, company_name }) =>
@@ -185,7 +192,7 @@ const vendorApprovedTemplate = ({ full_name, company_name }) =>
       ${p(`Great news. <strong>${company_name || 'Your business'}</strong> has been verified and approved on B-Smart. You can now purchase a package and start running ads to reach members.`)}
       ${infoBox(
         `
-          <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#15803d;">Next steps to launch your first ad:</p>
+          <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:${BRAND_PRIMARY};">Next steps to launch your first ad:</p>
           <ol style="margin:0;padding-left:18px;color:#444444;font-size:13px;line-height:2.2;">
             <li>Choose a <strong>package</strong> that fits your business size</li>
             <li>Set your <strong>ad budget</strong> and earn coins</li>
@@ -193,14 +200,14 @@ const vendorApprovedTemplate = ({ full_name, company_name }) =>
             <li>Target members by <strong>location, interest, and language</strong></li>
           </ol>
         `,
-        '#f0fdf4',
-        '#16a34a'
+        BRAND_LIGHT,
+        BRAND_SECONDARY
       )}
-      ${btn('Get Started - Choose a Package', `${CLIENT}/vendor/packages`, '#16a34a')}
+      ${btn('Get Started - Choose a Package', `${CLIENT}/vendor/packages`, BRAND_PRIMARY)}
       ${divider()}
       ${note('Need help? Visit the vendor help center or reply to this email.')}
     `,
-    '#16a34a'
+    BRAND_PRIMARY
   );
 
 const vendorRejectedTemplate = ({ full_name, company_name, reason }) =>
@@ -212,17 +219,18 @@ const vendorRejectedTemplate = ({ full_name, company_name, reason }) =>
       ${reason ? infoBox(
         `
           <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#92400e;">Reason provided by our team:</p>
+          <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:${BRAND_PRIMARY};">Reason provided by our team:</p>
           <p style="margin:0;font-size:14px;color:#444444;">"${reason}"</p>
         `,
-        '#fffbeb',
-        '#d97706'
+        BRAND_LIGHT_ALT,
+        BRAND_SECONDARY
       ) : ''}
       ${p('You can update your profile and resubmit for review. Make sure all business details, registration number, and contact information are accurate and complete.')}
-      ${btn('Update Profile and Resubmit', `${CLIENT}/vendor/profile`, '#d97706')}
+      ${btn('Update Profile and Resubmit', `${CLIENT}/vendor/profile`, BRAND_PRIMARY)}
       ${divider()}
       ${note('If you believe this is an error, please reply to this email with supporting documents.')}
     `,
-    '#d97706'
+    BRAND_PRIMARY
   );
 
 const packagePurchasedTemplate = ({
@@ -245,7 +253,7 @@ const packagePurchasedTemplate = ({
     ${hi(full_name)}
     ${p(`Your purchase of the <strong>${package_name}</strong> package for <strong>${company_name || 'your business'}</strong> was successful. Your wallet has been credited with coins and you are ready to run ads.`)}
     ${infoBox(`
-      <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#4F46E5;">${package_name} Package Receipt</p>
+      <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:${BRAND_PRIMARY};">${package_name} Package Receipt</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
         ${kvRow('Package Tier', tierLabel)}
         ${kvRow('Amount Paid', `Rs. ${Number(final_price || 0).toLocaleString('en-IN')}`)}
@@ -253,12 +261,12 @@ const packagePurchasedTemplate = ({
         ${kvRow('Validity', `${validity_days || 0} days`)}
         ${kvRow('Expires On', expiryText)}
       </table>
-    `)}
+    `, BRAND_LIGHT, BRAND_SECONDARY)}
     ${p('Use your coins to set ad budgets. Premium and Enterprise packages can also give bonus coins on ad budget top-ups.')}
-    ${btn('Create My First Ad', `${CLIENT}/vendor/ads/create`)}
+    ${btn('Create My First Ad', `${CLIENT}/vendor/ads/create`, BRAND_PRIMARY)}
     ${divider()}
     ${note('This is an automated receipt. Keep it for your records.')}
-  `);
+  `, BRAND_PRIMARY);
 };
 
 const adApprovedTemplate = ({ full_name, ad_caption, ad_id }) =>
@@ -272,15 +280,15 @@ const adApprovedTemplate = ({ full_name, ad_caption, ad_id }) =>
           <p style="margin:0 0 6px;font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">Ad Caption</p>
           <p style="margin:0;font-size:15px;color:#1a1a1a;font-style:italic;">"${ad_caption || 'Your ad'}"</p>
         `,
-        '#f0fdf4',
-        '#16a34a'
+        BRAND_LIGHT,
+        BRAND_SECONDARY
       )}
       ${p('Members who watch your full ad will reward you with engagement. You can track views, likes, and coin spend in your ad analytics dashboard.')}
-      ${btn('View Ad Analytics', `${CLIENT}/vendor/ads/${ad_id || ''}`, '#16a34a')}
+      ${btn('View Ad Analytics', `${CLIENT}/vendor/ads/${ad_id || ''}`, BRAND_PRIMARY)}
       ${divider()}
       ${note('Coins are deducted from your wallet as members engage with your ad.')}
     `,
-    '#16a34a'
+    BRAND_PRIMARY
   );
 
 const adRejectedTemplate = ({ full_name, ad_caption, ad_id, reason }) =>
@@ -296,19 +304,19 @@ const adRejectedTemplate = ({ full_name, ad_caption, ad_id, reason }) =>
           ${
             reason
               ? `<p style="margin:0 0 6px;font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">Rejection Reason</p>
-                 <p style="margin:0;font-size:14px;color:#7f1d1d;font-weight:600;">"${reason}"</p>`
+                 <p style="margin:0;font-size:14px;color:${BRAND_PRIMARY};font-weight:600;">"${reason}"</p>`
               : ''
           }
         `,
-        '#fff5f5',
-        '#DC2626'
+        BRAND_LIGHT,
+        BRAND_PRIMARY
       )}
       ${p(`Common reasons for rejection include misleading content, prohibited products, low-quality media, or missing product details. Review your ad guidelines before resubmitting.`)}
-      ${btn('Edit and Resubmit Ad', `${CLIENT}/vendor/ads/${ad_id || ''}/edit`, '#d97706')}
+      ${btn('Edit and Resubmit Ad', `${CLIENT}/vendor/ads/${ad_id || ''}/edit`, BRAND_PRIMARY)}
       ${divider()}
       ${note('No coins were deducted for this rejected ad.')}
     `,
-    '#DC2626'
+    BRAND_PRIMARY
   );
 
 const coinsLowTemplate = ({ full_name, current_balance, threshold = 500 }) =>
@@ -319,19 +327,19 @@ const coinsLowTemplate = ({ full_name, current_balance, threshold = 500 }) =>
       ${p(`Your B-Smart wallet balance has dropped below <strong>${threshold} coins</strong>. Active ads may pause automatically once your balance reaches zero.`)}
       ${infoBox(
         `
-          <p style="margin:0;font-size:28px;font-weight:800;color:#d97706;text-align:center;">
+          <p style="margin:0;font-size:28px;font-weight:800;color:${BRAND_PRIMARY};text-align:center;">
             ${Number(current_balance || 0).toLocaleString()} coins remaining
           </p>
         `,
-        '#fffbeb',
-        '#d97706'
+        BRAND_LIGHT_ALT,
+        BRAND_SECONDARY
       )}
       ${p('Top up your wallet by purchasing a new package or upgrading your current one.')}
-      ${btn('Top Up Coins - Buy a Package', `${CLIENT}/vendor/packages`, '#d97706')}
+      ${btn('Top Up Coins - Buy a Package', `${CLIENT}/vendor/packages`, BRAND_PRIMARY)}
       ${divider()}
       ${note('You can always check your wallet balance in the vendor dashboard.')}
     `,
-    '#d97706'
+    BRAND_PRIMARY
   );
 
 const newVendorAlertTemplate = ({ company_name, email, registered_at }) =>

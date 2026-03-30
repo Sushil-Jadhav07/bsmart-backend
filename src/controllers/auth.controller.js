@@ -330,7 +330,7 @@ exports.googleLogin = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, otp } = req.body;
 
     const user = await User.findOne({ email }).select('+password');
 
@@ -346,6 +346,73 @@ exports.login = async (req, res) => {
 
     if (user.role === 'member' && user.is_active === false) {
       return res.status(403).json({ message: 'Account is inactive' });
+    }
+
+    if (user.twoFA?.enabled) {
+      const normalizedEmail = user.email.toLowerCase();
+
+      if (!otp) {
+        await Otp.deleteMany({ email: normalizedEmail, purpose: 'two_factor' });
+
+        const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        await Otp.create({
+          email: normalizedEmail,
+          otp: generatedOtp,
+          purpose: 'two_factor',
+          expiresAt,
+        });
+
+        await sendEmail({
+          to: user.email,
+          subject: 'Your B-Smart login verification code',
+          html: otpTemplate({
+            full_name: user.full_name || '',
+            otp: generatedOtp,
+            purpose: 'two_factor',
+            expiresInMinutes: 10,
+          }),
+        });
+
+        return res.status(200).json({
+          requires_2fa: true,
+          message: 'A verification code has been sent to your email.',
+          email: user.email,
+          user: {
+            id: user._id,
+            email: user.email,
+            username: user.username,
+            full_name: user.full_name,
+            role: user.role,
+            twoFA: {
+              enabled: true,
+            },
+          },
+        });
+      }
+
+      const record = await Otp.findOne({
+        email: normalizedEmail,
+        purpose: 'two_factor',
+        used: false,
+      }).sort({ createdAt: -1 });
+
+      if (!record) {
+        return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new login code.' });
+      }
+
+      if (new Date() > record.expiresAt) {
+        await record.deleteOne();
+        return res.status(400).json({ message: 'OTP has expired. Please log in again to request a new code.' });
+      }
+
+      if (record.otp !== String(otp)) {
+        return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
+      }
+
+      record.used = true;
+      await record.save();
     }
 
     const wallet = await Wallet.findOne({ user_id: user._id });

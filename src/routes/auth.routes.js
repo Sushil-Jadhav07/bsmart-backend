@@ -248,9 +248,12 @@ router.post('/google/token', googleLogin);
  *                 format: email
  *               password:
  *                 type: string
+ *               otp:
+ *                 type: string
+ *                 description: Required only to complete login when 2FA is enabled
  *     responses:
  *       200:
- *         description: Login successful
+ *         description: Login successful or 2FA verification required
  *         content:
  *           application/json:
  *             schema:
@@ -258,28 +261,67 @@ router.post('/google/token', googleLogin);
  *               properties:
  *                 token:
  *                   type: string
+ *                 requires_2fa:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 email:
+ *                   type: string
  *                 user:
- *                   $ref: '#/components/schemas/User'
- *             example:
- *               token: "jwt_token_here"
- *               user:
- *                 id: "60f1b2c3d4e5f67890123456"
- *                 email: "member@example.com"
- *                 username: "member123"
- *                 full_name: "Member Name"
- *                 avatar_url: ""
- *                 phone: "+911234567890"
- *                 age: 25
- *                 gender: "male"
- *                 location: "Mumbai, India"
- *                 role: "member"
- *                 twoFA:
- *                   enabled: false
- *                 followers_count: 0
- *                 following_count: 0
- *                 wallet:
- *                   balance: 0
- *                   currency: "Coins"
+ *                   oneOf:
+ *                     - $ref: '#/components/schemas/User'
+ *                     - type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         username:
+ *                           type: string
+ *                         full_name:
+ *                           type: string
+ *                         role:
+ *                           type: string
+ *                         twoFA:
+ *                           type: object
+ *                           properties:
+ *                             enabled:
+ *                               type: boolean
+ *             examples:
+ *               login_success:
+ *                 value:
+ *                   token: "jwt_token_here"
+ *                   user:
+ *                     id: "60f1b2c3d4e5f67890123456"
+ *                     email: "member@example.com"
+ *                     username: "member123"
+ *                     full_name: "Member Name"
+ *                     avatar_url: ""
+ *                     phone: "+911234567890"
+ *                     age: 25
+ *                     gender: "male"
+ *                     location: "Mumbai, India"
+ *                     role: "member"
+ *                     twoFA:
+ *                       enabled: false
+ *                     followers_count: 0
+ *                     following_count: 0
+ *                     wallet:
+ *                       balance: 0
+ *                       currency: "Coins"
+ *               two_factor_required:
+ *                 value:
+ *                   requires_2fa: true
+ *                   message: "A verification code has been sent to your email."
+ *                   email: "member@example.com"
+ *                   user:
+ *                     id: "60f1b2c3d4e5f67890123456"
+ *                     email: "member@example.com"
+ *                     username: "member123"
+ *                     full_name: "Member Name"
+ *                     role: "member"
+ *                     twoFA:
+ *                       enabled: true
  *       400:
  *         description: Invalid credentials
  *       500:
