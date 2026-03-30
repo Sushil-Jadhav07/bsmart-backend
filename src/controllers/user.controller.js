@@ -185,7 +185,7 @@ exports.updateUser = async (req, res) => {
     }
 
     // Update fields
-    const { full_name, bio, avatar_url, phone, username, age, gender, location, address } = req.body;
+    const { full_name, bio, avatar_url, phone, username, age, gender, location, address, twoFA } = req.body;
 
     const normalizeAddress = (raw = {}) => {
       const obj = raw && typeof raw === 'object' ? raw : {};
@@ -211,6 +211,9 @@ exports.updateUser = async (req, res) => {
     if (typeof gender !== 'undefined') updateFields.gender = gender;
     if (typeof location !== 'undefined') updateFields.location = location;
     if (typeof address !== 'undefined') updateFields.address = normalizeAddress(address);
+    if (typeof twoFA !== 'undefined' && typeof twoFA === 'object' && typeof twoFA.enabled === 'boolean') {
+      updateFields.twoFA = { enabled: twoFA.enabled };
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,

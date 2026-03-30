@@ -88,6 +88,12 @@ const userSchema = new mongoose.Schema({
     state: { type: String, default: '' },
     country: { type: String, default: '' }
   },
+  twoFA: {
+    enabled: {
+      type: Boolean,
+      default: false
+    }
+  },
   // For vendor users: store company details snapshot on the user
   company_details: {
     company_name: { type: String, default: '' },
