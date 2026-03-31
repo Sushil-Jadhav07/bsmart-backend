@@ -29,6 +29,23 @@ const fireAndForget = (label, promise) => {
   promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
 };
 
+const normalizeAdStatus = (value) => String(value || '').trim().toLowerCase();
+const VENDOR_MUTABLE_STATUSES = new Set(['draft', 'pending', 'active', 'paused', 'rejected']);
+
+const canVendorTransitionAdStatus = (currentStatus, nextStatus) => {
+  const current = normalizeAdStatus(currentStatus);
+  const next = normalizeAdStatus(nextStatus);
+
+  if (!VENDOR_MUTABLE_STATUSES.has(next)) return false;
+  if (!current || current === next) return true;
+
+  if (current === 'draft' && next === 'pending') return true;
+  if (current === 'active' && next === 'paused') return true;
+  if (current === 'paused' && next === 'active') return true;
+
+  return false;
+};
+
 /**
  * Create a new ad (Vendor only)
  * @route POST /api/ads
@@ -57,7 +74,8 @@ exports.createAd = async (req, res) => {
       target_language,
       target_location,
       target_preferences,
-      total_budget_coins
+      total_budget_coins,
+      status
     } = req.body;
 
     const budget = Number(total_budget_coins || 0);
@@ -72,6 +90,9 @@ exports.createAd = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields (media/video, category)' });
     }
 
+    const requestedStatus = normalizeAdStatus(status);
+    const initialStatus = requestedStatus === 'draft' ? 'draft' : 'pending';
+
     const adData = {
       vendor_id: null,
       user_id: userId,
@@ -84,7 +105,7 @@ exports.createAd = async (req, res) => {
       target_preferences: target_preferences || [],
       total_budget_coins: budget,
       total_coins_spent: 0,
-      status: 'pending',
+      status: initialStatus,
       hashtags: hashtags || [],
       tagged_users: tagged_users || [],
       engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
@@ -228,25 +249,27 @@ exports.createAd = async (req, res) => {
     if (createdAd) {
       const vendorUser = await User.findById(userId).select('email full_name username').lean();
 
-      const adminUsers = await User.find({ role: 'admin' }).select('email').lean();
-      adminUsers
-        .filter((admin) => admin.email)
-        .forEach((admin) => {
-          fireAndForget(
-            'New ad pending admin alert',
-            sendNewAdPendingAlert({
-              adminEmail: admin.email,
-              vendor_name:
-                vendorForAlerts?.company_details?.company_name
-                || vendorForAlerts?.business_name
-                || vendorUser?.full_name
-                || vendorUser?.username
-                || 'Vendor',
-              ad_caption: createdAd.caption,
-              submitted_at: createdAd.createdAt,
-            })
-          );
-        });
+      if (createdAd.status === 'pending') {
+        const adminUsers = await User.find({ role: 'admin' }).select('email').lean();
+        adminUsers
+          .filter((admin) => admin.email)
+          .forEach((admin) => {
+            fireAndForget(
+              'New ad pending admin alert',
+              sendNewAdPendingAlert({
+                adminEmail: admin.email,
+                vendor_name:
+                  vendorForAlerts?.company_details?.company_name
+                  || vendorForAlerts?.business_name
+                  || vendorUser?.full_name
+                  || vendorUser?.username
+                  || 'Vendor',
+                ad_caption: createdAd.caption,
+                submitted_at: createdAd.createdAt,
+              })
+            );
+          });
+      }
 
       if (vendorUser?.email && resultingWalletBalance !== null && resultingWalletBalance <= LOW_COIN_THRESHOLD) {
         fireAndForget(
@@ -332,7 +355,10 @@ exports.updateAdMetadata = async (req, res) => {
       tags,
       target_language,
       target_location,
-      target_preferences
+      target_states,
+      total_budget_coins,
+      target_preferences,
+      status
     } = req.body;
 
     if (typeof caption !== 'undefined') ad.caption = caption || '';
@@ -356,11 +382,53 @@ exports.updateAdMetadata = async (req, res) => {
     if (typeof target_location !== 'undefined') {
       ad.target_location = Array.isArray(target_location) ? target_location : (target_location ? [target_location] : []);
     }
+    if (typeof target_states !== 'undefined') {
+      ad.target_states = Array.isArray(target_states) ? target_states : (target_states ? [target_states] : []);
+    }
+    if (typeof total_budget_coins !== 'undefined') {
+      const budget = Number(total_budget_coins);
+      if (!Number.isFinite(budget) || budget <= 0) {
+        return res.status(400).json({ message: 'total_budget_coins must be a positive number' });
+      }
+      ad.total_budget_coins = budget;
+    }
     if (typeof target_preferences !== 'undefined') {
       ad.target_preferences = Array.isArray(target_preferences) ? target_preferences : [];
     }
+    if (typeof status !== 'undefined') {
+      const nextStatus = normalizeAdStatus(status);
+      if (!canVendorTransitionAdStatus(ad.status, nextStatus)) {
+        return res.status(400).json({ message: `Invalid vendor status transition from ${ad.status} to ${status}` });
+      }
+      ad.status = nextStatus;
+    }
 
     await ad.save();
+
+    if (normalizeAdStatus(status) === 'pending') {
+      const vendor = await Vendor.findById(ad.vendor_id).lean();
+      const vendorUser = await User.findById(ad.user_id).select('full_name username').lean();
+      const adminUsers = await User.find({ role: 'admin' }).select('email').lean();
+
+      adminUsers
+        .filter((admin) => admin.email)
+        .forEach((admin) => {
+          fireAndForget(
+            'Draft ad submitted admin alert',
+            sendNewAdPendingAlert({
+              adminEmail: admin.email,
+              vendor_name:
+                vendor?.company_details?.company_name
+                || vendor?.business_name
+                || vendorUser?.full_name
+                || vendorUser?.username
+                || 'Vendor',
+              ad_caption: ad.caption,
+              submitted_at: ad.updatedAt || new Date(),
+            })
+          );
+        });
+    }
 
     const updatedAd = await Ad.findById(ad._id)
       .populate('vendor_id', 'business_name logo_url validated')

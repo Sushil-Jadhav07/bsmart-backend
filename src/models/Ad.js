@@ -68,6 +68,7 @@ const adSchema = new mongoose.Schema({
   tags: { type: [String], default: [] },
   target_language: { type: [String], default: [] },
   target_location: { type: [String], default: [] },
+  target_states: { type: [String], default: [] },
   target_preferences: { type: [String], default: [] },
   product: {
     product_id: { type: String },
@@ -79,7 +80,7 @@ const adSchema = new mongoose.Schema({
   coins_reward: { type: Number, default: 0, min: 0 },
   total_budget_coins: { type: Number, default: 0 },
   total_coins_spent: { type: Number, default: 0 },
-  status: { type: String, enum: ['pending', 'active', 'paused', 'rejected'], default: 'pending' },
+  status: { type: String, enum: ['draft', 'pending', 'active', 'paused', 'rejected'], default: 'pending' },
   rejection_reason: { type: String, default: '' },
   views_count: { type: Number, default: 0 },
   unique_views_count: { type: Number, default: 0 },
