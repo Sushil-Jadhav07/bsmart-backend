@@ -15,6 +15,8 @@ const {
   sendNewVendorAlert,
 } = require('./email.controller');
 
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const generateToken = (id) => {
   const secret = process.env.JWT_SECRET || 'default_secret_key_change_me';
   return jwt.sign({ id }, secret, { expiresIn: '30d' });
@@ -330,9 +332,21 @@ exports.googleLogin = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
   try {
-    const { email, password, otp } = req.body;
+    const { email, password, otp, identifier } = req.body;
+    const loginIdentifier = String(identifier || email || '').trim();
 
-    const user = await User.findOne({ email }).select('+password');
+    if (!loginIdentifier || !password) {
+      return res.status(400).json({ message: 'Identifier and password are required' });
+    }
+
+    const identifierRegex = new RegExp(`^${escapeRegex(loginIdentifier)}$`, 'i');
+    const user = await User.findOne({
+      $or: [
+        { email: identifierRegex },
+        { username: identifierRegex },
+        { phone: loginIdentifier }
+      ]
+    }).select('+password');
 
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
