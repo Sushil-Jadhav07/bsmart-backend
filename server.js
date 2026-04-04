@@ -48,6 +48,7 @@ const reportRoutes           = require('./src/routes/report.routes');
 const highlightRoutes        = require('./src/routes/highlight.routes');
 const searchRoutes           = require('./src/routes/search.routes');
 const contentReportRoutes    = require('./src/routes/contentReport.routes');
+const chatRoutes             = require('./src/routes/chat.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -81,6 +82,34 @@ io.on('connection', (socket) => {
         break;
       }
     }
+  });
+
+  socket.on('join-room', (conversationId) => {
+    socket.join(conversationId);
+  });
+
+  socket.on('leave-room', (conversationId) => {
+    socket.leave(conversationId);
+  });
+
+  socket.on('send-message', async (data) => {
+    socket.to(data.conversationId).emit('new-message', data);
+  });
+
+  socket.on('typing', (data) => {
+    socket.to(data.conversationId).emit('user-typing', data);
+  });
+
+  socket.on('stop-typing', (data) => {
+    socket.to(data.conversationId).emit('user-stop-typing', data);
+  });
+
+  socket.on('message-seen', (data) => {
+    socket.to(data.conversationId).emit('message-seen-update', data);
+  });
+
+  socket.on('message-deleted', (data) => {
+    socket.to(data.conversationId).emit('message-removed', data);
   });
 
   // Catch any socket-level errors so they don't bubble up and crash the process
@@ -132,6 +161,7 @@ app.use('/api/reports',           reportRoutes);
 app.use('/api/highlights',        highlightRoutes);
 app.use('/api/search',            searchRoutes);
 app.use('/api/content-reports',   contentReportRoutes);
+app.use('/api/chat',              chatRoutes);
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
