@@ -25,10 +25,34 @@ const messageSchema = new mongoose.Schema({
     enum: ['image', 'video', 'none'],
     default: 'none',
   },
+  replyTo: {
+    messageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Message',
+      default: null,
+    },
+    text: {
+      type: String,
+      default: '',
+    },
+    senderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    senderName: {
+      type: String,
+      default: '',
+    },
+  },
   seenBy: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   }],
+  seenAt: {
+    type: Date,
+    default: null,
+  },
   isDeleted: {
     type: Boolean,
     default: false,

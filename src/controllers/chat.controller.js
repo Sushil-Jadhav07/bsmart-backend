@@ -167,6 +167,7 @@ exports.createMessage = async (req, res) => {
     const text = typeof req.body.text === 'string' ? req.body.text.trim() : '';
     const mediaUrl = typeof req.body.mediaUrl === 'string' ? req.body.mediaUrl.trim() : '';
     const mediaType = req.body.mediaType || 'none';
+    const rawReplyTo = req.body.replyTo;
 
     if (!isValidObjectId(conversationId)) {
       return res.status(400).json({ message: 'Invalid conversationId' });
@@ -193,13 +194,25 @@ exports.createMessage = async (req, res) => {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
+    let replyTo = undefined;
+    if (rawReplyTo && typeof rawReplyTo === 'object') {
+      replyTo = {
+        messageId: isValidObjectId(rawReplyTo.messageId) ? rawReplyTo.messageId : null,
+        text: typeof rawReplyTo.text === 'string' ? rawReplyTo.text.trim() : '',
+        senderId: isValidObjectId(rawReplyTo.senderId) ? rawReplyTo.senderId : null,
+        senderName: typeof rawReplyTo.senderName === 'string' ? rawReplyTo.senderName.trim() : '',
+      };
+    }
+
     const message = await Message.create({
       conversationId,
       sender: userId,
       text,
       mediaUrl,
       mediaType: mediaUrl ? mediaType : 'none',
+      replyTo,
       seenBy: [userId],
+      seenAt: null,
     });
 
     await Conversation.findByIdAndUpdate(conversationId, {
@@ -208,6 +221,11 @@ exports.createMessage = async (req, res) => {
     });
 
     const populatedMessage = await Message.findById(message._id).populate('sender', USER_SELECT);
+    const io = req.app.get('io');
+
+    if (io) {
+      io.to(String(conversationId)).emit('new-message', populatedMessage.toObject());
+    }
 
     res.json(populatedMessage);
   } catch (error) {
@@ -237,9 +255,22 @@ exports.markMessageSeen = async (req, res) => {
 
     const updatedMessage = await Message.findByIdAndUpdate(
       messageId,
-      { $addToSet: { seenBy: userId } },
+      {
+        $addToSet: { seenBy: userId },
+        ...(String(message.sender) !== String(userId) ? { $set: { seenAt: new Date() } } : {}),
+      },
       { new: true }
     ).populate('sender', USER_SELECT);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(message.conversationId)).emit('message-seen-update', {
+        conversationId: String(message.conversationId),
+        messageId: String(message._id),
+        userId: String(userId),
+        seenAt: updatedMessage?.seenAt || null,
+      });
+    }
 
     res.json(updatedMessage);
   } catch (error) {
@@ -289,6 +320,14 @@ exports.deleteMessage = async (req, res) => {
       await Conversation.findByIdAndUpdate(message.conversationId, {
         lastMessage: previousMessage ? previousMessage._id : null,
         lastMessageAt: previousMessage ? previousMessage.createdAt : conversation.createdAt,
+      });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(message.conversationId)).emit('message-removed', {
+        conversationId: String(message.conversationId),
+        messageId: String(message._id),
       });
     }
 
