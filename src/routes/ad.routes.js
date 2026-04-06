@@ -38,6 +38,447 @@ const { getAdStats } = require('../controllers/adstats.controller');
  *   description: Advertisement management
  */
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Reusable Swagger component schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *
+ *     AdMedia:
+ *       type: object
+ *       required:
+ *         - fileName
+ *       properties:
+ *         fileName:
+ *           type: string
+ *           example: "string"
+ *         media_type:
+ *           type: string
+ *           example: "image"
+ *         video_meta:
+ *           type: object
+ *           properties:
+ *             original_length_seconds:
+ *               type: number
+ *               example: 0
+ *             selected_start:
+ *               type: number
+ *               example: 0
+ *             selected_end:
+ *               type: number
+ *               example: 0
+ *             final_duration:
+ *               type: number
+ *               example: 0
+ *             thumbnail_time:
+ *               type: number
+ *               example: 0
+ *         image_editing:
+ *           type: object
+ *           properties:
+ *             filter:
+ *               type: object
+ *               properties:
+ *                 name:
+ *                   type: string
+ *                   example: "string"
+ *                 css:
+ *                   type: string
+ *                   example: "string"
+ *             adjustments:
+ *               type: object
+ *               properties:
+ *                 brightness:
+ *                   type: number
+ *                   example: 0
+ *                 contrast:
+ *                   type: number
+ *                   example: 0
+ *                 saturation:
+ *                   type: number
+ *                   example: 0
+ *                 temperature:
+ *                   type: number
+ *                   example: 0
+ *                 fade:
+ *                   type: number
+ *                   example: 0
+ *                 vignette:
+ *                   type: number
+ *                   example: 0
+ *         crop_settings:
+ *           type: object
+ *           properties:
+ *             mode:
+ *               type: string
+ *               example: "original"
+ *             aspect_ratio:
+ *               type: string
+ *               example: "string"
+ *             zoom:
+ *               type: number
+ *               example: 0
+ *             x:
+ *               type: number
+ *               example: 0
+ *             y:
+ *               type: number
+ *               example: 0
+ *         timing_window:
+ *           type: object
+ *           properties:
+ *             start:
+ *               type: number
+ *               example: 0
+ *             end:
+ *               type: number
+ *               example: 0
+ *         thumbnails:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 example: "string"
+ *               media_type:
+ *                 type: string
+ *                 example: "string"
+ *
+ *     AdCta:
+ *       type: object
+ *       description: Call-To-Action configuration. The `type` field is enum-based — backend handles rendering dynamically.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [view_site, contact_info, install_app, book_now, learn_more, call_now]
+ *           default: view_site
+ *           example: view_site
+ *         url:
+ *           type: string
+ *           description: Destination URL for the CTA button
+ *           example: "https://mystore.com/sale"
+ *         deep_link:
+ *           type: string
+ *           description: Deep link for in-app navigation (mobile apps)
+ *           example: "myapp://product/123"
+ *         phone_number:
+ *           type: string
+ *           description: Phone number (used when type is call_now or contact_info)
+ *           example: "+919876543210"
+ *         email:
+ *           type: string
+ *           description: Contact email address
+ *           example: "support@mystore.com"
+ *         whatsapp_number:
+ *           type: string
+ *           description: WhatsApp number (with country code, no +)
+ *           example: "919876543210"
+ *
+ *     AdBudget:
+ *       type: object
+ *       description: Extended budget and scheduling configuration
+ *       properties:
+ *         daily_budget_coins:
+ *           type: number
+ *           description: Max coins to spend per day (0 = no daily limit)
+ *           example: 500
+ *         start_date:
+ *           type: string
+ *           format: date-time
+ *           description: When the ad should start running
+ *           example: "2025-06-01T00:00:00Z"
+ *         end_date:
+ *           type: string
+ *           format: date-time
+ *           description: When the ad should stop running
+ *           example: "2025-06-30T23:59:59Z"
+ *         auto_stop_on_budget_exhausted:
+ *           type: boolean
+ *           description: Reserved for future use — auto-pause ad when total budget is exhausted
+ *           default: false
+ *
+ *     AdTargeting:
+ *       type: object
+ *       description: Audience targeting configuration
+ *       properties:
+ *         countries:
+ *           type: array
+ *           items: { type: string }
+ *           description: ISO country codes or country names
+ *           example: ["IN", "US"]
+ *         states:
+ *           type: array
+ *           items: { type: string }
+ *           example: ["Maharashtra", "Karnataka"]
+ *         cities:
+ *           type: array
+ *           items: { type: string }
+ *           example: ["Mumbai", "Bangalore"]
+ *         age_min:
+ *           type: integer
+ *           minimum: 13
+ *           default: 13
+ *           example: 18
+ *         age_max:
+ *           type: integer
+ *           maximum: 100
+ *           default: 65
+ *           example: 40
+ *         gender:
+ *           type: string
+ *           enum: [all, male, female, other]
+ *           default: all
+ *           example: all
+ *         interests:
+ *           type: array
+ *           items: { type: string }
+ *           description: Interest/category tags for audience matching
+ *           example: ["fashion", "lifestyle", "beauty"]
+ *         device_types:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [mobile, ios, android, desktop]
+ *           default: [mobile, desktop]
+ *           example: ["mobile"]
+ *
+ *     AdTracking:
+ *       type: object
+ *       description: UTM parameters and conversion tracking
+ *       properties:
+ *         utm_source:
+ *           type: string
+ *           example: "myapp"
+ *         utm_medium:
+ *           type: string
+ *           example: "paid_ad"
+ *         utm_campaign:
+ *           type: string
+ *           example: "summer_sale_2025"
+ *         utm_term:
+ *           type: string
+ *           example: "fashion"
+ *         utm_content:
+ *           type: string
+ *           example: "banner_v1"
+ *         conversion_pixel_id:
+ *           type: string
+ *           description: Third-party conversion tracking pixel or SDK ID
+ *           example: "px_abc123"
+ *
+ *     AdEngagementControls:
+ *       type: object
+ *       description: Control what interactions users can perform on this ad
+ *       properties:
+ *         hide_likes_count:
+ *           type: boolean
+ *           default: false
+ *           description: Hide the likes count from viewers
+ *         disable_comments:
+ *           type: boolean
+ *           default: false
+ *           description: Disable comments on this ad
+ *         disable_share:
+ *           type: boolean
+ *           default: false
+ *           description: Disable the share button
+ *         disable_save:
+ *           type: boolean
+ *           default: false
+ *           description: Disable the save/bookmark button
+ *         disable_report:
+ *           type: boolean
+ *           default: false
+ *           description: Disable the report option
+ *         moderation_enabled:
+ *           type: boolean
+ *           default: false
+ *           description: Enable moderation mode (hold comments for review)
+ *
+ *     AdAbVariant:
+ *       type: object
+ *       description: A single A/B test creative variant
+ *       properties:
+ *         variant_id: { type: string, example: "variant_a" }
+ *         ad_title: { type: string, example: "Summer Sale — Variant A" }
+ *         ad_description: { type: string, example: "Up to 50% off" }
+ *         media_fileName: { type: string, example: "variant_a_banner.jpg" }
+ *
+ *     AdAbTesting:
+ *       type: object
+ *       description: A/B testing configuration for multiple creatives
+ *       properties:
+ *         enabled:
+ *           type: boolean
+ *           default: false
+ *         variants:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/AdAbVariant'
+ *
+ *     AdTimeSlot:
+ *       type: object
+ *       description: A delivery time window for a specific day of week
+ *       properties:
+ *         day_of_week:
+ *           type: string
+ *           enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+ *           example: monday
+ *         start_time:
+ *           type: string
+ *           description: 24-hour HH:MM format
+ *           example: "09:00"
+ *         end_time:
+ *           type: string
+ *           description: 24-hour HH:MM format
+ *           example: "18:00"
+ *
+ *     AdScheduling:
+ *       type: object
+ *       description: Ad delivery scheduling — restrict when the ad is shown
+ *       properties:
+ *         delivery_time_slots:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/AdTimeSlot'
+ *
+ *     AdCompliance:
+ *       type: object
+ *       description: Policy agreement and review status
+ *       properties:
+ *         policy_agreed:
+ *           type: boolean
+ *           description: Vendor confirms agreement to ad content policy
+ *           example: true
+ *         approval_status:
+ *           type: string
+ *           enum: [pending, approved, rejected]
+ *           description: Set by admin — read-only for vendors
+ *           example: pending
+ *
+ *     AdTaggedUser:
+ *       type: object
+ *       properties:
+ *         user_id: { type: string }
+ *         username: { type: string }
+ *         position_x: { type: number }
+ *         position_y: { type: number }
+ *
+ *     # ── Stats schemas (unchanged) ─────────────────────────────────────────
+ *     AdStatUser:
+ *       type: object
+ *       properties:
+ *         _id: { type: string, example: "664f1a2b3c4d5e6f7a8b9c0d" }
+ *         username: { type: string, example: "john_doe" }
+ *         full_name: { type: string, example: "John Doe" }
+ *         avatar_url: { type: string }
+ *         gender: { type: string }
+ *         age: { type: integer }
+ *         location: { type: string }
+ *
+ *     AdGenderBucket:
+ *       type: object
+ *       properties:
+ *         count: { type: integer }
+ *         users:
+ *           type: array
+ *           items: { $ref: '#/components/schemas/AdStatUser' }
+ *
+ *     AdLikesByGender:
+ *       type: object
+ *       properties:
+ *         male: { $ref: '#/components/schemas/AdGenderBucket' }
+ *         female: { $ref: '#/components/schemas/AdGenderBucket' }
+ *         other: { $ref: '#/components/schemas/AdGenderBucket' }
+ *         unknown: { $ref: '#/components/schemas/AdGenderBucket' }
+ *
+ *     AdAgeDemographics:
+ *       type: object
+ *       properties:
+ *         "Child (0–12 years)": { type: integer }
+ *         "Teen (13–19 years)": { type: integer }
+ *         "Adult (20–39 years)": { type: integer }
+ *         "Middle Age (40–59 years)": { type: integer }
+ *         "Senior (60+ years)": { type: integer }
+ *         Unknown: { type: integer }
+ *
+ *     AdDislikeGenderCount:
+ *       type: object
+ *       properties:
+ *         count: { type: integer }
+ *
+ *     AdDislikesByGender:
+ *       type: object
+ *       properties:
+ *         male: { $ref: '#/components/schemas/AdDislikeGenderCount' }
+ *         female: { $ref: '#/components/schemas/AdDislikeGenderCount' }
+ *         other: { $ref: '#/components/schemas/AdDislikeGenderCount' }
+ *         unknown: { $ref: '#/components/schemas/AdDislikeGenderCount' }
+ *         users:
+ *           type: array
+ *           items: { $ref: '#/components/schemas/AdStatUser' }
+ *
+ *     AdViewByLocation:
+ *       type: object
+ *       properties:
+ *         location: { type: string }
+ *         views: { type: integer }
+ *         unique_viewers: { type: integer }
+ *         completed_views: { type: integer }
+ *         rewarded_views: { type: integer }
+ *         total_coins_rewarded: { type: number }
+ *
+ *     AdStatsResponse:
+ *       type: object
+ *       properties:
+ *         ad_id: { type: string }
+ *         caption: { type: string }
+ *         category: { type: string }
+ *         status:
+ *           type: string
+ *           enum: [pending, active, paused, rejected]
+ *         content_type:
+ *           type: string
+ *           enum: [post, reel]
+ *         created_at: { type: string, format: date-time }
+ *         likes:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             by_gender: { $ref: '#/components/schemas/AdLikesByGender' }
+ *             by_age: { $ref: '#/components/schemas/AdAgeDemographics' }
+ *             user_ids:
+ *               type: array
+ *               items: { type: string }
+ *         dislikes:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             by_gender: { $ref: '#/components/schemas/AdDislikesByGender' }
+ *             by_age: { $ref: '#/components/schemas/AdAgeDemographics' }
+ *             user_ids:
+ *               type: array
+ *               items: { type: string }
+ *         views:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             unique: { type: integer }
+ *             completed: { type: integer }
+ *             by_location:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/AdViewByLocation' }
+ *             by_age: { $ref: '#/components/schemas/AdAgeDemographics' }
+ */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Routes
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/ads/categories:
@@ -118,7 +559,6 @@ router.post('/categories', auth, addAdCategory);
  *               limit: 30
  *               retry_after_ms: 45000
  */
-// Falls back to env ADS_FEED_RATE_LIMIT_MAX / ADS_FEED_RATE_LIMIT_WINDOW_MS or defaults (60 / 60000)
 const { dynamicRateLimit } = require('../middleware/rateLimit');
 const adsFeedRateLimit = dynamicRateLimit({
   keyPrefix:    'ads:feed',
@@ -166,11 +606,26 @@ router.get('/user/:userId', getUserAdsWithComments);
  */
 router.get('/', auth, requireAdmin, listAds);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/ads — Create Ad
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/ads:
  *   post:
  *     summary: Create a new ad (Vendor only)
+ *     description: |
+ *       Creates a new ad and atomically deducts `total_budget_coins` from the vendor's wallet.
+ *
+ *       **Media is required.** All other fields are optional and can also be updated later
+ *       via `PATCH /api/ads/{id}/metadata` (except `media`).
+ *
+ *       **CTA** is enum-based — use the `cta.type` field to control what button the user sees.
+ *       The backend renders the correct action dynamically.
+ *
+ *       **Status flow:** `draft → pending → active → paused`. Submit with `status: "draft"` to
+ *       save without going to admin review, or omit `status` (defaults to `"pending"`).
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -183,151 +638,260 @@ router.get('/', auth, requireAdmin, listAds);
  *             required:
  *               - media
  *               - category
+ *               - total_budget_coins
  *             properties:
- *               type:
+ *
+ *               # ── Core content ──────────────────────────────────────────
+ *               ad_title:
  *                 type: string
- *                 enum: [ads]
+ *                 description: Primary headline of the ad
+ *                 example: "Summer Sale — Up to 50% Off!"
+ *               ad_description:
+ *                 type: string
+ *                 description: Detailed ad description shown below the title
+ *                 example: "Shop our biggest sale of the year on all fashion items."
  *               caption:
  *                 type: string
+ *                 description: Short caption (legacy field, kept for backward compat)
+ *                 example: "Don't miss out!"
  *               location:
  *                 type: string
- *               media:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - fileName
- *                   properties:
- *                     fileName:
- *                       type: string
- *                     media_type:
- *                       type: string
- *                       enum: [image, video]
- *                     video_meta:
- *                       type: object
- *                       properties:
- *                         original_length_seconds:
- *                           type: number
- *                         selected_start:
- *                           type: number
- *                         selected_end:
- *                           type: number
- *                         final_duration:
- *                           type: number
- *                         thumbnail_time:
- *                           type: number
- *                     image_editing:
- *                       type: object
- *                       properties:
- *                         filter:
- *                           type: object
- *                           properties:
- *                             name:
- *                               type: string
- *                             css:
- *                               type: string
- *                         adjustments:
- *                           type: object
- *                           properties:
- *                             brightness:
- *                               type: number
- *                             contrast:
- *                               type: number
- *                             saturation:
- *                               type: number
- *                             temperature:
- *                               type: number
- *                             fade:
- *                               type: number
- *                             vignette:
- *                               type: number
- *                     crop_settings:
- *                       type: object
- *                       properties:
- *                         mode:
- *                           type: string
- *                           enum: [original, "1:1", "4:5", "16:9", "9:16"]
- *                         aspect_ratio:
- *                           type: string
- *                         zoom:
- *                           type: number
- *                         x:
- *                           type: number
- *                         y:
- *                           type: number
- *                     timing_window:
- *                       type: object
- *                       properties:
- *                         start:
- *                           type: number
- *                         end:
- *                           type: number
- *                     thumbnails:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           fileName:
- *                             type: string
- *                           media_type:
- *                             type: string
- *               hashtags:
- *                 type: array
- *                 items:
- *                   type: string
- *               tagged_users:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     user_id:
- *                       type: string
- *                     username:
- *                       type: string
- *                     position_x:
- *                       type: number
- *                     position_y:
- *                       type: number
- *               engagement_controls:
- *                 type: object
- *                 properties:
- *                   hide_likes_count:
- *                     type: boolean
- *                   disable_comments:
- *                     type: boolean
+ *                 example: "Mumbai, India"
+ *               ad_type:
+ *                 type: string
+ *                 enum: [banner, video, carousel, sponsored_post]
+ *                 default: sponsored_post
+ *                 example: sponsored_post
  *               content_type:
  *                 type: string
  *                 enum: [post, reel]
- *               category:
+ *                 default: reel
+ *                 example: reel
+ *               status:
  *                 type: string
- *                 description: Must match a value from GET /api/ads/categories
- *               tags:
+ *                 enum: [draft, pending]
+ *                 default: pending
+ *                 description: |
+ *                   Use `draft` to save without submitting for review.
+ *                   Any other value (or omit) will set status to `pending`.
+ *                 example: pending
+ *
+ *               # ── Media (required) ──────────────────────────────────────
+ *               media:
  *                 type: array
+ *                 description: "Required. At least one media item. Media CANNOT be changed after creation."
+ *                 minItems: 1
  *                 items:
- *                   type: string
- *                 description: Ad targeting tags, different from hashtags
- *               target_language:
- *                 type: array
- *                 items:
- *                   type: string
- *               target_location:
- *                 type: array
- *                 items:
- *                   type: string
+ *                   $ref: '#/components/schemas/AdMedia'
+ *
+ *               # ── CTA ───────────────────────────────────────────────────
+ *               cta:
+ *                 $ref: '#/components/schemas/AdCta'
+ *
+ *               # ── Budget ────────────────────────────────────────────────
  *               total_budget_coins:
  *                 type: number
- *                 description: Total ad budget. This amount is deducted from vendor wallet atomically at ad creation and recorded as a transaction.
+ *                 description: Total ad budget in coins. Deducted from vendor wallet at creation.
+ *                 example: 5000
+ *               budget:
+ *                 $ref: '#/components/schemas/AdBudget'
+ *
+ *               # ── Targeting ─────────────────────────────────────────────
+ *               targeting:
+ *                 $ref: '#/components/schemas/AdTargeting'
+ *               target_language:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Legacy flat language targeting (kept for backward compat)
+ *                 example: ["en", "hi"]
+ *               target_location:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Legacy flat location targeting
+ *                 example: ["Mumbai", "Delhi"]
+ *               target_preferences:
+ *                 type: array
+ *                 items: { type: string }
+ *                 example: ["fashion", "deals"]
+ *
+ *               # ── Categorization ────────────────────────────────────────
+ *               category:
+ *                 type: string
+ *                 description: "Required. Must match a value from GET /api/ads/categories"
+ *                 example: "Fashion"
+ *               sub_category:
+ *                 type: string
+ *                 description: Optional sub-category for hierarchical classification
+ *                 example: "Women's Clothing"
+ *               tags:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Ad targeting tags (different from hashtags)
+ *                 example: ["summer", "sale", "discount"]
+ *               keywords:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Keywords for search optimization
+ *                 example: ["summer sale", "fashion discount", "50% off"]
+ *               hashtags:
+ *                 type: array
+ *                 items: { type: string }
+ *                 example: ["#summersale", "#fashion"]
+ *
+ *               # ── Tagged users ──────────────────────────────────────────
+ *               tagged_users:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/AdTaggedUser'
+ *
+ *               # ── Engagement controls ───────────────────────────────────
+ *               engagement_controls:
+ *                 $ref: '#/components/schemas/AdEngagementControls'
+ *
+ *               # ── Tracking ──────────────────────────────────────────────
+ *               tracking:
+ *                 $ref: '#/components/schemas/AdTracking'
+ *
+ *               # ── Compliance ────────────────────────────────────────────
+ *               compliance:
+ *                 type: object
+ *                 description: Only `policy_agreed` is accepted here. `approval_status` is set by admin.
+ *                 properties:
+ *                   policy_agreed:
+ *                     type: boolean
+ *                     description: Vendor must agree to ad content policy before submitting
+ *                     example: true
+ *
+ *               # ── Smart enhancements ────────────────────────────────────
+ *               ab_testing:
+ *                 $ref: '#/components/schemas/AdAbTesting'
+ *               scheduling:
+ *                 $ref: '#/components/schemas/AdScheduling'
+ *
+ *           example:
+ *             ad_title: "Summer Sale — Up to 50% Off!"
+ *             ad_description: "Shop our biggest sale of the year on all fashion items."
+ *             caption: "Don't miss out!"
+ *             location: "Mumbai, India"
+ *             ad_type: sponsored_post
+ *             content_type: reel
+ *             status: pending
+ *             media:
+ *               - fileName: "string"
+ *                 media_type: "image"
+ *                 video_meta:
+ *                   original_length_seconds: 0
+ *                   selected_start: 0
+ *                   selected_end: 0
+ *                   final_duration: 0
+ *                   thumbnail_time: 0
+ *                 image_editing:
+ *                   filter:
+ *                     name: "string"
+ *                     css: "string"
+ *                   adjustments:
+ *                     brightness: 0
+ *                     contrast: 0
+ *                     saturation: 0
+ *                     temperature: 0
+ *                     fade: 0
+ *                     vignette: 0
+ *                 crop_settings:
+ *                   mode: "original"
+ *                   aspect_ratio: "string"
+ *                   zoom: 0
+ *                   x: 0
+ *                   y: 0
+ *                 timing_window:
+ *                   start: 0
+ *                   end: 0
+ *                 thumbnails:
+ *                   - fileName: "string"
+ *                     media_type: "string"
+ *             cta:
+ *               type: view_site
+ *               url: "https://mystore.com/sale"
+ *               whatsapp_number: "919876543210"
+ *             total_budget_coins: 5000
+ *             budget:
+ *               daily_budget_coins: 500
+ *               start_date: "2025-06-01T00:00:00Z"
+ *               end_date: "2025-06-30T23:59:59Z"
+ *               auto_stop_on_budget_exhausted: false
+ *             targeting:
+ *               countries: ["IN"]
+ *               states: ["Maharashtra", "Karnataka"]
+ *               cities: ["Mumbai", "Bangalore"]
+ *               age_min: 18
+ *               age_max: 40
+ *               gender: all
+ *               interests: ["fashion", "lifestyle"]
+ *               device_types: ["mobile"]
+ *             category: "Fashion"
+ *             sub_category: "Women's Clothing"
+ *             tags: ["summer", "sale"]
+ *             keywords: ["summer sale", "fashion 50% off"]
+ *             hashtags: ["#summersale", "#fashion"]
+ *             engagement_controls:
+ *               hide_likes_count: false
+ *               disable_comments: false
+ *               disable_share: false
+ *               disable_save: false
+ *               disable_report: false
+ *               moderation_enabled: false
+ *             tracking:
+ *               utm_source: myapp
+ *               utm_medium: paid_ad
+ *               utm_campaign: summer_sale_2025
+ *             compliance:
+ *               policy_agreed: true
+ *             ab_testing:
+ *               enabled: false
+ *               variants: []
+ *             scheduling:
+ *               delivery_time_slots:
+ *                 - day_of_week: monday
+ *                   start_time: "09:00"
+ *                   end_time: "21:00"
  *     responses:
  *       201:
- *         description: Ad created successfully
+ *         description: Ad created successfully and budget deducted from wallet
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               description: The created Ad document
+ *       400:
+ *         description: Missing required fields or insufficient wallet balance
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Insufficient wallet balance for total budget"
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Vendor profile not found or not validated
+ *       500:
+ *         description: Server error
  */
 router.post('/', auth, createAd);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/ads/search
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @swagger
  * /api/ads/search:
  *   get:
- *     summary: Search ads by category, hashtag, user_id, caption, keyword
+ *     summary: Search ads by category, hashtag, keyword, username, ad_title, or description
+ *     description: |
+ *       Unified search endpoint. Supports the following intent prefixes in `q`:
+ *       - `#fashion` — searches hashtags
+ *       - `@username` — searches by poster username
+ *       - `summer sale` — searches caption, ad_title, ad_description, hashtags, tags, keywords, location
+ *
+ *       If `q` exactly matches a category name, it filters by that category.
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -336,77 +900,58 @@ router.post('/', auth, createAd);
  *         name: q
  *         schema:
  *           type: string
- *         description: "Keyword to search in caption, hashtags, tags, location"
+ *         description: "Keyword, #hashtag, or @username to search"
  *         example: "summer sale"
  *       - in: query
  *         name: category
  *         schema:
  *           type: string
- *         description: Exact category name (case-insensitive)
+ *         description: Exact category name (case-insensitive chip filter)
  *         example: "Fashion"
- *       - in: query
- *         name: hashtag
- *         schema:
- *           type: string
- *         description: Single hashtag to search (with or without #)
- *         example: "sale"
- *       - in: query
- *         name: user_id
- *         schema:
- *           type: string
- *         description: MongoDB ObjectId of the vendor/user who created the ad
- *         example: "664f1a2b3c4d5e6f7a8b9c0d"
  *       - in: query
  *         name: status
  *         schema:
  *           type: string
  *           enum: [pending, active, paused, rejected]
- *         description: "Ad status filter - admin only (non-admins always see active only)"
+ *         description: "Status filter — admin only (non-admins always see active only)"
  *       - in: query
  *         name: content_type
  *         schema:
  *           type: string
  *           enum: [post, reel]
- *         description: Filter by content type
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [latest, popular, top]
+ *           default: latest
+ *         description: "latest = newest first, popular = most viewed, top = most liked"
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
- *         description: Page number
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           default: 20
  *           maximum: 50
- *         description: Results per page (max 50)
  *     responses:
  *       200:
- *         description: Search results with pagination
+ *         description: Paginated search results
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 total:
- *                   type: integer
- *                   example: 42
- *                 page:
- *                   type: integer
- *                   example: 1
- *                 limit:
- *                   type: integer
- *                   example: 20
- *                 totalPages:
- *                   type: integer
- *                   example: 3
+ *                 total: { type: integer, example: 42 }
+ *                 page: { type: integer, example: 1 }
+ *                 limit: { type: integer, example: 20 }
+ *                 totalPages: { type: integer, example: 3 }
  *                 ads:
  *                   type: array
- *                   items:
- *                     type: object
- *       400:
- *         description: Invalid user_id format
+ *                   items: { type: object }
  *       401:
  *         description: Unauthorized
  *       500:
@@ -414,202 +959,9 @@ router.post('/', auth, createAd);
  */
 router.get('/search', auth, searchAds);
 
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     AdStatUser:
- *       type: object
- *       description: Basic user profile returned inside ad stats
- *       properties:
- *         _id:
- *           type: string
- *           example: "664f1a2b3c4d5e6f7a8b9c0d"
- *         username:
- *           type: string
- *           example: "john_doe"
- *         full_name:
- *           type: string
- *           example: "John Doe"
- *         avatar_url:
- *           type: string
- *           example: "http://localhost:5000/uploads/avatar.jpg"
- *         gender:
- *           type: string
- *           example: "male"
- *         age:
- *           type: integer
- *           example: 25
- *         location:
- *           type: string
- *           example: "Mumbai, India"
- *
- *     AdGenderBucket:
- *       type: object
- *       description: Count and user list for one gender (used in likes)
- *       properties:
- *         count:
- *           type: integer
- *           example: 5
- *         users:
- *           type: array
- *           items:
- *             $ref: '#/components/schemas/AdStatUser'
- *
- *     AdLikesByGender:
- *       type: object
- *       properties:
- *         male:
- *           $ref: '#/components/schemas/AdGenderBucket'
- *         female:
- *           $ref: '#/components/schemas/AdGenderBucket'
- *         other:
- *           $ref: '#/components/schemas/AdGenderBucket'
- *         unknown:
- *           $ref: '#/components/schemas/AdGenderBucket'
- *
- *     AdAgeDemographics:
- *       type: object
- *       properties:
- *         "Child (0–12 years)":
- *           type: integer
- *           example: 0
- *         "Teen (13–19 years)":
- *           type: integer
- *           example: 5
- *         "Adult (20–39 years)":
- *           type: integer
- *           example: 15
- *         "Middle Age (40–59 years)":
- *           type: integer
- *           example: 10
- *         "Senior (60+ years)":
- *           type: integer
- *           example: 2
- *         Unknown:
- *           type: integer
- *           example: 6
- *
- *     AdDislikeGenderCount:
- *       type: object
- *       properties:
- *         count:
- *           type: integer
- *           example: 3
- *
- *     AdDislikesByGender:
- *       type: object
- *       properties:
- *         male:
- *           $ref: '#/components/schemas/AdDislikeGenderCount'
- *         female:
- *           $ref: '#/components/schemas/AdDislikeGenderCount'
- *         other:
- *           $ref: '#/components/schemas/AdDislikeGenderCount'
- *         unknown:
- *           $ref: '#/components/schemas/AdDislikeGenderCount'
- *         users:
- *           type: array
- *           description: Full list of users who explicitly disliked this ad
- *           items:
- *             $ref: '#/components/schemas/AdStatUser'
- *
- *     AdViewByLocation:
- *       type: object
- *       properties:
- *         location:
- *           type: string
- *           example: "Mumbai, India"
- *         views:
- *           type: integer
- *           example: 180
- *         unique_viewers:
- *           type: integer
- *           example: 120
- *         completed_views:
- *           type: integer
- *           example: 90
- *         rewarded_views:
- *           type: integer
- *           description: Views that triggered a coin reward to the viewer
- *           example: 70
- *         total_coins_rewarded:
- *           type: number
- *           description: Total coins paid out to viewers from this location
- *           example: 700
- *
- *     AdStatsResponse:
- *       type: object
- *       properties:
- *         ad_id:
- *           type: string
- *           example: "664f1a2b3c4d5e6f7a8b9c0a"
- *         caption:
- *           type: string
- *           example: "Summer Sale — up to 50% off!"
- *         category:
- *           type: string
- *           example: "Fashion"
- *         status:
- *           type: string
- *           enum: [pending, active, paused, rejected]
- *           example: "active"
- *         content_type:
- *           type: string
- *           enum: [post, reel]
- *           example: "reel"
- *         created_at:
- *           type: string
- *           format: date-time
- *         likes:
- *           type: object
- *           properties:
- *             total:
- *               type: integer
- *               example: 38
- *             by_gender:
- *               $ref: '#/components/schemas/AdLikesByGender'
- *             by_age:
- *               $ref: '#/components/schemas/AdAgeDemographics'
- *             user_ids:
- *               type: array
- *               items:
- *                 type: string
- *               example: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
- *         dislikes:
- *           type: object
- *           properties:
- *             total:
- *               type: integer
- *               example: 5
- *             by_gender:
- *               $ref: '#/components/schemas/AdDislikesByGender'
- *             by_age:
- *               $ref: '#/components/schemas/AdAgeDemographics'
- *             user_ids:
- *               type: array
- *               items:
- *                 type: string
- *         views:
- *           type: object
- *           properties:
- *             total:
- *               type: integer
- *               example: 500
- *             unique:
- *               type: integer
- *               example: 340
- *             completed:
- *               type: integer
- *               example: 210
- *             by_location:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/AdViewByLocation'
- *             by_age:
- *               $ref: '#/components/schemas/AdAgeDemographics'
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/ads/:id/stats
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @swagger
@@ -630,7 +982,6 @@ router.get('/search', auth, searchAds);
  *         required: true
  *         schema:
  *           type: string
- *         description: MongoDB ObjectId of the ad
  *         example: "664f1a2b3c4d5e6f7a8b9c0a"
  *     responses:
  *       200:
@@ -639,141 +990,20 @@ router.get('/search', auth, searchAds);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AdStatsResponse'
- *             example:
- *               ad_id: "664f1a2b3c4d5e6f7a8b9c0a"
- *               caption: "Summer Sale — up to 50% off!"
- *               category: "Fashion"
- *               status: "active"
- *               content_type: "reel"
- *               created_at: "2025-05-20T08:00:00.000Z"
- *               likes:
- *                 total: 38
- *                 by_gender:
- *                   male:
- *                     count: 20
- *                     users:
- *                       - _id: "664f1a2b3c4d5e6f7a8b9c01"
- *                         username: "rahul_m"
- *                         gender: "male"
- *                         age: 25
- *                         location: "Delhi, India"
- *                   female:
- *                     count: 15
- *                     users:
- *                       - _id: "664f1a2b3c4d5e6f7a8b9c02"
- *                         username: "priya_s"
- *                         gender: "female"
- *                         age: 28
- *                         location: "Mumbai, India"
- *                   other:
- *                     count: 1
- *                     users: []
- *                   unknown:
- *                     count: 2
- *                     users: []
- *                 by_age:
- *                   "Child (0–12 years)": 0
- *                   "Teen (13–19 years)": 5
- *                   "Adult (20–39 years)": 20
- *                   "Middle Age (40–59 years)": 10
- *                   "Senior (60+ years)": 1
- *                   Unknown: 2
- *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c01", "664f1a2b3c4d5e6f7a8b9c02"]
- *               dislikes:
- *                 total: 5
- *                 by_gender:
- *                   male: { count: 3 }
- *                   female: { count: 2 }
- *                   other: { count: 0 }
- *                   unknown: { count: 0 }
- *                 by_age:
- *                   "Child (0–12 years)": 0
- *                   "Teen (13–19 years)": 1
- *                   "Adult (20–39 years)": 2
- *                   "Middle Age (40–59 years)": 1
- *                   "Senior (60+ years)": 0
- *                   Unknown: 1
- *                 users:
- *                   - _id: "664f1a2b3c4d5e6f7a8b9c03"
- *                     username: "viewer_99"
- *                     gender: "male"
- *                     age: 32
- *                     location: "Pune, India"
- *                 user_ids: ["664f1a2b3c4d5e6f7a8b9c03"]
- *               views:
- *                 total: 500
- *                 unique: 340
- *                 completed: 210
- *                 by_location:
- *                   - location: "Mumbai, India"
- *                     views: 180
- *                     unique_viewers: 120
- *                     completed_views: 90
- *                     rewarded_views: 70
- *                     total_coins_rewarded: 700
- *                   - location: "Delhi, India"
- *                     views: 120
- *                     unique_viewers: 80
- *                     completed_views: 55
- *                     rewarded_views: 40
- *                     total_coins_rewarded: 400
- *                   - location: "Unknown"
- *                     views: 200
- *                     unique_viewers: 140
- *                     completed_views: 65
- *                     rewarded_views: 50
- *                     total_coins_rewarded: 500
- *                 by_age:
- *                   "Child (0–12 years)": 10
- *                   "Teen (13–19 years)": 40
- *                   "Adult (20–39 years)": 250
- *                   "Middle Age (40–59 years)": 150
- *                   "Senior (60+ years)": 30
- *                   Unknown: 20
  *       400:
- *         description: Invalid ad ID format
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Invalid ad ID"
+ *         description: Invalid ad ID
  *       401:
- *         description: Unauthorized — missing or invalid Bearer token
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Token is not valid"
+ *         description: Unauthorized
  *       404:
- *         description: Ad not found or has been deleted
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Ad not found"
+ *         description: Ad not found
  *       500:
  *         description: Server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Server error"
- *                 error:
- *                   type: string
  */
 router.get('/:id/stats', auth, getAdStats);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/ads/:id
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @swagger
@@ -797,11 +1027,26 @@ router.get('/:id/stats', auth, getAdStats);
  */
 router.get('/:id', auth, getAdById);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/ads/:id/metadata — Update Ad (everything except media)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/ads/{id}/metadata:
  *   patch:
- *     summary: Update ad caption, targeting and advanced settings
+ *     summary: Update ad metadata (everything except media)
+ *     description: |
+ *       Update any ad field **except** the `media` array (media is immutable after creation).
+ *
+ *       All fields are optional — only send what you want to change.
+ *
+ *       **Status transitions allowed by vendor:**
+ *       - `draft → pending` (submit for admin review)
+ *       - `active → paused`
+ *       - `paused → active`
+ *
+ *       **Note:** `compliance.approval_status` is read-only for vendors — it is managed by admin via `PATCH /api/admin/ads/{id}`.
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -811,77 +1056,189 @@ router.get('/:id', auth, getAdById);
  *         required: true
  *         schema:
  *           type: string
+ *         description: MongoDB ObjectId of the ad
+ *         example: "664f1a2b3c4d5e6f7a8b9c0a"
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             description: "All fields optional. Send only what needs to change. Media cannot be updated."
  *             properties:
+ *
+ *               # ── Core content ──────────────────────────────────────────
+ *               ad_title:
+ *                 type: string
+ *                 example: "Updated Summer Sale Title"
+ *               ad_description:
+ *                 type: string
+ *                 example: "Updated description text"
  *               caption:
  *                 type: string
+ *                 example: "New caption"
  *               location:
  *                 type: string
- *               hashtags:
- *                 type: array
- *                 items:
- *                   type: string
- *               tagged_users:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     user_id:
- *                       type: string
- *                     username:
- *                       type: string
- *                     position_x:
- *                       type: number
- *                     position_y:
- *                       type: number
- *               engagement_controls:
- *                 type: object
- *                 properties:
- *                   hide_likes_count:
- *                     type: boolean
- *                   disable_comments:
- *                     type: boolean
+ *                 example: "Delhi, India"
+ *               ad_type:
+ *                 type: string
+ *                 enum: [banner, video, carousel, sponsored_post]
  *               content_type:
  *                 type: string
  *                 enum: [post, reel]
- *               category:
+ *               status:
  *                 type: string
- *               tags:
- *                 type: array
- *                 items:
- *                   type: string
+ *                 enum: [draft, pending, active, paused]
+ *                 description: |
+ *                   Vendor-allowed transitions only:
+ *                   `draft → pending`, `active → paused`, `paused → active`
+ *
+ *               # ── CTA ───────────────────────────────────────────────────
+ *               cta:
+ *                 $ref: '#/components/schemas/AdCta'
+ *
+ *               # ── Budget ────────────────────────────────────────────────
+ *               total_budget_coins:
+ *                 type: number
+ *                 description: Update total budget (does NOT trigger wallet deduction again)
+ *                 example: 8000
+ *               budget:
+ *                 $ref: '#/components/schemas/AdBudget'
+ *
+ *               # ── Targeting ─────────────────────────────────────────────
+ *               targeting:
+ *                 $ref: '#/components/schemas/AdTargeting'
  *               target_language:
  *                 type: array
- *                 items:
- *                   type: string
+ *                 items: { type: string }
+ *                 example: ["en", "hi"]
  *               target_location:
  *                 type: array
- *                 items:
- *                   type: string
+ *                 items: { type: string }
+ *               target_states:
+ *                 type: array
+ *                 items: { type: string }
  *               target_preferences:
  *                 type: array
+ *                 items: { type: string }
+ *
+ *               # ── Categorization ────────────────────────────────────────
+ *               category:
+ *                 type: string
+ *                 description: "Must match a value from GET /api/ads/categories"
+ *                 example: "Electronics"
+ *               sub_category:
+ *                 type: string
+ *                 example: "Smartphones"
+ *               tags:
+ *                 type: array
+ *                 items: { type: string }
+ *               keywords:
+ *                 type: array
+ *                 items: { type: string }
+ *                 example: ["iphone", "android deals"]
+ *               hashtags:
+ *                 type: array
+ *                 items: { type: string }
+ *                 example: ["#tech", "#smartphones"]
+ *
+ *               # ── Tagged users ──────────────────────────────────────────
+ *               tagged_users:
+ *                 type: array
  *                 items:
- *                   type: string
+ *                   $ref: '#/components/schemas/AdTaggedUser'
+ *
+ *               # ── Engagement controls ───────────────────────────────────
+ *               engagement_controls:
+ *                 $ref: '#/components/schemas/AdEngagementControls'
+ *
+ *               # ── Tracking ──────────────────────────────────────────────
+ *               tracking:
+ *                 $ref: '#/components/schemas/AdTracking'
+ *
+ *               # ── Compliance ────────────────────────────────────────────
+ *               compliance:
+ *                 type: object
+ *                 description: Only `policy_agreed` is updatable by vendor. `approval_status` is admin-only.
+ *                 properties:
+ *                   policy_agreed:
+ *                     type: boolean
+ *                     example: true
+ *
+ *               # ── Smart enhancements ────────────────────────────────────
+ *               ab_testing:
+ *                 $ref: '#/components/schemas/AdAbTesting'
+ *               scheduling:
+ *                 $ref: '#/components/schemas/AdScheduling'
+ *
+ *           example:
+ *             ad_title: "Revised Sale Title"
+ *             ad_description: "Now with even bigger discounts!"
+ *             cta:
+ *               type: book_now
+ *               url: "https://mystore.com/book"
+ *               whatsapp_number: "919876543210"
+ *             budget:
+ *               daily_budget_coins: 700
+ *               end_date: "2025-07-31T23:59:59Z"
+ *             targeting:
+ *               age_min: 21
+ *               age_max: 45
+ *               gender: female
+ *               cities: ["Mumbai", "Pune"]
+ *               device_types: ["ios", "android"]
+ *             sub_category: "Ethnic Wear"
+ *             keywords: ["ethnic fashion", "festive sale"]
+ *             engagement_controls:
+ *               disable_comments: true
+ *               moderation_enabled: true
+ *             tracking:
+ *               utm_campaign: "revised_summer_sale"
+ *             scheduling:
+ *               delivery_time_slots:
+ *                 - day_of_week: saturday
+ *                   start_time: "10:00"
+ *                   end_time: "22:00"
+ *                 - day_of_week: sunday
+ *                   start_time: "10:00"
+ *                   end_time: "22:00"
+ *             compliance:
+ *               policy_agreed: true
+ *             status: pending
  *     responses:
  *       200:
- *         description: Ad updated successfully
+ *         description: Ad updated successfully — returns the full updated ad document
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               description: Updated Ad document
+ *       400:
+ *         description: Invalid status transition or bad input
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Invalid vendor status transition from active to pending"
+ *       401:
+ *         description: Unauthorized
  *       403:
- *         description: Not authorized
+ *         description: Not authorized to update this ad
  *       404:
  *         description: Ad not found
+ *       500:
+ *         description: Server error
  */
 router.patch('/:id/metadata', auth, updateAdMetadata);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/ads/:id
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @swagger
  * /api/ads/{id}:
  *   delete:
- *     summary: Delete an ad (Vendor only)
+ *     summary: Delete an ad (Vendor only, soft delete)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -901,6 +1258,10 @@ router.patch('/:id/metadata', auth, updateAdMetadata);
  */
 router.delete('/:id', auth, deleteAd);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Interaction routes
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/ads/{id}/view:
@@ -915,22 +1276,18 @@ router.delete('/:id', auth, deleteAd);
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               user:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                 description: Optional; if provided must match authenticated user (or admin)
  *     responses:
  *       200:
  *         description: View recorded (and reward applied if eligible)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 view_count: { type: integer }
+ *                 rewarded: { type: boolean }
+ *                 reward: { type: number }
  */
 router.post('/:id/view', auth, recordAdView);
 
@@ -948,7 +1305,6 @@ router.post('/:id/view', auth, recordAdView);
  *         required: true
  *         schema:
  *           type: string
- *         description: Ad ID
  *     responses:
  *       200:
  *         description: Click recorded successfully
@@ -957,38 +1313,22 @@ router.post('/:id/view', auth, recordAdView);
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Ad click recorded
+ *                 success: { type: boolean }
+ *                 message: { type: string }
  *                 click:
  *                   type: object
  *                   properties:
- *                     _id:
- *                       type: string
- *                     ad_id:
- *                       type: string
- *                     user_id:
- *                       type: string
- *                     vendor_id:
- *                       type: string
- *                     is_unique:
- *                       type: boolean
- *                     is_invalid:
- *                       type: boolean
- *                     coins_spent:
- *                       type: number
- *                     country:
- *                       type: string
- *                     language:
- *                       type: string
- *                     gender:
- *                       type: string
- *                     created_at:
- *                       type: string
- *                       format: date-time
+ *                     _id: { type: string }
+ *                     ad_id: { type: string }
+ *                     user_id: { type: string }
+ *                     vendor_id: { type: string }
+ *                     is_unique: { type: boolean }
+ *                     is_invalid: { type: boolean }
+ *                     coins_spent: { type: number }
+ *                     country: { type: string }
+ *                     language: { type: string }
+ *                     gender: { type: string }
+ *                     created_at: { type: string, format: date-time }
  *       400:
  *         description: Invalid ad ID
  *       404:
@@ -1012,19 +1352,6 @@ router.post('/:id/click', auth, recordClick);
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               user:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                 description: Optional; if provided must match authenticated user (or admin)
  *     responses:
  *       200:
  *         description: Like applied successfully
@@ -1033,20 +1360,13 @@ router.post('/:id/click', auth, recordClick);
  *             schema:
  *               type: object
  *               properties:
- *                 likes_count:
- *                   type: number
- *                   example: 5
- *                 is_liked:
- *                   type: boolean
- *                   example: true
+ *                 likes_count: { type: number }
+ *                 is_liked: { type: boolean }
  *                 coins_earned:
  *                   type: number
  *                   description: Coins credited to user wallet (0 if liking own ad)
- *                   example: 10
  *       400:
  *         description: Invalid ad ID or ad budget exhausted
- *       403:
- *         description: Forbidden
  *       404:
  *         description: Ad not found
  *       409:
@@ -1075,19 +1395,6 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               user:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                 description: Optional; if provided must match authenticated user (or admin)
  *     responses:
  *       200:
  *         description: Like reversed successfully
@@ -1096,16 +1403,11 @@ router.post(
  *             schema:
  *               type: object
  *               properties:
- *                 likes_count:
- *                   type: number
- *                 is_disliked:
- *                   type: boolean
- *                 coins_deducted:
- *                   type: number
+ *                 likes_count: { type: number }
+ *                 is_disliked: { type: boolean }
+ *                 coins_deducted: { type: number }
  *       400:
- *         description: Invalid ad ID, not previously liked, or insufficient wallet balance
- *       403:
- *         description: Forbidden
+ *         description: Not previously liked or insufficient wallet balance
  *       404:
  *         description: Ad not found
  *       429:
@@ -1122,7 +1424,7 @@ router.post(
  * @swagger
  * /api/ads/{id}/save:
  *   post:
- *     summary: Save an ad
+ *     summary: Save an ad (user earns 10 coins, deducted from ad creator wallet)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -1134,7 +1436,17 @@ router.post(
  *           type: string
  *     responses:
  *       200:
- *         description: Ad saved (user earns 10 coins, deducted from ad creator wallet)
+ *         description: Ad saved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 saved: { type: boolean }
+ *                 saved_count: { type: integer }
+ *                 coins_earned: { type: number }
  *       409:
  *         description: Already saved
  */
@@ -1162,6 +1474,10 @@ router.post('/:id/save', auth, saveAd);
  */
 router.post('/:id/unsave', auth, unsaveAd);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Comment routes
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/ads/{id}/comments:
@@ -1185,8 +1501,7 @@ router.post('/:id/unsave', auth, unsaveAd);
  *             required:
  *               - text
  *             properties:
- *               text:
- *                 type: string
+ *               text: { type: string }
  *               parent_id:
  *                 type: string
  *                 description: Optional ID of the parent comment (for replies)

@@ -46,6 +46,138 @@ const canVendorTransitionAdStatus = (currentStatus, nextStatus) => {
   return false;
 };
 
+// ── Helper: build the "new fields" block from req.body ──────────────────────────
+const buildNewFieldsFromBody = (body) => {
+  const {
+    // Core
+    ad_title,
+    ad_description,
+    ad_type,
+
+    // CTA
+    cta,
+
+    // Budget extended
+    budget,
+
+    // Targeting (new structured object)
+    targeting,
+
+    // Categorization
+    sub_category,
+    keywords,
+
+    // Engagement new controls
+    // (merged below with existing engagement_controls)
+
+    // Tracking
+    tracking,
+
+    // Compliance
+    compliance,
+
+    // Smart
+    ab_testing,
+    scheduling,
+  } = body;
+
+  const fields = {};
+
+  if (typeof ad_title !== 'undefined') fields.ad_title = ad_title || '';
+  if (typeof ad_description !== 'undefined') fields.ad_description = ad_description || '';
+  if (typeof ad_type !== 'undefined') {
+    const validTypes = ['banner', 'video', 'carousel', 'sponsored_post'];
+    if (validTypes.includes(ad_type)) fields.ad_type = ad_type;
+  }
+
+  // CTA — dynamic enum-based system
+  if (cta && typeof cta === 'object') {
+    fields.cta = {
+      type: cta.type || 'view_site',
+      url: cta.url || '',
+      deep_link: cta.deep_link || '',
+      phone_number: cta.phone_number || '',
+      email: cta.email || '',
+      whatsapp_number: cta.whatsapp_number || ''
+    };
+  }
+
+  // Budget extended object
+  if (budget && typeof budget === 'object') {
+    fields.budget = {};
+    if (typeof budget.daily_budget_coins !== 'undefined') {
+      const daily = Number(budget.daily_budget_coins);
+      if (Number.isFinite(daily) && daily >= 0) fields.budget.daily_budget_coins = daily;
+    }
+    if (budget.start_date) fields.budget.start_date = new Date(budget.start_date);
+    if (budget.end_date) fields.budget.end_date = new Date(budget.end_date);
+    if (typeof budget.auto_stop_on_budget_exhausted !== 'undefined') {
+      fields.budget.auto_stop_on_budget_exhausted = !!budget.auto_stop_on_budget_exhausted;
+    }
+  }
+
+  // Structured targeting object
+  if (targeting && typeof targeting === 'object') {
+    fields.targeting = {};
+    if (Array.isArray(targeting.countries)) fields.targeting.countries = targeting.countries;
+    if (Array.isArray(targeting.states)) fields.targeting.states = targeting.states;
+    if (Array.isArray(targeting.cities)) fields.targeting.cities = targeting.cities;
+    if (typeof targeting.age_min !== 'undefined') fields.targeting.age_min = Number(targeting.age_min) || 13;
+    if (typeof targeting.age_max !== 'undefined') fields.targeting.age_max = Number(targeting.age_max) || 65;
+    if (['all', 'male', 'female', 'other'].includes(targeting.gender)) {
+      fields.targeting.gender = targeting.gender;
+    }
+    if (Array.isArray(targeting.interests)) fields.targeting.interests = targeting.interests;
+    if (Array.isArray(targeting.device_types)) fields.targeting.device_types = targeting.device_types;
+  }
+
+  if (typeof sub_category !== 'undefined') fields.sub_category = sub_category || '';
+  if (Array.isArray(keywords)) fields.keywords = keywords;
+
+  // Tracking / UTM
+  if (tracking && typeof tracking === 'object') {
+    fields.tracking = {
+      utm_source: tracking.utm_source || '',
+      utm_medium: tracking.utm_medium || '',
+      utm_campaign: tracking.utm_campaign || '',
+      utm_term: tracking.utm_term || '',
+      utm_content: tracking.utm_content || '',
+      conversion_pixel_id: tracking.conversion_pixel_id || ''
+    };
+  }
+
+  // Compliance
+  if (compliance && typeof compliance === 'object') {
+    fields.compliance = {};
+    if (typeof compliance.policy_agreed !== 'undefined') {
+      fields.compliance.policy_agreed = !!compliance.policy_agreed;
+    }
+    // approval_status is set automatically by admin — only allow if explicitly provided
+    if (['pending', 'approved', 'rejected'].includes(compliance.approval_status)) {
+      fields.compliance.approval_status = compliance.approval_status;
+    }
+  }
+
+  // A/B Testing
+  if (ab_testing && typeof ab_testing === 'object') {
+    fields.ab_testing = {
+      enabled: !!ab_testing.enabled,
+      variants: Array.isArray(ab_testing.variants) ? ab_testing.variants : []
+    };
+  }
+
+  // Scheduling
+  if (scheduling && typeof scheduling === 'object') {
+    fields.scheduling = {
+      delivery_time_slots: Array.isArray(scheduling.delivery_time_slots)
+        ? scheduling.delivery_time_slots
+        : []
+    };
+  }
+
+  return fields;
+};
+
 /**
  * Create a new ad (Vendor only)
  * @route POST /api/ads
@@ -93,6 +225,17 @@ exports.createAd = async (req, res) => {
     const requestedStatus = normalizeAdStatus(status);
     const initialStatus = requestedStatus === 'draft' ? 'draft' : 'pending';
 
+    // ── Build engagement_controls merging old + new fields ─────────────────────
+    const incomingEngagement = engagement_controls || {};
+    const builtEngagementControls = {
+      hide_likes_count: !!incomingEngagement.hide_likes_count,
+      disable_comments: !!incomingEngagement.disable_comments,
+      disable_share: !!incomingEngagement.disable_share,
+      disable_save: !!incomingEngagement.disable_save,
+      disable_report: !!incomingEngagement.disable_report,
+      moderation_enabled: !!incomingEngagement.moderation_enabled
+    };
+
     const adData = {
       vendor_id: null,
       user_id: userId,
@@ -108,9 +251,15 @@ exports.createAd = async (req, res) => {
       status: initialStatus,
       hashtags: hashtags || [],
       tagged_users: tagged_users || [],
-      engagement_controls: engagement_controls || { hide_likes_count: false, disable_comments: false },
-      content_type: content_type || 'reel'
+      engagement_controls: builtEngagementControls,
+      content_type: content_type || 'reel',
+      // Merge all new fields from body
+      ...buildNewFieldsFromBody(req.body)
     };
+
+    // Keep compliance.approval_status in sync with ad status
+    if (!adData.compliance) adData.compliance = {};
+    adData.compliance.approval_status = initialStatus === 'pending' ? 'pending' : 'pending';
 
     const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
 
@@ -361,16 +510,24 @@ exports.updateAdMetadata = async (req, res) => {
       status
     } = req.body;
 
+    // ── Legacy / existing fields ───────────────────────────────────────────────
     if (typeof caption !== 'undefined') ad.caption = caption || '';
     if (typeof location !== 'undefined') ad.location = location || '';
     if (typeof hashtags !== 'undefined') ad.hashtags = Array.isArray(hashtags) ? hashtags : [];
     if (typeof tagged_users !== 'undefined') ad.tagged_users = Array.isArray(tagged_users) ? tagged_users : [];
+
+    // Merge engagement_controls (old + new fields)
     if (typeof engagement_controls !== 'undefined') {
       ad.engagement_controls = {
         hide_likes_count: !!engagement_controls?.hide_likes_count,
-        disable_comments: !!engagement_controls?.disable_comments
+        disable_comments: !!engagement_controls?.disable_comments,
+        disable_share: !!engagement_controls?.disable_share,
+        disable_save: !!engagement_controls?.disable_save,
+        disable_report: !!engagement_controls?.disable_report,
+        moderation_enabled: !!engagement_controls?.moderation_enabled
       };
     }
+
     if (typeof content_type !== 'undefined' && ['post', 'reel'].includes(content_type)) {
       ad.content_type = content_type;
     }
@@ -402,6 +559,31 @@ exports.updateAdMetadata = async (req, res) => {
       }
       ad.status = nextStatus;
     }
+
+    // ── New fields ─────────────────────────────────────────────────────────────
+    const newFields = buildNewFieldsFromBody(req.body);
+
+    if (typeof newFields.ad_title !== 'undefined') ad.ad_title = newFields.ad_title;
+    if (typeof newFields.ad_description !== 'undefined') ad.ad_description = newFields.ad_description;
+    if (typeof newFields.ad_type !== 'undefined') ad.ad_type = newFields.ad_type;
+    if (typeof newFields.sub_category !== 'undefined') ad.sub_category = newFields.sub_category;
+    if (typeof newFields.keywords !== 'undefined') ad.keywords = newFields.keywords;
+
+    if (newFields.cta) ad.cta = { ...((ad.cta || {}).toObject ? ad.cta.toObject() : {}), ...newFields.cta };
+    if (newFields.budget) ad.budget = { ...((ad.budget || {}).toObject ? ad.budget.toObject() : {}), ...newFields.budget };
+    if (newFields.targeting) ad.targeting = { ...((ad.targeting || {}).toObject ? ad.targeting.toObject() : {}), ...newFields.targeting };
+    if (newFields.tracking) ad.tracking = { ...((ad.tracking || {}).toObject ? ad.tracking.toObject() : {}), ...newFields.tracking };
+    if (newFields.compliance) {
+      // Vendor can only set policy_agreed — approval_status is admin-only
+      const existingCompliance = (ad.compliance || {}).toObject ? ad.compliance.toObject() : (ad.compliance || {});
+      ad.compliance = {
+        ...existingCompliance,
+        policy_agreed: newFields.compliance.policy_agreed ?? existingCompliance.policy_agreed
+        // approval_status NOT updated here — admin does that via adminUpdateAdStatus
+      };
+    }
+    if (newFields.ab_testing) ad.ab_testing = newFields.ab_testing;
+    if (newFields.scheduling) ad.scheduling = newFields.scheduling;
 
     await ad.save();
 
@@ -1758,6 +1940,15 @@ exports.adminUpdateAdStatus = async (req, res) => {
     if (status) ad.status = status;
     if (rejection_reason !== undefined) ad.rejection_reason = rejection_reason;
 
+    // Keep compliance.approval_status in sync with admin decision
+    if (status === 'active') {
+      if (!ad.compliance) ad.compliance = {};
+      ad.compliance.approval_status = 'approved';
+    } else if (status === 'rejected') {
+      if (!ad.compliance) ad.compliance = {};
+      ad.compliance.approval_status = 'rejected';
+    }
+
     await ad.save();
 
     const adOwner = await User.findById(ad.user_id).select('email full_name username').lean();
@@ -1834,10 +2025,6 @@ exports.adminDeleteAd = async (req, res) => {
     ad.isDeleted = true;
     ad.deletedBy = req.userId;
     ad.deletedAt = new Date();
-    
-    // Also set status to rejected or paused? Or just leave it?
-    // Usually soft delete implies it's gone from feed.
-    // Our feed query checks isDeleted: false, so this is enough.
 
     await ad.save();
     res.json({ message: 'Ad deleted successfully' });
@@ -1935,9 +2122,12 @@ exports.searchAds = async (req, res) => {
 
           const orFilters = [
             { caption: keywordRegex },
+            { ad_title: keywordRegex },
+            { ad_description: keywordRegex },
             { location: keywordRegex },
             { hashtags: keywordRegex },
-            { tags: keywordRegex }
+            { tags: keywordRegex },
+            { keywords: keywordRegex }
           ];
 
           if (matchedUserIds.length > 0) {
