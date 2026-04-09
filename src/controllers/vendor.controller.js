@@ -255,6 +255,12 @@ exports.getVendorProfile = async (req, res) => {
 
     const payload = vendor.toObject();
     payload.company_details = payload.company_details || {};
+    
+    // Add avatar_url to top level for convenience
+    if (payload.user_id && payload.user_id.avatar_url) {
+      payload.avatar_url = payload.user_id.avatar_url;
+    }
+    
     res.json(payload);
   } catch (error) {
     console.error('Get vendor profile error:', error);
@@ -281,6 +287,12 @@ exports.getPublicVendorProfile = async (req, res) => {
     delete payload.credits_expires_at;
     
     payload.company_details = payload.company_details || {};
+    
+    // Add avatar_url to top level for convenience
+    if (payload.user_id && payload.user_id.avatar_url) {
+      payload.avatar_url = payload.user_id.avatar_url;
+    }
+    
     res.json(payload);
   } catch (error) {
     console.error('Get public vendor profile error:', error);
@@ -423,8 +435,17 @@ exports.listAllVendors = async (req, res) => {
       .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location')
       .sort({ createdAt: -1 });
     
+    // Flatten avatar_url for each vendor for convenience
+    const payload = vendors.map(v => {
+      const vendorObj = v.toObject();
+      if (vendorObj.user_id && vendorObj.user_id.avatar_url) {
+        vendorObj.avatar_url = vendorObj.user_id.avatar_url;
+      }
+      return vendorObj;
+    });
+    
     // Return full vendor object with user details embedded
-    return res.json(vendors);
+    return res.json(payload);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
@@ -464,7 +485,16 @@ exports.getAllVendorsForAdmin = async (req, res) => {
       .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location')
       .sort({ createdAt: -1 });
     
-    return res.json(vendors);
+    // Flatten avatar_url for each vendor for convenience
+    const payload = vendors.map(v => {
+      const vendorObj = v.toObject();
+      if (vendorObj.user_id && vendorObj.user_id.avatar_url) {
+        vendorObj.avatar_url = vendorObj.user_id.avatar_url;
+      }
+      return vendorObj;
+    });
+    
+    return res.json(payload);
   } catch (error) {
     console.error('Get all vendors for admin error:', error);
     return res.status(500).json({ message: 'Server error' });
@@ -628,11 +658,20 @@ exports.createVendor = async (req, res) => {
 exports.getMyVendor = async (req, res) => {
   try {
     const userId = req.userId;
-    const vendor = await Vendor.findOne({ user_id: userId });
+    const vendor = await Vendor.findOne({ user_id: userId })
+      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location');
+      
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
     const wallet = await Wallet.findOne({ user_id: userId });
+    
     const payload = vendor.toObject();
     payload.wallet = wallet;
+    
+    // Add avatar_url to top level for convenience
+    if (payload.user_id && payload.user_id.avatar_url) {
+      payload.avatar_url = payload.user_id.avatar_url;
+    }
+    
     return res.json(payload);
   } catch (error) {
     console.error(error);
@@ -643,11 +682,20 @@ exports.getMyVendor = async (req, res) => {
 exports.getVendorByUserId = async (req, res) => {
   try {
     const userId = req.params.id;
-    const vendor = await Vendor.findOne({ user_id: userId });
+    const vendor = await Vendor.findOne({ user_id: userId })
+      .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location');
+      
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
     const wallet = await Wallet.findOne({ user_id: userId });
+    
     const payload = vendor.toObject();
     payload.wallet = wallet;
+    
+    // Add avatar_url to top level for convenience
+    if (payload.user_id && payload.user_id.avatar_url) {
+      payload.avatar_url = payload.user_id.avatar_url;
+    }
+    
     return res.json(payload);
   } catch (error) {
     console.error(error);
