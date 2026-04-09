@@ -9,6 +9,8 @@ const {
   listAllVendors,
   updateVendorProfile,
   uploadVendorCoverImage,
+  deleteVendorCoverImage,
+  removeUserAvatar,
   getVendorProfile,
   getPublicVendorProfile,
   adminProcessVendorVerification,
@@ -159,6 +161,55 @@ router.post('/profile/:userId', auth, updateVendorProfile);
  *         description: Cover images uploaded successfully
  */
 router.post('/profile/:userId/cover-image', auth, upload.array('files'), uploadVendorCoverImage);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{userId}/cover-image:
+ *   delete:
+ *     summary: Delete a single vendor cover image
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imageUrl:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cover image deleted successfully
+ */
+router.delete('/profile/:userId/cover-image', auth, deleteVendorCoverImage);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{userId}/avatar:
+ *   delete:
+ *     summary: Remove user avatar
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Avatar removed successfully
+ */
+router.delete('/profile/:userId/avatar', auth, removeUserAvatar);
  
 /**
  * @swagger

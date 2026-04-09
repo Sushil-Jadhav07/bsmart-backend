@@ -2,6 +2,10 @@ const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const VendorContact = require('../models/VendorContact');
+const Ad = require('../models/Ad');
+const Follow = require('../models/Follow');
+const path = require('path');
+const fs = require('fs');
 const sendNotification = require('../utils/sendNotification');
 const {
   sendWelcomeEmail,
@@ -151,6 +155,97 @@ exports.uploadVendorCoverImage = async (req, res) => {
   }
 };
 
+exports.deleteVendorCoverImage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { imageUrl } = req.body;
+    const requesterId = req.userId;
+
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'imageUrl is required' });
+    }
+
+    // Authorization check
+    if (req.user.role !== 'admin' && requesterId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId });
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+
+    const initialLength = vendor.cover_image_urls.length;
+    vendor.cover_image_urls = vendor.cover_image_urls.filter(url => url !== imageUrl);
+
+    if (vendor.cover_image_urls.length === initialLength) {
+      return res.status(404).json({ message: 'Image URL not found in profile' });
+    }
+
+    await vendor.save();
+
+    // Optionally delete the file from disk if it's a local upload
+    try {
+      const urlObj = new URL(imageUrl);
+      const filename = urlObj.pathname.split('/').pop();
+      const filePath = path.join(__dirname, '../../uploads', filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (e) {
+      console.error('Failed to delete file from disk:', e.message);
+    }
+
+    res.json({
+      message: 'Cover image deleted successfully',
+      cover_image_urls: vendor.cover_image_urls
+    });
+  } catch (error) {
+    console.error('Delete vendor cover image error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.removeUserAvatar = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterId = req.userId;
+
+    // Authorization check
+    if (req.user.role !== 'admin' && requesterId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const oldAvatarUrl = user.avatar_url;
+    user.avatar_url = '';
+    await user.save();
+
+    // Optionally delete file from disk
+    if (oldAvatarUrl) {
+      try {
+        const urlObj = new URL(oldAvatarUrl);
+        const filename = urlObj.pathname.split('/').pop();
+        const filePath = path.join(__dirname, '../../uploads', filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        console.error('Failed to delete avatar from disk:', e.message);
+      }
+    }
+
+    res.json({ message: 'Avatar removed successfully', user: { _id: user._id, avatar_url: user.avatar_url } });
+  } catch (error) {
+    console.error('Remove avatar error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.addVendorContact = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -292,6 +387,17 @@ exports.getPublicVendorProfile = async (req, res) => {
     if (payload.user_id && payload.user_id.avatar_url) {
       payload.avatar_url = payload.user_id.avatar_url;
     }
+
+    // Add ad count, followers, and following counts
+    const [adCount, followerCount, followingCount] = await Promise.all([
+      Ad.countDocuments({ user_id: userId, isDeleted: false }),
+      Follow.countDocuments({ followed_id: userId }),
+      Follow.countDocuments({ follower_id: userId })
+    ]);
+
+    payload.ad_count = adCount;
+    payload.follower_count = followerCount;
+    payload.following_count = followingCount;
     
     res.json(payload);
   } catch (error) {
