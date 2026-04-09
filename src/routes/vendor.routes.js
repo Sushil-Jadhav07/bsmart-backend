@@ -8,7 +8,9 @@ const {
   getVendorByUserId,
   listAllVendors,
   updateVendorProfile,
+  uploadVendorCoverImage,
   getVendorProfile,
+  getPublicVendorProfile,
   adminProcessVendorVerification,
   getAllVendorsForAdmin,
   deleteVendorByUserId,
@@ -49,6 +51,24 @@ router.get('/', listAllVendors);
  *         description: Vendor profile
  */
 router.get('/profile/:userId', getVendorProfile);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{userId}/public:
+ *   get:
+ *     summary: Get public vendor profile for users
+ *     tags: [Vendors]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Public vendor profile
+ */
+router.get('/profile/:userId/public', getPublicVendorProfile);
 
 /**
  * @swagger
@@ -107,6 +127,38 @@ router.get('/profile/:userId', getVendorProfile);
  *         description: Profile updated
  */
 router.post('/profile/:userId', auth, updateVendorProfile);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{userId}/cover-image:
+ *   post:
+ *     summary: Upload multiple vendor cover images for a particular user
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       200:
+ *         description: Cover images uploaded successfully
+ */
+router.post('/profile/:userId/cover-image', auth, upload.array('files'), uploadVendorCoverImage);
  
 /**
  * @swagger

@@ -114,6 +114,43 @@ exports.updateVendorProfile = async (req, res) => {
   }
 };
 
+exports.uploadVendorCoverImage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterId = req.userId;
+
+    // Authorization check
+    if (req.user.role !== 'admin' && requesterId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'Please upload at least one file' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId });
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const fileUrls = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
+
+    // Append new URLs to existing cover_image_urls array
+    vendor.cover_image_urls = [...(vendor.cover_image_urls || []), ...fileUrls];
+    await vendor.save();
+
+    res.json({
+      message: 'Cover images uploaded successfully',
+      cover_image_urls: fileUrls,
+      vendor
+    });
+  } catch (error) {
+    console.error('Upload vendor cover image error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.addVendorContact = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -221,6 +258,32 @@ exports.getVendorProfile = async (req, res) => {
     res.json(payload);
   } catch (error) {
     console.error('Get vendor profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getPublicVendorProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const vendor = await Vendor.findOne({ user_id: userId })
+      .populate('user_id', 'username full_name avatar_url email phone role gender location');
+      
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+
+    const payload = vendor.toObject();
+    
+    // Remove sensitive/internal fields for public view
+    delete payload.profile_completion_percentage;
+    delete payload.credits;
+    delete payload.credits_expires_at;
+    
+    payload.company_details = payload.company_details || {};
+    res.json(payload);
+  } catch (error) {
+    console.error('Get public vendor profile error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

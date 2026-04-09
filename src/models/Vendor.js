@@ -6,6 +6,7 @@ const vendorSchema = new mongoose.Schema({
   // Basic Info (from registration) - 30%
   business_name: { type: String, required: true },
   logo_url: { type: String },
+  cover_image_urls: [{ type: String }],
 
   // Company Details
   company_details: {
