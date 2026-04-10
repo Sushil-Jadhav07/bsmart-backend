@@ -6,6 +6,7 @@ const User = require('../models/User');
 const USER_SELECT = 'username full_name avatar_url';
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
+const normalizeEmoji = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const normalizeParticipantIds = (userIdA, userIdB) => {
   return [String(userIdA), String(userIdB)].sort();
@@ -16,6 +17,30 @@ const findConversationForUser = async (conversationId, userId) => {
     _id: conversationId,
     participants: userId,
   });
+};
+
+const populateMessage = (query) => query
+  .populate('sender', USER_SELECT)
+  .populate('reactions.userId', USER_SELECT);
+
+const getMessageIdParam = (req) => req.params.messageId || req.params.id;
+
+const findMessageForUser = async (messageId, userId) => {
+  if (!isValidObjectId(messageId)) {
+    return { error: { status: 400, message: 'Invalid messageId' } };
+  }
+
+  const message = await Message.findById(messageId);
+  if (!message) {
+    return { error: { status: 404, message: 'Message not found' } };
+  }
+
+  const conversation = await findConversationForUser(message.conversationId, userId);
+  if (!conversation) {
+    return { error: { status: 403, message: 'Not authorized' } };
+  }
+
+  return { message, conversation };
 };
 
 exports.createConversation = async (req, res) => {
@@ -143,7 +168,8 @@ exports.getConversationMessages = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit + 1)
-      .populate('sender', USER_SELECT);
+      .populate('sender', USER_SELECT)
+      .populate('reactions.userId', USER_SELECT);
 
     const hasMore = messages.length > limit;
     const paginatedMessages = hasMore ? messages.slice(0, limit) : messages;
@@ -220,7 +246,7 @@ exports.createMessage = async (req, res) => {
       lastMessageAt: message.createdAt,
     });
 
-    const populatedMessage = await Message.findById(message._id).populate('sender', USER_SELECT);
+    const populatedMessage = await populateMessage(Message.findById(message._id));
     const io = req.app.get('io');
 
     if (io) {
@@ -236,31 +262,21 @@ exports.createMessage = async (req, res) => {
 
 exports.markMessageSeen = async (req, res) => {
   try {
-    const { messageId } = req.params;
+    const messageId = getMessageIdParam(req);
     const userId = req.userId;
-
-    if (!isValidObjectId(messageId)) {
-      return res.status(400).json({ message: 'Invalid messageId' });
+    const { message, error } = await findMessageForUser(messageId, userId);
+    if (error) {
+      return res.status(error.status).json({ message: error.message });
     }
 
-    const message = await Message.findById(messageId);
-    if (!message) {
-      return res.status(404).json({ message: 'Message not found' });
-    }
-
-    const conversation = await findConversationForUser(message.conversationId, userId);
-    if (!conversation) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    const updatedMessage = await Message.findByIdAndUpdate(
+    const updatedMessage = await populateMessage(Message.findByIdAndUpdate(
       messageId,
       {
         $addToSet: { seenBy: userId },
         ...(String(message.sender) !== String(userId) ? { $set: { seenAt: new Date() } } : {}),
       },
       { new: true }
-    ).populate('sender', USER_SELECT);
+    ));
 
     const io = req.app.get('io');
     if (io) {
@@ -279,23 +295,105 @@ exports.markMessageSeen = async (req, res) => {
   }
 };
 
+exports.addMessageReaction = async (req, res) => {
+  try {
+    const messageId = getMessageIdParam(req);
+    const userId = req.userId;
+    const emoji = normalizeEmoji(req.body.emoji);
+
+    if (!emoji) {
+      return res.status(400).json({ message: 'emoji is required' });
+    }
+
+    const { message, error } = await findMessageForUser(messageId, userId);
+    if (error) {
+      return res.status(error.status).json({ message: error.message });
+    }
+
+    if (message.isDeleted) {
+      return res.status(400).json({ message: 'Cannot react to a deleted message' });
+    }
+
+    const existingReaction = message.reactions.find((reaction) => String(reaction.userId) === String(userId));
+    if (existingReaction) {
+      existingReaction.emoji = emoji;
+      existingReaction.createdAt = new Date();
+    } else {
+      message.reactions.push({ userId, emoji });
+    }
+
+    await message.save();
+
+    const updatedMessage = await populateMessage(Message.findById(message._id));
+    const payload = {
+      conversationId: String(message.conversationId),
+      messageId: String(message._id),
+      action: existingReaction ? 'updated' : 'added',
+      userId: String(userId),
+      emoji,
+      reactions: updatedMessage?.reactions || [],
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(message.conversationId)).emit('message-reaction-update', payload);
+    }
+
+    res.json(updatedMessage);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.removeMessageReaction = async (req, res) => {
+  try {
+    const messageId = getMessageIdParam(req);
+    const userId = req.userId;
+    const { message, error } = await findMessageForUser(messageId, userId);
+    if (error) {
+      return res.status(error.status).json({ message: error.message });
+    }
+
+    const existingReaction = message.reactions.find((reaction) => String(reaction.userId) === String(userId));
+    if (!existingReaction) {
+      const currentMessage = await populateMessage(Message.findById(message._id));
+      return res.json(currentMessage);
+    }
+
+    const removedEmoji = existingReaction.emoji;
+    message.reactions = message.reactions.filter((reaction) => String(reaction.userId) !== String(userId));
+    await message.save();
+
+    const updatedMessage = await populateMessage(Message.findById(message._id));
+    const payload = {
+      conversationId: String(message.conversationId),
+      messageId: String(message._id),
+      action: 'removed',
+      userId: String(userId),
+      emoji: removedEmoji,
+      reactions: updatedMessage?.reactions || [],
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(message.conversationId)).emit('message-reaction-update', payload);
+    }
+
+    res.json(updatedMessage);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.deleteMessage = async (req, res) => {
   try {
-    const { messageId } = req.params;
+    const messageId = getMessageIdParam(req);
     const userId = req.userId;
-
-    if (!isValidObjectId(messageId)) {
-      return res.status(400).json({ message: 'Invalid messageId' });
-    }
-
-    const message = await Message.findById(messageId);
-    if (!message) {
-      return res.status(404).json({ message: 'Message not found' });
-    }
-
-    const conversation = await findConversationForUser(message.conversationId, userId);
-    if (!conversation) {
-      return res.status(403).json({ message: 'Not authorized' });
+    const { message, conversation, error } = await findMessageForUser(messageId, userId);
+    if (error) {
+      return res.status(error.status).json({ message: error.message });
     }
 
     if (String(message.sender) !== String(userId)) {

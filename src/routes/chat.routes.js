@@ -8,6 +8,8 @@ const {
   getConversationMessages,
   createMessage,
   markMessageSeen,
+  addMessageReaction,
+  removeMessageReaction,
   deleteMessage,
   uploadChatMedia,
 } = require('../controllers/chat.controller');
@@ -53,6 +55,20 @@ const {
  *           type: array
  *           items:
  *             type: string
+ *         reactions:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 oneOf:
+ *                   - type: string
+ *                   - $ref: '#/components/schemas/ChatParticipant'
+ *               emoji:
+ *                 type: string
+ *               createdAt:
+ *                 type: string
+ *                 format: date-time
  *         isDeleted:
  *           type: boolean
  *         deletedAt:
@@ -284,6 +300,84 @@ router.post('/conversations/:conversationId/messages', verifyToken, createMessag
  *         description: Server error
  */
 router.put('/messages/:messageId/seen', verifyToken, markMessageSeen);
+
+/**
+ * @swagger
+ * /api/chat/messages/{id}/reaction:
+ *   post:
+ *     summary: Add or replace the logged-in user's reaction on a message
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [emoji]
+ *             properties:
+ *               emoji:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Reaction updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Message not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/messages/:id/reaction', verifyToken, addMessageReaction);
+
+/**
+ * @swagger
+ * /api/chat/messages/{id}/reaction:
+ *   delete:
+ *     summary: Remove the logged-in user's reaction from a message
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Reaction removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid messageId
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Message not found
+ *       500:
+ *         description: Server error
+ */
+router.delete('/messages/:id/reaction', verifyToken, removeMessageReaction);
 
 /**
  * @swagger
