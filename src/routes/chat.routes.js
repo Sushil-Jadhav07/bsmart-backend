@@ -422,7 +422,7 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  * @swagger
  * /api/chat/conversations/{conversationId}/media:
  *   post:
- *     summary: Upload media for a chat conversation
+ *     summary: Upload one or more media files for a chat conversation
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -440,8 +440,10 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  *             type: object
  *             properties:
  *               media:
- *                 type: string
- *                 format: binary
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
  *     responses:
  *       200:
  *         description: Media uploaded successfully
@@ -450,11 +452,31 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  *             schema:
  *               type: object
  *               properties:
+ *                 media:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       mediaUrl:
+ *                         type: string
+ *                       mediaType:
+ *                         type: string
+ *                         enum: [image, video]
+ *                       originalName:
+ *                         type: string
+ *                       filename:
+ *                         type: string
+ *                       mimetype:
+ *                         type: string
+ *                       size:
+ *                         type: integer
  *                 mediaUrl:
  *                   type: string
+ *                   description: First uploaded media URL for backward compatibility
  *                 mediaType:
  *                   type: string
  *                   enum: [image, video]
+ *                   description: First uploaded media type for backward compatibility
  *       400:
  *         description: Invalid request
  *       401:
@@ -464,6 +486,6 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  *       500:
  *         description: Server error
  */
-router.post('/conversations/:conversationId/media', verifyToken, upload.single('media'), uploadChatMedia);
+router.post('/conversations/:conversationId/media', verifyToken, upload.array('media', 10), uploadChatMedia);
 
 module.exports = router;

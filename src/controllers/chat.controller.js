@@ -450,25 +450,45 @@ exports.uploadChatMedia = async (req, res) => {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Please upload a file' });
-    }
+    const uploadedFiles = Array.isArray(req.files)
+      ? req.files
+      : (req.file ? [req.file] : []);
 
-    let mediaType = 'none';
-    if (req.file.mimetype && req.file.mimetype.startsWith('image/')) {
-      mediaType = 'image';
-    } else if (req.file.mimetype && req.file.mimetype.startsWith('video/')) {
-      mediaType = 'video';
-    }
-
-    if (mediaType === 'none') {
-      return res.status(400).json({ message: 'Unsupported media type' });
+    if (!uploadedFiles.length) {
+      return res.status(400).json({ message: 'Please upload at least one file' });
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const mediaUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    const media = uploadedFiles.map((file) => {
+      let mediaType = 'none';
 
-    res.json({ mediaUrl, mediaType });
+      if (file.mimetype && file.mimetype.startsWith('image/')) {
+        mediaType = 'image';
+      } else if (file.mimetype && file.mimetype.startsWith('video/')) {
+        mediaType = 'video';
+      }
+
+      if (mediaType === 'none') {
+        throw new Error('Unsupported media type');
+      }
+
+      return {
+        mediaUrl: `${baseUrl}/uploads/${file.filename}`,
+        mediaType,
+        originalName: file.originalname,
+        filename: file.filename,
+        mimetype: file.mimetype,
+        size: file.size,
+      };
+    });
+
+    const [firstMedia] = media;
+
+    res.json({
+      media,
+      mediaUrl: firstMedia.mediaUrl,
+      mediaType: firstMedia.mediaType,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });
