@@ -3,6 +3,7 @@ const HighlightItem = require('../models/HighlightItem');
 const StoryItem     = require('../models/StoryItem');
 
 const normalizeTitle = (value) => (typeof value === 'string' ? value.trim() : '');
+const isOwner = (ownerId, userId) => String(ownerId || '') === String(userId || '');
 
 const serializeHighlight = (highlight) => {
   const obj = highlight?.toObject ? highlight.toObject() : highlight;
@@ -80,7 +81,7 @@ exports.addItems = async (req, res) => {
   try {
     const highlight = await Highlight.findById(req.params.id);
     if (!highlight) return res.status(404).json({ message: 'Not found' });
-    if (highlight.user_id.toString() !== req.userId)
+    if (!isOwner(highlight.user_id, req.userId))
       return res.status(403).json({ message: 'Forbidden' });
 
     const ids = Array.isArray(req.body.story_item_ids) ? req.body.story_item_ids : [];
@@ -138,7 +139,7 @@ exports.updateHighlight = async (req, res) => {
   try {
     const highlight = await Highlight.findById(req.params.id);
     if (!highlight) return res.status(404).json({ message: 'Not found' });
-    if (highlight.user_id.toString() !== req.userId)
+    if (!isOwner(highlight.user_id, req.userId))
       return res.status(403).json({ message: 'Forbidden' });
     const title = normalizeTitle(req.body?.title);
     const { cover_url } = req.body;
@@ -164,7 +165,7 @@ exports.removeItem = async (req, res) => {
     const item = await HighlightItem.findById(req.params.itemId);
     if (!item) return res.status(404).json({ message: 'Not found' });
     const highlight = await Highlight.findById(item.highlight_id);
-    if (!highlight || highlight.user_id.toString() !== req.userId)
+    if (!highlight || !isOwner(highlight.user_id, req.userId))
       return res.status(403).json({ message: 'Forbidden' });
     await item.deleteOne();
     highlight.items_count = Math.max(0, highlight.items_count - 1);
@@ -183,7 +184,7 @@ exports.deleteHighlight = async (req, res) => {
   try {
     const highlight = await Highlight.findById(req.params.id);
     if (!highlight) return res.status(404).json({ message: 'Not found' });
-    if (highlight.user_id.toString() !== req.userId)
+    if (!isOwner(highlight.user_id, req.userId))
       return res.status(403).json({ message: 'Forbidden' });
     await HighlightItem.deleteMany({ highlight_id: highlight._id });
     await highlight.deleteOne();
