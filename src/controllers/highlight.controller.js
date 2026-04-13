@@ -2,6 +2,8 @@ const Highlight     = require('../models/Highlight');
 const HighlightItem = require('../models/HighlightItem');
 const StoryItem     = require('../models/StoryItem');
 
+const normalizeTitle = (value) => (typeof value === 'string' ? value.trim() : '');
+
 const serializeHighlight = (highlight) => {
   const obj = highlight?.toObject ? highlight.toObject() : highlight;
   return obj ? { ...obj, user_id: obj.user_id } : obj;
@@ -10,14 +12,21 @@ const serializeHighlight = (highlight) => {
 // POST /api/highlights
 exports.createHighlight = async (req, res) => {
   try {
-    const { title, cover_url } = req.body;
+    const title = normalizeTitle(req.body?.title);
+    const { cover_url } = req.body;
     if (!title) return res.status(400).json({ message: 'title required' });
+    if (title.length > 30) return res.status(400).json({ message: 'title must be 30 characters or less' });
     const count = await Highlight.countDocuments({ user_id: req.userId });
     const highlight = await Highlight.create({
       user_id: req.userId, title, cover_url: cover_url || '', order: count
     });
     res.status(201).json(serializeHighlight(highlight));
-  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+  } catch (err) {
+    if (err?.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Invalid highlight data' });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
 };
 
 // GET /api/highlights/user/:userId
@@ -76,7 +85,7 @@ exports.addItems = async (req, res) => {
 
     const ids = Array.isArray(req.body.story_item_ids) ? req.body.story_item_ids : [];
     if (!ids.length) return res.status(400).json({ message: 'story_item_ids required' });
-    const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+    const title = normalizeTitle(req.body?.title);
     if (title) highlight.title = title;
 
     const currentCount = highlight.items_count;
@@ -131,12 +140,22 @@ exports.updateHighlight = async (req, res) => {
     if (!highlight) return res.status(404).json({ message: 'Not found' });
     if (highlight.user_id.toString() !== req.userId)
       return res.status(403).json({ message: 'Forbidden' });
-    const { title, cover_url } = req.body;
-    if (title)     highlight.title     = title;
-    if (cover_url) highlight.cover_url = cover_url;
+    const title = normalizeTitle(req.body?.title);
+    const { cover_url } = req.body;
+    if (req.body?.title !== undefined) {
+      if (!title) return res.status(400).json({ message: 'title required' });
+      if (title.length > 30) return res.status(400).json({ message: 'title must be 30 characters or less' });
+      highlight.title = title;
+    }
+    if (cover_url !== undefined) highlight.cover_url = cover_url || '';
     await highlight.save();
     res.json(serializeHighlight(highlight));
-  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+  } catch (err) {
+    if (err?.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Invalid highlight data' });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
 };
 
 // DELETE /api/highlights/:id/items/:itemId
