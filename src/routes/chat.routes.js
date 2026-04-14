@@ -8,6 +8,8 @@ const {
   getConversationMessages,
   createMessage,
   markMessageSeen,
+  addMessageReaction,
+  removeMessageReaction,
   deleteMessage,
   uploadChatMedia,
 } = require('../controllers/chat.controller');
@@ -53,6 +55,20 @@ const {
  *           type: array
  *           items:
  *             type: string
+ *         reactions:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 oneOf:
+ *                   - type: string
+ *                   - $ref: '#/components/schemas/ChatParticipant'
+ *               emoji:
+ *                 type: string
+ *               createdAt:
+ *                 type: string
+ *                 format: date-time
  *         isDeleted:
  *           type: boolean
  *         deletedAt:
@@ -287,6 +303,84 @@ router.put('/messages/:messageId/seen', verifyToken, markMessageSeen);
 
 /**
  * @swagger
+ * /api/chat/messages/{id}/reaction:
+ *   post:
+ *     summary: Add or replace the logged-in user's reaction on a message
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [emoji]
+ *             properties:
+ *               emoji:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Reaction updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Message not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/messages/:id/reaction', verifyToken, addMessageReaction);
+
+/**
+ * @swagger
+ * /api/chat/messages/{id}/reaction:
+ *   delete:
+ *     summary: Remove the logged-in user's reaction from a message
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Reaction removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid messageId
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Message not found
+ *       500:
+ *         description: Server error
+ */
+router.delete('/messages/:id/reaction', verifyToken, removeMessageReaction);
+
+/**
+ * @swagger
  * /api/chat/messages/{messageId}:
  *   delete:
  *     summary: Unsend a message sent by the logged-in user
@@ -328,7 +422,7 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  * @swagger
  * /api/chat/conversations/{conversationId}/media:
  *   post:
- *     summary: Upload media for a chat conversation
+ *     summary: Upload one or more media files for a chat conversation
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -346,8 +440,10 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  *             type: object
  *             properties:
  *               media:
- *                 type: string
- *                 format: binary
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
  *     responses:
  *       200:
  *         description: Media uploaded successfully
@@ -356,11 +452,31 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  *             schema:
  *               type: object
  *               properties:
+ *                 media:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       mediaUrl:
+ *                         type: string
+ *                       mediaType:
+ *                         type: string
+ *                         enum: [image, video]
+ *                       originalName:
+ *                         type: string
+ *                       filename:
+ *                         type: string
+ *                       mimetype:
+ *                         type: string
+ *                       size:
+ *                         type: integer
  *                 mediaUrl:
  *                   type: string
+ *                   description: First uploaded media URL for backward compatibility
  *                 mediaType:
  *                   type: string
  *                   enum: [image, video]
+ *                   description: First uploaded media type for backward compatibility
  *       400:
  *         description: Invalid request
  *       401:
@@ -370,6 +486,6 @@ router.delete('/messages/:messageId', verifyToken, deleteMessage);
  *       500:
  *         description: Server error
  */
-router.post('/conversations/:conversationId/media', verifyToken, upload.single('media'), uploadChatMedia);
+router.post('/conversations/:conversationId/media', verifyToken, upload.array('media', 10), uploadChatMedia);
 
 module.exports = router;

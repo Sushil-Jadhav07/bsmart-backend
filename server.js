@@ -113,6 +113,10 @@ io.on('connection', (socket) => {
     socket.to(data.conversationId).emit('message-removed', data);
   });
 
+  socket.on('message-reaction-update', (data) => {
+    socket.to(data.conversationId).emit('message-reaction-update', data);
+  });
+
   // Catch any socket-level errors so they don't bubble up and crash the process
   socket.on('error', (err) => {
     console.error('[Socket] Error on socket', socket.id, err.message);
