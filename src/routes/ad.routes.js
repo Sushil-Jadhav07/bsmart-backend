@@ -368,6 +368,16 @@ const { getAdStats } = require('../controllers/adstats.controller');
  *         position_x: { type: number }
  *         position_y: { type: number }
  *
+ *     AdGalleryItem:
+ *       type: object
+ *       properties:
+ *         link:
+ *           type: string
+ *           example: "https://example.com/image.jpg"
+ *         filename:
+ *           type: string
+ *           example: "image.jpg"
+ *
  *     # ── Stats schemas (unchanged) ─────────────────────────────────────────
  *     AdStatUser:
  *       type: object
@@ -737,6 +747,10 @@ router.get('/', auth, requireAdmin, listAds);
  *                 type: array
  *                 items: { type: string }
  *                 example: ["#summersale", "#fashion"]
+ *               gallery:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/AdGalleryItem'
  *
  *               # ── Tagged users ──────────────────────────────────────────
  *               tagged_users:
@@ -832,6 +846,9 @@ router.get('/', auth, requireAdmin, listAds);
  *             tags: ["summer", "sale"]
  *             keywords: ["summer sale", "fashion 50% off"]
  *             hashtags: ["#summersale", "#fashion"]
+ *             gallery:
+ *               - link: "https://example.com/gallery1.jpg"
+ *                 filename: "gallery1.jpg"
  *             engagement_controls:
  *               hide_likes_count: false
  *               disable_comments: false

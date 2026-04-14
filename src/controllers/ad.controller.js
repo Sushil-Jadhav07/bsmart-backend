@@ -79,9 +79,17 @@ const buildNewFieldsFromBody = (body) => {
     // Smart
     ab_testing,
     scheduling,
+    gallery,
   } = body;
 
   const fields = {};
+
+  if (Array.isArray(gallery)) {
+    fields.gallery = gallery.map(item => ({
+      link: item.link || '',
+      filename: item.filename || ''
+    }));
+  }
 
   if (typeof ad_title !== 'undefined') fields.ad_title = ad_title || '';
   if (typeof ad_description !== 'undefined') fields.ad_description = ad_description || '';
@@ -207,7 +215,8 @@ exports.createAd = async (req, res) => {
       target_location,
       target_preferences,
       total_budget_coins,
-      status
+      status,
+      gallery
     } = req.body;
 
     const budget = Number(total_budget_coins || 0);
@@ -253,6 +262,7 @@ exports.createAd = async (req, res) => {
       tagged_users: tagged_users || [],
       engagement_controls: builtEngagementControls,
       content_type: content_type || 'reel',
+      gallery: gallery || [],
       // Merge all new fields from body
       ...buildNewFieldsFromBody(req.body)
     };

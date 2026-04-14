@@ -139,6 +139,11 @@ const adSchema = new mongoose.Schema({
     validate: [v => v && v.length > 0, 'At least one media item is required']
   },
 
+  gallery: [{
+    link: { type: String, default: '' },
+    filename: { type: String, default: '' }
+  }],
+
   // ── CTA ───────────────────────────────────────────────────────────────────────
   cta: { type: ctaSchema, default: () => ({}) },
 

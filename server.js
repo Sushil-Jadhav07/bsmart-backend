@@ -47,6 +47,7 @@ const emailRoutes            = require('./src/routes/email.routes');  // <- EMAI
 const reportRoutes           = require('./src/routes/report.routes');
 const highlightRoutes        = require('./src/routes/highlight.routes');
 const searchRoutes           = require('./src/routes/search.routes');
+const suggestionRoutes       = require('./src/routes/suggestion.routes');
 const contentReportRoutes    = require('./src/routes/contentReport.routes');
 const chatRoutes             = require('./src/routes/chat.routes');
 
@@ -160,6 +161,7 @@ app.use('/api/email',             emailRoutes);            // <- EMAIL
 app.use('/api/reports',           reportRoutes);
 app.use('/api/highlights',        highlightRoutes);
 app.use('/api/search',            searchRoutes);
+app.use('/api/suggestions',       suggestionRoutes);
 app.use('/api/content-reports',   contentReportRoutes);
 app.use('/api/chat',              chatRoutes);
 
