@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const rateLimit = require('../middleware/rateLimit');
+const upload = require('../config/multer');
 const {
   createAd,
   listAds,
@@ -373,10 +374,15 @@ const { getAdStats } = require('../controllers/adstats.controller');
  *       properties:
  *         link:
  *           type: string
- *           example: "https://example.com/image.jpg"
+ *           example: "https://example.com/gallery1.jpg"
  *         filename:
  *           type: string
- *           example: "image.jpg"
+ *           description: Name of the file (e.g. "gallery1.jpg"). Also accepted as "filname" in some requests.
+ *           example: "gallery1.jpg"
+ *         filname:
+ *           type: string
+ *           description: Alias for filename.
+ *           example: "gallery1.jpg"
  *
  *     # ── Stats schemas (unchanged) ─────────────────────────────────────────
  *     AdStatUser:
@@ -669,9 +675,13 @@ router.get('/', auth, requireAdmin, listAds);
  *                 example: "Mumbai, India"
  *               ad_type:
  *                 type: string
- *                 enum: [banner, video, carousel, sponsored_post]
- *                 default: sponsored_post
- *                 example: sponsored_post
+ *                 enum: [promote, general]
+ *                 required: true
+ *                 description: |
+ *                   Type of the advertisement.
+ *                   - `promote`: Paid promotion. Requires `total_budget_coins` and `budget` details.
+ *                   - `general`: Regular free or low-cost advertisement.
+ *                 example: promote
  *               content_type:
  *                 type: string
  *                 enum: [post, reel]
@@ -751,6 +761,13 @@ router.get('/', auth, requireAdmin, listAds);
  *                 type: array
  *                 items:
  *                   $ref: '#/components/schemas/AdGalleryItem'
+ *                 description: Array of gallery objects with link and filename. Can also be sent as a JSON string in multipart/form-data.
+ *               galleryFiles:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Optional. Upload multiple image files to be added to the gallery. Links will be auto-generated.
  *
  *               # ── Tagged users ──────────────────────────────────────────
  *               tagged_users:
@@ -787,45 +804,9 @@ router.get('/', auth, requireAdmin, listAds);
  *             ad_description: "Shop our biggest sale of the year on all fashion items."
  *             caption: "Don't miss out!"
  *             location: "Mumbai, India"
- *             ad_type: sponsored_post
- *             content_type: reel
+ *             ad_type: promote
+ *             content_type: advertise
  *             status: pending
- *             media:
- *               - fileName: "string"
- *                 media_type: "image"
- *                 video_meta:
- *                   original_length_seconds: 0
- *                   selected_start: 0
- *                   selected_end: 0
- *                   final_duration: 0
- *                   thumbnail_time: 0
- *                 image_editing:
- *                   filter:
- *                     name: "string"
- *                     css: "string"
- *                   adjustments:
- *                     brightness: 0
- *                     contrast: 0
- *                     saturation: 0
- *                     temperature: 0
- *                     fade: 0
- *                     vignette: 0
- *                 crop_settings:
- *                   mode: "original"
- *                   aspect_ratio: "string"
- *                   zoom: 0
- *                   x: 0
- *                   y: 0
- *                 timing_window:
- *                   start: 0
- *                   end: 0
- *                 thumbnails:
- *                   - fileName: "string"
- *                     media_type: "string"
- *             cta:
- *               type: view_site
- *               url: "https://mystore.com/sale"
- *               whatsapp_number: "919876543210"
  *             total_budget_coins: 5000
  *             budget:
  *               daily_budget_coins: 500
@@ -891,7 +872,7 @@ router.get('/', auth, requireAdmin, listAds);
  *       500:
  *         description: Server error
  */
-router.post('/', auth, createAd);
+router.post('/', auth, upload.array('galleryFiles', 10), createAd);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/ads/search

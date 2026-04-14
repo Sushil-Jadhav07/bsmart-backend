@@ -47,7 +47,8 @@ const canVendorTransitionAdStatus = (currentStatus, nextStatus) => {
 };
 
 // ── Helper: build the "new fields" block from req.body ──────────────────────────
-const buildNewFieldsFromBody = (body) => {
+const buildNewFieldsFromBody = (req) => {
+  const body = req.body;
   const {
     // Core
     ad_title,
@@ -84,103 +85,173 @@ const buildNewFieldsFromBody = (body) => {
 
   const fields = {};
 
-  if (Array.isArray(gallery)) {
-    fields.gallery = gallery.map(item => ({
+  // Try parsing JSON if they are strings (common in multipart/form-data)
+  let parsedGallery = gallery;
+  if (typeof gallery === 'string') {
+    try {
+      parsedGallery = JSON.parse(gallery);
+    } catch (e) {
+      console.warn('[AdController] Failed to parse gallery JSON:', e.message);
+    }
+  }
+
+  if (Array.isArray(parsedGallery)) {
+    fields.gallery = parsedGallery.map(item => ({
       link: item.link || '',
-      filename: item.filename || ''
+      filename: item.filename || item.filname || '',
+      filname: item.filname || item.filename || ''
     }));
   }
 
   if (typeof ad_title !== 'undefined') fields.ad_title = ad_title || '';
   if (typeof ad_description !== 'undefined') fields.ad_description = ad_description || '';
   if (typeof ad_type !== 'undefined') {
-    const validTypes = ['banner', 'video', 'carousel', 'sponsored_post'];
+    const validTypes = ['promote', 'general'];
     if (validTypes.includes(ad_type)) fields.ad_type = ad_type;
   }
 
   // CTA — dynamic enum-based system
-  if (cta && typeof cta === 'object') {
+  let parsedCta = cta;
+  if (typeof cta === 'string') {
+    try {
+      parsedCta = JSON.parse(cta);
+    } catch (e) {}
+  }
+  if (parsedCta && typeof parsedCta === 'object') {
     fields.cta = {
-      type: cta.type || 'view_site',
-      url: cta.url || '',
-      deep_link: cta.deep_link || '',
-      phone_number: cta.phone_number || '',
-      email: cta.email || '',
-      whatsapp_number: cta.whatsapp_number || ''
+      type: parsedCta.type || 'view_site',
+      url: parsedCta.url || '',
+      deep_link: parsedCta.deep_link || '',
+      phone_number: parsedCta.phone_number || '',
+      email: parsedCta.email || '',
+      whatsapp_number: parsedCta.whatsapp_number || ''
     };
   }
 
   // Budget extended object
-  if (budget && typeof budget === 'object') {
+  let parsedBudget = budget;
+  if (typeof budget === 'string') {
+    try {
+      parsedBudget = JSON.parse(budget);
+    } catch (e) {}
+  }
+  if (parsedBudget && typeof parsedBudget === 'object') {
     fields.budget = {};
-    if (typeof budget.daily_budget_coins !== 'undefined') {
-      const daily = Number(budget.daily_budget_coins);
+    if (typeof parsedBudget.daily_budget_coins !== 'undefined') {
+      const daily = Number(parsedBudget.daily_budget_coins);
       if (Number.isFinite(daily) && daily >= 0) fields.budget.daily_budget_coins = daily;
     }
-    if (budget.start_date) fields.budget.start_date = new Date(budget.start_date);
-    if (budget.end_date) fields.budget.end_date = new Date(budget.end_date);
-    if (typeof budget.auto_stop_on_budget_exhausted !== 'undefined') {
-      fields.budget.auto_stop_on_budget_exhausted = !!budget.auto_stop_on_budget_exhausted;
+    if (parsedBudget.start_date) fields.budget.start_date = new Date(parsedBudget.start_date);
+    if (parsedBudget.end_date) fields.budget.end_date = new Date(parsedBudget.end_date);
+    if (typeof parsedBudget.auto_stop_on_budget_exhausted !== 'undefined') {
+      fields.budget.auto_stop_on_budget_exhausted = !!parsedBudget.auto_stop_on_budget_exhausted;
     }
   }
 
   // Structured targeting object
-  if (targeting && typeof targeting === 'object') {
+  let parsedTargeting = targeting;
+  if (typeof targeting === 'string') {
+    try {
+      parsedTargeting = JSON.parse(targeting);
+    } catch (e) {}
+  }
+  if (parsedTargeting && typeof parsedTargeting === 'object') {
     fields.targeting = {};
-    if (Array.isArray(targeting.countries)) fields.targeting.countries = targeting.countries;
-    if (Array.isArray(targeting.states)) fields.targeting.states = targeting.states;
-    if (Array.isArray(targeting.cities)) fields.targeting.cities = targeting.cities;
-    if (typeof targeting.age_min !== 'undefined') fields.targeting.age_min = Number(targeting.age_min) || 13;
-    if (typeof targeting.age_max !== 'undefined') fields.targeting.age_max = Number(targeting.age_max) || 65;
-    if (['all', 'male', 'female', 'other'].includes(targeting.gender)) {
-      fields.targeting.gender = targeting.gender;
+    if (Array.isArray(parsedTargeting.countries)) fields.targeting.countries = parsedTargeting.countries;
+    if (Array.isArray(parsedTargeting.states)) fields.targeting.states = parsedTargeting.states;
+    if (Array.isArray(parsedTargeting.cities)) fields.targeting.cities = parsedTargeting.cities;
+    if (typeof parsedTargeting.age_min !== 'undefined') fields.targeting.age_min = Number(parsedTargeting.age_min) || 13;
+    if (typeof parsedTargeting.age_max !== 'undefined') fields.targeting.age_max = Number(parsedTargeting.age_max) || 65;
+    if (['all', 'male', 'female', 'other'].includes(parsedTargeting.gender)) {
+      fields.targeting.gender = parsedTargeting.gender;
     }
-    if (Array.isArray(targeting.interests)) fields.targeting.interests = targeting.interests;
-    if (Array.isArray(targeting.device_types)) fields.targeting.device_types = targeting.device_types;
+    if (Array.isArray(parsedTargeting.interests)) fields.targeting.interests = parsedTargeting.interests;
+    if (Array.isArray(parsedTargeting.device_types)) fields.targeting.device_types = parsedTargeting.device_types;
   }
 
   if (typeof sub_category !== 'undefined') fields.sub_category = sub_category || '';
   if (Array.isArray(keywords)) fields.keywords = keywords;
 
   // Tracking / UTM
-  if (tracking && typeof tracking === 'object') {
+  let parsedTracking = tracking;
+  if (typeof tracking === 'string') {
+    try {
+      parsedTracking = JSON.parse(tracking);
+    } catch (e) {}
+  }
+  if (parsedTracking && typeof parsedTracking === 'object') {
     fields.tracking = {
-      utm_source: tracking.utm_source || '',
-      utm_medium: tracking.utm_medium || '',
-      utm_campaign: tracking.utm_campaign || '',
-      utm_term: tracking.utm_term || '',
-      utm_content: tracking.utm_content || '',
-      conversion_pixel_id: tracking.conversion_pixel_id || ''
+      utm_source: parsedTracking.utm_source || '',
+      utm_medium: parsedTracking.utm_medium || '',
+      utm_campaign: parsedTracking.utm_campaign || '',
+      utm_term: parsedTracking.utm_term || '',
+      utm_content: parsedTracking.utm_content || '',
+      conversion_pixel_id: parsedTracking.conversion_pixel_id || ''
     };
   }
 
   // Compliance
-  if (compliance && typeof compliance === 'object') {
+  let parsedCompliance = compliance;
+  if (typeof compliance === 'string') {
+    try {
+      parsedCompliance = JSON.parse(compliance);
+    } catch (e) {}
+  }
+  if (parsedCompliance && typeof parsedCompliance === 'object') {
     fields.compliance = {};
-    if (typeof compliance.policy_agreed !== 'undefined') {
-      fields.compliance.policy_agreed = !!compliance.policy_agreed;
+    if (typeof parsedCompliance.policy_agreed !== 'undefined') {
+      fields.compliance.policy_agreed = !!parsedCompliance.policy_agreed;
     }
     // approval_status is set automatically by admin — only allow if explicitly provided
-    if (['pending', 'approved', 'rejected'].includes(compliance.approval_status)) {
-      fields.compliance.approval_status = compliance.approval_status;
+    if (['pending', 'approved', 'rejected'].includes(parsedCompliance.approval_status)) {
+      fields.compliance.approval_status = parsedCompliance.approval_status;
     }
   }
 
   // A/B Testing
-  if (ab_testing && typeof ab_testing === 'object') {
+  let parsedAbTesting = ab_testing;
+  if (typeof ab_testing === 'string') {
+    try {
+      parsedAbTesting = JSON.parse(ab_testing);
+    } catch (e) {}
+  }
+  if (parsedAbTesting && typeof parsedAbTesting === 'object') {
     fields.ab_testing = {
-      enabled: !!ab_testing.enabled,
-      variants: Array.isArray(ab_testing.variants) ? ab_testing.variants : []
+      enabled: !!parsedAbTesting.enabled,
+      variants: Array.isArray(parsedAbTesting.variants) ? parsedAbTesting.variants : []
     };
   }
 
   // Scheduling
-  if (scheduling && typeof scheduling === 'object') {
+  let parsedScheduling = scheduling;
+  if (typeof scheduling === 'string') {
+    try {
+      parsedScheduling = JSON.parse(scheduling);
+    } catch (e) {}
+  }
+  if (parsedScheduling && typeof parsedScheduling === 'object') {
     fields.scheduling = {
-      delivery_time_slots: Array.isArray(scheduling.delivery_time_slots)
-        ? scheduling.delivery_time_slots
+      delivery_time_slots: Array.isArray(parsedScheduling.delivery_time_slots)
+        ? parsedScheduling.delivery_time_slots
         : []
     };
+  }
+
+  // Handle Gallery Uploads if provided via multipart/form-data
+  if (req.files && req.files.length > 0) {
+    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
+    const uploadedGallery = req.files.map(file => ({
+      link: `${baseUrl}${file.filename}`,
+      filename: file.filename,
+      filname: file.filename
+    }));
+
+    // Merge with existing gallery if any
+    if (fields.gallery) {
+      fields.gallery = [...fields.gallery, ...uploadedGallery];
+    } else {
+      fields.gallery = uploadedGallery;
+    }
   }
 
   return fields;
@@ -216,12 +287,39 @@ exports.createAd = async (req, res) => {
       target_preferences,
       total_budget_coins,
       status,
-      gallery
+      gallery,
+      ad_type,
+      budget: budgetObj
     } = req.body;
 
+    // ad_type is compulsory
+    if (!ad_type || !['promote', 'general'].includes(ad_type)) {
+      return res.status(400).json({ message: 'ad_type is required and must be either "promote" or "general"' });
+    }
+
     const budget = Number(total_budget_coins || 0);
-    if (!Number.isFinite(budget) || budget <= 0) {
-      return res.status(400).json({ message: 'total_budget_coins must be a positive number' });
+
+    // If ad_type is "promote", total_budget_coins and budget object are compulsory
+    if (ad_type === 'promote') {
+      if (!budget || budget <= 0) {
+        return res.status(400).json({ message: 'total_budget_coins is required and must be positive for "promote" ads' });
+      }
+
+      // Check budget object (daily_budget_coins, start_date, end_date)
+      // Note: budgetObj might be a string if sent via multipart/form-data
+      let parsedBudget = budgetObj;
+      if (typeof budgetObj === 'string') {
+        try { parsedBudget = JSON.parse(budgetObj); } catch (e) {}
+      }
+
+      if (!parsedBudget || !parsedBudget.daily_budget_coins || !parsedBudget.start_date || !parsedBudget.end_date) {
+        return res.status(400).json({
+          message: 'Budget details (daily_budget_coins, start_date, end_date) are required for "promote" ads'
+        });
+      }
+    } else {
+      // For general ads, total_budget_coins can be 0 or optional depending on your business rules.
+      // But the user only specified constraints for "promote".
     }
 
     const hasNewMedia = media && Array.isArray(media) && media.length > 0;
@@ -263,8 +361,8 @@ exports.createAd = async (req, res) => {
       engagement_controls: builtEngagementControls,
       content_type: content_type || 'reel',
       gallery: gallery || [],
-      // Merge all new fields from body
-      ...buildNewFieldsFromBody(req.body)
+      // Merge all new fields from body (handles JSON parsing and files)
+      ...buildNewFieldsFromBody(req)
     };
 
     // Keep compliance.approval_status in sync with ad status

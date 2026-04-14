@@ -131,8 +131,8 @@ const adSchema = new mongoose.Schema({
   location: { type: String, default: '' },
   ad_type: {
     type: String,
-    enum: ['banner', 'video', 'carousel', 'sponsored_post'],
-    default: 'sponsored_post'
+    enum: ['promote', 'general'],
+    required: [true, 'ad_type is required']
   },
   media: {
     type: [adMediaSchema],
@@ -141,7 +141,8 @@ const adSchema = new mongoose.Schema({
 
   gallery: [{
     link: { type: String, default: '' },
-    filename: { type: String, default: '' }
+    filename: { type: String, default: '' },
+    filname: { type: String, default: '' } // alias for filename
   }],
 
   // ── CTA ───────────────────────────────────────────────────────────────────────
