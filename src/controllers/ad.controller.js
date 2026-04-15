@@ -15,6 +15,7 @@ const runMongoTransaction = require('../utils/runMongoTransaction');
 const MemberAdAction = require('../models/MemberAdAction');
 const recordAdClick = require('../utils/recordAdClick');
 const recordAdEngagement = require('../utils/recordAdEngagement');
+const { absolutizeUploadUrl } = require('../utils/publicUrl');
 const {
   sendAdApprovedEmail,
   sendAdRejectedEmail,
@@ -27,6 +28,34 @@ const LOW_COIN_THRESHOLD = 500;
 
 const fireAndForget = (label, promise) => {
   promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
+};
+
+const normalizeGalleryItem = (item, req) => ({
+  ...item,
+  link: absolutizeUploadUrl(item?.link || item?.url || item?.fileUrl || item?.fileName || item?.filename || item?.filname, req),
+});
+
+const normalizeAdAssets = (ad, req) => {
+  if (!ad) return ad;
+
+  return {
+    ...ad,
+    media: Array.isArray(ad.media)
+      ? ad.media.map((mediaItem) => ({
+          ...mediaItem,
+          fileUrl: absolutizeUploadUrl(mediaItem?.fileUrl || mediaItem?.fileName, req),
+          thumbnail_url: absolutizeUploadUrl(mediaItem?.thumbnail_url, req),
+          thumbnails: Array.isArray(mediaItem?.thumbnails)
+            ? mediaItem.thumbnails.map((thumb) => ({
+                ...thumb,
+                fileUrl: absolutizeUploadUrl(thumb?.fileUrl || thumb?.fileName, req),
+              }))
+            : [],
+        }))
+      : [],
+    gallery: Array.isArray(ad.gallery) ? ad.gallery.map((item) => normalizeGalleryItem(item, req)) : ad.gallery,
+    detail: Array.isArray(ad.detail) ? ad.detail.map((item) => normalizeGalleryItem(item, req)) : ad.detail,
+  };
 };
 
 const normalizeAdStatus = (value) => String(value || '').trim().toLowerCase();
@@ -239,9 +268,8 @@ const buildNewFieldsFromBody = (req) => {
 
   // Handle Gallery Uploads if provided via multipart/form-data
   if (req.files && req.files.length > 0) {
-    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
     const uploadedGallery = req.files.map(file => ({
-      link: `${baseUrl}${file.filename}`,
+      link: absolutizeUploadUrl(file.filename, req),
       filename: file.filename,
       filname: file.filename
     }));
@@ -369,22 +397,18 @@ exports.createAd = async (req, res) => {
     if (!adData.compliance) adData.compliance = {};
     adData.compliance.approval_status = initialStatus === 'pending' ? 'pending' : 'pending';
 
-    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/`;
-
     if (hasNewMedia) {
       adData.media = media.map(m => ({
         ...m,
-        fileUrl: m.fileUrl && !m.fileUrl.startsWith('http') ? `${baseUrl}${m.fileUrl}` : m.fileUrl,
+        fileUrl: absolutizeUploadUrl(m.fileUrl || m.fileName, req),
         thumbnails: m.thumbnails ? m.thumbnails.map(t => ({
           ...t,
-          fileUrl: t.fileUrl && !t.fileUrl.startsWith('http') ? `${baseUrl}${t.fileUrl}` : t.fileUrl
+          fileUrl: absolutizeUploadUrl(t.fileUrl || t.fileName, req)
         })) : []
       }));
     } else {
-      const fullVideoUrl = video_url.startsWith('http') ? video_url : `${baseUrl}${video_url}`;
-      const fullThumbnailUrl = thumbnail_url && !thumbnail_url.startsWith('http')
-        ? `${baseUrl}${thumbnail_url}`
-        : thumbnail_url;
+      const fullVideoUrl = absolutizeUploadUrl(video_url || video_fileName, req);
+      const fullThumbnailUrl = absolutizeUploadUrl(thumbnail_url || thumbnail_fileName, req);
 
       adData.media = [{
         fileName: video_fileName,
@@ -847,7 +871,7 @@ exports.getUserAdsWithComments = async (req, res) => {
         .lean();
       
       return {
-        ...ad,
+        ...normalizeAdAssets(ad, req),
         comments
       };
     }));
@@ -885,7 +909,7 @@ exports.getAdById = async (req, res) => {
     ad.is_rewarded_by_me = !!adView;
     ad.is_liked_by_me = ad.likes && ad.likes.some(id => id.toString() === userId.toString());
 
-    res.json(ad);
+    res.json(normalizeAdAssets(ad, req));
   } catch (error) {
     console.error('Get ad error:', error);
     res.status(500).json({ message: 'Server error' });

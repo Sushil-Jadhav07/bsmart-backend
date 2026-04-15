@@ -6,6 +6,7 @@ const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
 const upload = require('../config/multer');
+const { getPublicBaseUrl } = require('../utils/publicUrl');
 
 // ─── Stories feed rate limiter (dynamic — values set via query params) ───────
 // Pass `limit` in the request query to control the rate limit.
@@ -341,7 +342,7 @@ router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'Please upload a file' });
     }
 
-    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const baseUrl  = getPublicBaseUrl(req);
     const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv']);
     const uploadsDir = path.join(__dirname, '../../uploads');
 

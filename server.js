@@ -54,6 +54,8 @@ const chatRoutes             = require('./src/routes/chat.routes');
 const app    = express();
 const server = http.createServer(app);
 
+app.set('trust proxy', true);
+
 // ─── SOCKET.IO SETUP ──────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
@@ -135,8 +137,36 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(passport.initialize());
 app.use(cors({ origin: '*', credentials: true }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files statically with explicit CORS for HLS manifests/segments.
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, Range, Accept, Content-Type, Authorization');
+  res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.m3u8')) {
+      res.type('application/vnd.apple.mpegurl');
+      return;
+    }
+    if (filePath.endsWith('.ts')) {
+      res.type('video/mp2t');
+      return;
+    }
+    if (filePath.endsWith('.m4s')) {
+      res.type('video/iso.segment');
+    }
+  },
+}));
 
 // Swagger docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));

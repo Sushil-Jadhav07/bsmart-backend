@@ -6,6 +6,7 @@ const verifyToken = require('../middleware/auth');
 const upload = require('../config/multer');
 const User = require('../models/User');
 const convertToHls = require('../utils/convertToHls');
+const { getPublicBaseUrl } = require('../utils/publicUrl');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ router.post('/', verifyToken, upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'Please upload a file' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getPublicBaseUrl(req);
 
     if (isVideo(req.file.originalname)) {
       const baseName = path.basename(req.file.filename, path.extname(req.file.filename));
@@ -126,7 +127,7 @@ router.post('/', verifyToken, upload.single('file'), async (req, res) => {
  */
 router.post('/thumbnail', verifyToken, upload.any(), (req, res) => {
   try {
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getPublicBaseUrl(req);
     const files = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
     if (!files || files.length === 0) {
       return res.status(400).json({ message: 'Please upload at least one file' });
@@ -171,7 +172,7 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'Please upload a file' });
     }
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getPublicBaseUrl(req);
     const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
     const user = await User.findByIdAndUpdate(
       req.userId,
