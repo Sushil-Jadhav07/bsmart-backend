@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const threadMediaSchema = new mongoose.Schema({
+const tweetMediaSchema = new mongoose.Schema({
   url: {
     type: String,
     required: true,
@@ -12,7 +12,7 @@ const threadMediaSchema = new mongoose.Schema({
   },
 }, { _id: false });
 
-const threadSchema = new mongoose.Schema({
+const tweetSchema = new mongoose.Schema({
   author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -25,22 +25,22 @@ const threadSchema = new mongoose.Schema({
     default: '',
   },
   media: {
-    type: [threadMediaSchema],
+    type: [tweetMediaSchema],
     default: [],
   },
-  parentThread: {
+  parentTweet: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Thread',
+    ref: 'Tweet',
     default: null,
   },
-  rootThread: {
+  rootTweet: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Thread',
+    ref: 'Tweet',
     default: null,
   },
   repostOf: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Thread',
+    ref: 'Tweet',
     default: null,
   },
   quoteContent: {
@@ -90,9 +90,10 @@ const threadSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-threadSchema.index({ author: 1, createdAt: -1 });
-threadSchema.index({ parentThread: 1 });
-threadSchema.index({ rootThread: 1 });
-threadSchema.index({ repostOf: 1 });
+tweetSchema.index({ author: 1, createdAt: -1 });
+tweetSchema.index({ parentTweet: 1 });
+tweetSchema.index({ rootTweet: 1 });
+tweetSchema.index({ repostOf: 1 });
 
-module.exports = mongoose.model('Thread', threadSchema);
+module.exports = mongoose.model('Tweet', tweetSchema);
+

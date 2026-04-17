@@ -4,9 +4,9 @@ const Comment      = require('../models/Comment');
 const Ad           = require('../models/Ad');
 const AdView       = require('../models/AdView');
 const SavedPost    = require('../models/SavedPost');
-const Thread       = require('../models/thread.model');
-const ThreadLike   = require('../models/threadLike.model');
-const ThreadRepost = require('../models/threadRepost.model');
+const Tweet       = require('../models/tweet.model');
+const TweetLike   = require('../models/tweetLike.model');
+const TweetRepost = require('../models/tweetRepost.model');
 const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
 
@@ -49,28 +49,28 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
   return postObj;
 };
 
-const transformThread = async (thread, currentUserId = null) => {
-  const threadObj = thread.toObject ? thread.toObject() : thread;
+const transformTweet = async (tweet, currentUserId = null) => {
+  const tweetObj = tweet.toObject ? tweet.toObject() : tweet;
   const [liked, reposted] = await Promise.all([
-    currentUserId ? ThreadLike.exists({ user: currentUserId, thread: threadObj._id }) : false,
-    currentUserId ? ThreadRepost.exists({ user: currentUserId, thread: threadObj._id }) : false,
+    currentUserId ? TweetLike.exists({ user: currentUserId, tweet: tweetObj._id }) : false,
+    currentUserId ? TweetRepost.exists({ user: currentUserId, tweet: tweetObj._id }) : false,
   ]);
 
   return {
-    item_type: 'thread',
-    ...threadObj,
-    author: threadObj.author ? {
-      ...(threadObj.author.toObject ? threadObj.author.toObject() : threadObj.author),
-      name: threadObj.author.full_name || '',
-      profilePicture: threadObj.author.avatar_url || '',
+    item_type: 'tweet',
+    ...tweetObj,
+    author: tweetObj.author ? {
+      ...(tweetObj.author.toObject ? tweetObj.author.toObject() : tweetObj.author),
+      name: tweetObj.author.full_name || '',
+      profilePicture: tweetObj.author.avatar_url || '',
       isVerified: false,
     } : null,
-    repostOf: threadObj.repostOf ? {
-      ...(threadObj.repostOf.toObject ? threadObj.repostOf.toObject() : threadObj.repostOf),
-      author: threadObj.repostOf.author ? {
-        ...(threadObj.repostOf.author.toObject ? threadObj.repostOf.author.toObject() : threadObj.repostOf.author),
-        name: threadObj.repostOf.author.full_name || '',
-        profilePicture: threadObj.repostOf.author.avatar_url || '',
+    repostOf: tweetObj.repostOf ? {
+      ...(tweetObj.repostOf.toObject ? tweetObj.repostOf.toObject() : tweetObj.repostOf),
+      author: tweetObj.repostOf.author ? {
+        ...(tweetObj.repostOf.author.toObject ? tweetObj.repostOf.author.toObject() : tweetObj.repostOf.author),
+        name: tweetObj.repostOf.author.full_name || '',
+        profilePicture: tweetObj.repostOf.author.avatar_url || '',
         isVerified: false,
       } : null,
     } : null,
@@ -195,17 +195,17 @@ exports.getFeed = async (req, res) => {
     const limit = Math.min(50, parseInt(req.query.limit) || 20); // cap at 50
     const skip  = (page - 1) * limit;
 
-    const [posts, saved, threads] = await Promise.all([
+    const [posts, saved, tweets] = await Promise.all([
       Post.find()
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
       SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
-      Thread.find({
+      Tweet.find({
         audience: 'everyone',
         isDeleted: false,
-        parentThread: null,
+        parentTweet: null,
       })
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -220,10 +220,10 @@ exports.getFeed = async (req, res) => {
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
     const savedSet = new Set(saved.map(s => s.post_id.toString()));
     const transformedPosts = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
-    const transformedThreads = await Promise.all(
-      threads.map((thread) => transformThread(thread, req.userId))
+    const transformedTweets = await Promise.all(
+      tweets.map((tweet) => transformTweet(tweet, req.userId))
     );
-    const feedItems = [...transformedPosts, ...transformedThreads]
+    const feedItems = [...transformedPosts, ...transformedTweets]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, limit);
 
@@ -555,3 +555,4 @@ exports.updateReelMetadata = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+

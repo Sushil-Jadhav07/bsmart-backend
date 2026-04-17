@@ -51,7 +51,7 @@ const suggestionRoutes       = require('./src/routes/suggestion.routes');
 const contentReportRoutes    = require('./src/routes/contentReport.routes');
 const chatRoutes             = require('./src/routes/chat.routes');
 const notificationPrefRoutes  = require('./src/routes/notificationPreference.routes');
-const threadRoutes           = require('./src/routes/thread.routes');
+const tweetRoutes           = require('./src/routes/tweet.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -201,7 +201,7 @@ app.use('/api/suggestions',       suggestionRoutes);
 app.use('/api/content-reports',   contentReportRoutes);
 app.use('/api/chat',              chatRoutes);
 app.use('/api/notification-preferences', notificationPrefRoutes);
-app.use('/api/threads',           threadRoutes);
+app.use('/api/tweets',           tweetRoutes);
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
@@ -244,5 +244,6 @@ const startServer = async () => {
 };
 
 startServer();
+
 
 

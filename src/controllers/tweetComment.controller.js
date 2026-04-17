@@ -1,11 +1,11 @@
-const ThreadComment = require('../models/threadComment.model');
-const Thread = require('../models/thread.model');
+const TweetComment = require('../models/tweetComment.model');
+const Tweet = require('../models/tweet.model');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 
-exports.addThreadComment = async (req, res) => {
+exports.addTweetComment = async (req, res) => {
   try {
-    const { threadId } = req.params;
+    const { tweetId } = req.params;
     const { text, parent_id } = req.body;
     const userId = req.userId;
 
@@ -13,22 +13,22 @@ exports.addThreadComment = async (req, res) => {
       return res.status(400).json({ message: 'Comment text is required' });
     }
 
-    const thread = await Thread.findOne({ _id: threadId, isDeleted: false });
-    if (!thread) {
-      return res.status(404).json({ message: 'Thread not found' });
+    const tweet = await Tweet.findOne({ _id: tweetId, isDeleted: false });
+    if (!tweet) {
+      return res.status(404).json({ message: 'Tweet not found' });
     }
 
     let parentCommentId = null;
     let parentComment = null;
 
     if (parent_id) {
-      parentComment = await ThreadComment.findById(parent_id);
+      parentComment = await TweetComment.findById(parent_id);
       if (!parentComment || parentComment.isDeleted) {
         return res.status(404).json({ message: 'Parent comment not found' });
       }
 
-      if (parentComment.thread_id.toString() !== threadId) {
-        return res.status(400).json({ message: 'Parent comment does not belong to this thread' });
+      if (parentComment.tweet_id.toString() !== tweetId) {
+        return res.status(400).json({ message: 'Parent comment does not belong to this tweet' });
       }
 
       if (parentComment.parent_id) {
@@ -43,8 +43,8 @@ exports.addThreadComment = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const newComment = await ThreadComment.create({
-      thread_id: threadId,
+    const newComment = await TweetComment.create({
+      tweet_id: tweetId,
       parent_id: parentCommentId,
       user: {
         id: userId,
@@ -54,7 +54,7 @@ exports.addThreadComment = async (req, res) => {
       text: text.trim(),
     });
 
-    await Thread.findByIdAndUpdate(threadId, { $inc: { commentsCount: 1 } });
+    await Tweet.findByIdAndUpdate(tweetId, { $inc: { commentsCount: 1 } });
 
     try {
       if (parentComment && parentComment.user.id.toString() !== userId.toString()) {
@@ -63,33 +63,33 @@ exports.addThreadComment = async (req, res) => {
           sender: userId,
           type: 'comment_reply',
           message: `${user.username} replied to your comment`,
-          link: `/threads/${threadId}`,
+          link: `/tweets/${tweetId}`,
         });
-      } else if (thread.author.toString() !== userId.toString()) {
+      } else if (tweet.author.toString() !== userId.toString()) {
         await sendNotification(req.app, {
-          recipient: thread.author,
+          recipient: tweet.author,
           sender: userId,
           type: 'comment',
-          message: `${user.username} commented on your thread`,
-          link: `/threads/${threadId}`,
+          message: `${user.username} commented on your tweet`,
+          link: `/tweets/${tweetId}`,
         });
       }
     } catch (notifErr) {
-      console.error('[ThreadComment] notification error:', notifErr.message);
+      console.error('[TweetComment] notification error:', notifErr.message);
     }
 
     return res.status(201).json(newComment);
   } catch (error) {
-    console.error('[ThreadComment] addThreadComment error:', error);
+    console.error('[TweetComment] addTweetComment error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
-exports.getThreadComments = async (req, res) => {
+exports.getTweetComments = async (req, res) => {
   try {
-    const { threadId } = req.params;
-    const commentsRaw = await ThreadComment.find({
-      thread_id: threadId,
+    const { tweetId } = req.params;
+    const commentsRaw = await TweetComment.find({
+      tweet_id: tweetId,
       parent_id: null,
       isDeleted: false,
     }).sort({ createdAt: -1 });
@@ -102,15 +102,15 @@ exports.getThreadComments = async (req, res) => {
 
     return res.json(comments);
   } catch (error) {
-    console.error('[ThreadComment] getThreadComments error:', error);
+    console.error('[TweetComment] getTweetComments error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
-exports.getThreadCommentReplies = async (req, res) => {
+exports.getTweetCommentReplies = async (req, res) => {
   try {
     const { commentId } = req.params;
-    const repliesRaw = await ThreadComment.find({
+    const repliesRaw = await TweetComment.find({
       parent_id: commentId,
       isDeleted: false,
     }).sort({ createdAt: 1 });
@@ -123,17 +123,17 @@ exports.getThreadCommentReplies = async (req, res) => {
 
     return res.json(replies);
   } catch (error) {
-    console.error('[ThreadComment] getThreadCommentReplies error:', error);
+    console.error('[TweetComment] getTweetCommentReplies error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
-exports.likeThreadComment = async (req, res) => {
+exports.likeTweetComment = async (req, res) => {
   try {
     const { commentId } = req.params;
     const userId = req.userId;
 
-    const comment = await ThreadComment.findById(commentId);
+    const comment = await TweetComment.findById(commentId);
     if (!comment || comment.isDeleted) {
       return res.status(404).json({ message: 'Comment not found' });
     }
@@ -155,27 +155,27 @@ exports.likeThreadComment = async (req, res) => {
             sender: userId,
             type: 'comment_like',
             message: `${liker.username} liked your comment`,
-            link: `/threads/${comment.thread_id}`,
+            link: `/tweets/${comment.tweet_id}`,
           });
         }
       }
     } catch (notifErr) {
-      console.error('[ThreadComment] like notification error:', notifErr.message);
+      console.error('[TweetComment] like notification error:', notifErr.message);
     }
 
     return res.json({ liked: true, likes_count: comment.likes_count });
   } catch (error) {
-    console.error('[ThreadComment] likeThreadComment error:', error);
+    console.error('[TweetComment] likeTweetComment error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
-exports.unlikeThreadComment = async (req, res) => {
+exports.unlikeTweetComment = async (req, res) => {
   try {
     const { commentId } = req.params;
     const userId = req.userId;
 
-    const comment = await ThreadComment.findById(commentId);
+    const comment = await TweetComment.findById(commentId);
     if (!comment || comment.isDeleted) {
       return res.status(404).json({ message: 'Comment not found' });
     }
@@ -190,26 +190,26 @@ exports.unlikeThreadComment = async (req, res) => {
 
     return res.json({ liked: false, likes_count: comment.likes_count });
   } catch (error) {
-    console.error('[ThreadComment] unlikeThreadComment error:', error);
+    console.error('[TweetComment] unlikeTweetComment error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
-exports.deleteThreadComment = async (req, res) => {
+exports.deleteTweetComment = async (req, res) => {
   try {
     const { commentId } = req.params;
     const userId = req.userId;
 
-    const comment = await ThreadComment.findById(commentId);
+    const comment = await TweetComment.findById(commentId);
     if (!comment || comment.isDeleted) {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
-    const thread = await Thread.findById(comment.thread_id);
+    const tweet = await Tweet.findById(comment.tweet_id);
     const isCommentAuthor = comment.user.id.toString() === userId.toString();
-    const isThreadAuthor = thread && thread.author.toString() === userId.toString();
+    const isTweetAuthor = tweet && tweet.author.toString() === userId.toString();
 
-    if (!isCommentAuthor && !isThreadAuthor) {
+    if (!isCommentAuthor && !isTweetAuthor) {
       return res.status(403).json({ message: 'Not authorized to delete this comment' });
     }
 
@@ -218,13 +218,14 @@ exports.deleteThreadComment = async (req, res) => {
     comment.deletedAt = new Date();
     await comment.save();
 
-    await Thread.findByIdAndUpdate(comment.thread_id, {
+    await Tweet.findByIdAndUpdate(comment.tweet_id, {
       $inc: { commentsCount: -1 },
     });
 
     return res.json({ message: 'Comment deleted successfully' });
   } catch (error) {
-    console.error('[ThreadComment] deleteThreadComment error:', error);
+    console.error('[TweetComment] deleteTweetComment error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
+

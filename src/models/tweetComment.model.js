@@ -1,15 +1,15 @@
 const mongoose = require('mongoose');
 
-const threadCommentSchema = new mongoose.Schema({
-  thread_id: {
+const tweetCommentSchema = new mongoose.Schema({
+  tweet_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Thread',
+    ref: 'Tweet',
     required: true,
     index: true,
   },
   parent_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'ThreadComment',
+    ref: 'TweetComment',
     default: null,
   },
   user: {
@@ -56,4 +56,5 @@ const threadCommentSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-module.exports = mongoose.model('ThreadComment', threadCommentSchema);
+module.exports = mongoose.model('TweetComment', tweetCommentSchema);
+
