@@ -4,6 +4,9 @@ const Comment      = require('../models/Comment');
 const Ad           = require('../models/Ad');
 const AdView       = require('../models/AdView');
 const SavedPost    = require('../models/SavedPost');
+const Thread       = require('../models/thread.model');
+const ThreadLike   = require('../models/threadLike.model');
+const ThreadRepost = require('../models/threadRepost.model');
 const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
 
@@ -14,6 +17,7 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
   const postObj = post.toObject ? post.toObject() : post;
 
   postObj.post_id = postObj._id;
+  postObj.item_type = postObj.type === 'reel' ? 'reel' : 'post';
 
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => {
@@ -43,6 +47,36 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
     : false;
 
   return postObj;
+};
+
+const transformThread = async (thread, currentUserId = null) => {
+  const threadObj = thread.toObject ? thread.toObject() : thread;
+  const [liked, reposted] = await Promise.all([
+    currentUserId ? ThreadLike.exists({ user: currentUserId, thread: threadObj._id }) : false,
+    currentUserId ? ThreadRepost.exists({ user: currentUserId, thread: threadObj._id }) : false,
+  ]);
+
+  return {
+    item_type: 'thread',
+    ...threadObj,
+    author: threadObj.author ? {
+      ...(threadObj.author.toObject ? threadObj.author.toObject() : threadObj.author),
+      name: threadObj.author.full_name || '',
+      profilePicture: threadObj.author.avatar_url || '',
+      isVerified: false,
+    } : null,
+    repostOf: threadObj.repostOf ? {
+      ...(threadObj.repostOf.toObject ? threadObj.repostOf.toObject() : threadObj.repostOf),
+      author: threadObj.repostOf.author ? {
+        ...(threadObj.repostOf.author.toObject ? threadObj.repostOf.author.toObject() : threadObj.repostOf.author),
+        name: threadObj.repostOf.author.full_name || '',
+        profilePicture: threadObj.repostOf.author.avatar_url || '',
+        isVerified: false,
+      } : null,
+    } : null,
+    isLiked: !!liked,
+    isReposted: !!reposted,
+  };
 };
 
 // ─── Fan-out helper ────────────────────────────────────────────────────────
@@ -161,23 +195,42 @@ exports.getFeed = async (req, res) => {
     const limit = Math.min(50, parseInt(req.query.limit) || 20); // cap at 50
     const skip  = (page - 1) * limit;
 
-    const [posts, saved] = await Promise.all([
+    const [posts, saved, threads] = await Promise.all([
       Post.find()
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
       SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
+      Thread.find({
+        audience: 'everyone',
+        isDeleted: false,
+        parentThread: null,
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('author', 'username full_name avatar_url')
+        .populate({
+          path: 'repostOf',
+          populate: { path: 'author', select: 'username full_name avatar_url' },
+        }),
     ]);
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
     const savedSet = new Set(saved.map(s => s.post_id.toString()));
     const transformedPosts = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
+    const transformedThreads = await Promise.all(
+      threads.map((thread) => transformThread(thread, req.userId))
+    );
+    const feedItems = [...transformedPosts, ...transformedThreads]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, limit);
 
     // Interleave ads every 5 posts
-    const adSlots = Math.floor(transformedPosts.length / 5);
+    const adSlots = Math.floor(feedItems.length / 5);
     if (adSlots <= 0) {
-      return res.json({ page, limit, data: transformedPosts });
+      return res.json({ page, limit, data: feedItems });
     }
 
     const [ads, rewarded] = await Promise.all([
@@ -191,7 +244,7 @@ exports.getFeed = async (req, res) => {
     ]);
 
     if (!ads.length) {
-      return res.json({ page, limit, data: transformedPosts });
+      return res.json({ page, limit, data: feedItems });
     }
 
     const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
@@ -226,8 +279,8 @@ exports.getFeed = async (req, res) => {
     // Mix posts and ads: insert one ad after every 5th post
     const mixed = [];
     let adIndex = 0;
-    for (let i = 0; i < transformedPosts.length; i++) {
-      mixed.push(transformedPosts[i]);
+    for (let i = 0; i < feedItems.length; i++) {
+      mixed.push(feedItems[i]);
       if ((i + 1) % 5 === 0) {
         mixed.push(normalizedAds[adIndex % normalizedAds.length]);
         adIndex++;
