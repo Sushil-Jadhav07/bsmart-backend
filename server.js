@@ -50,6 +50,7 @@ const searchRoutes           = require('./src/routes/search.routes');
 const suggestionRoutes       = require('./src/routes/suggestion.routes');
 const contentReportRoutes    = require('./src/routes/contentReport.routes');
 const chatRoutes             = require('./src/routes/chat.routes');
+const notificationPrefRoutes  = require('./src/routes/notificationPreference.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -198,6 +199,7 @@ app.use('/api/search',            searchRoutes);
 app.use('/api/suggestions',       suggestionRoutes);
 app.use('/api/content-reports',   contentReportRoutes);
 app.use('/api/chat',              chatRoutes);
+app.use('/api/notification-preferences', notificationPrefRoutes);
 
 
 // ── Country / State / City / Language routes ──────────────────────────────

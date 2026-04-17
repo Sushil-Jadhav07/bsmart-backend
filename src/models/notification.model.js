@@ -19,13 +19,23 @@ const notificationSchema = new mongoose.Schema({
       'ad_comment', 'ad_like', 'ad_save', 'ad_rejected',
       'vendor_rejected',
       'coins_credited', 'coins_debited',
-      'story_view', 'login_alert'
+      'story_view', 'login_alert',
+
+      // ── NEW types ──────────────────────────────────────────────────────────
+      // Fired to subscribers when a watched user/vendor publishes content
+      'subscribed_user_post',   // watched user posted a photo/video post
+      'subscribed_user_reel',   // watched user posted a reel
+      'subscribed_vendor_post', // watched vendor posted content
+
+      // Fired to the vendor themselves when their subscription is expiring
+      'subscription_expiring',  // sent X days before expiry
+      'subscription_expired',   // sent on/after expiry day
     ],
     required: true
   },
   message: { type: String, required: true },
-  link: { type: String },
-  isRead: { type: Boolean, default: false }
+  link:    { type: String },
+  isRead:  { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Notification', notificationSchema);

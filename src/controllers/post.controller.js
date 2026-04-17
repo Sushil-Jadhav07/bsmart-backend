@@ -5,6 +5,7 @@ const Ad           = require('../models/Ad');
 const AdView       = require('../models/AdView');
 const SavedPost    = require('../models/SavedPost');
 const sendNotification = require('../utils/sendNotification');
+const UserNotificationPreference = require('../models/UserNotificationPreference');
 
 // ─── Helper ────────────────────────────────────────────────────────────────
 // Transforms a Mongoose post document into the API response shape.
@@ -44,6 +45,41 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
   return postObj;
 };
 
+// ─── Fan-out helper ────────────────────────────────────────────────────────
+// Notifies all users who have turned on notifications for the post author.
+// postType: 'post' | 'reel'
+const notifySubscribers = async (app, authorId, authorUsername, postId, postType) => {
+  try {
+    const notifType = postType === 'reel' ? 'subscribed_user_reel' : 'subscribed_user_post';
+    const contentLabel = postType === 'reel' ? 'reel' : 'post';
+    const preferenceField = postType === 'reel' ? 'notify_on_reel' : 'notify_on_post';
+
+    // Find everyone who has notifications turned on for this user
+    const prefs = await UserNotificationPreference.find({
+      target_id:   authorId,
+      target_type: 'user',
+      [preferenceField]: true,
+    }).select('subscriber_id').lean();
+
+    if (!prefs.length) return;
+
+    const message = `@${authorUsername} posted a new ${contentLabel}`;
+    const link    = `/posts/${postId}`;
+
+    for (const pref of prefs) {
+      await sendNotification(app, {
+        recipient: pref.subscriber_id,
+        sender:    authorId,
+        type:      notifType,
+        message,
+        link,
+      });
+    }
+  } catch (err) {
+    console.error('[Post] notifySubscribers error:', err.message);
+  }
+};
+
 // ─── Create post ───────────────────────────────────────────────────────────
 // POST /api/posts
 exports.createPost = async (req, res) => {
@@ -81,8 +117,10 @@ exports.createPost = async (req, res) => {
     // Send tag notifications — wrapped in its own try/catch so a notification
     // failure never breaks the post creation response
     try {
+      const creator = await User.findById(req.userId).select('username').lean();
+
+      // 1. People-tag notifications
       if (Array.isArray(people_tags) && people_tags.length > 0) {
-        const creator = await User.findById(req.userId).select('username').lean();
         for (const taggedUserId of people_tags) {
           if (taggedUserId.toString() !== req.userId.toString()) {
             await sendNotification(req.app, {
@@ -95,8 +133,13 @@ exports.createPost = async (req, res) => {
           }
         }
       }
+
+      // 2. Subscriber notifications (users who turned on notifications for this author)
+      const postType = type === 'reel' ? 'reel' : 'post';
+      await notifySubscribers(req.app, req.userId, creator.username, post._id, postType);
+
     } catch (notifErr) {
-      console.error('[Post] Tag notification error:', notifErr.message);
+      console.error('[Post] Notification error:', notifErr.message);
     }
 
     const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
@@ -304,6 +347,14 @@ exports.createReel = async (req, res) => {
     });
 
     await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
+
+    // Notify subscribers that this user posted a reel
+    try {
+      const creator = await User.findById(req.userId).select('username').lean();
+      await notifySubscribers(req.app, req.userId, creator.username, post._id, 'reel');
+    } catch (notifErr) {
+      console.error('[Post] Reel subscriber notification error:', notifErr.message);
+    }
 
     const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
     const baseUrl = `${req.protocol}://${req.get('host')}`;

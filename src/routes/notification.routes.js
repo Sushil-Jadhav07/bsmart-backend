@@ -51,6 +51,11 @@ const verifyToken = require('../middleware/auth');
  *             - coins_debited
  *             - story_view
  *             - login_alert
+ *             - subscribed_user_post
+ *             - subscribed_user_reel
+ *             - subscribed_vendor_post
+ *             - subscription_expiring
+ *             - subscription_expired
  *           example: "like"
  *         message:
  *           type: string
