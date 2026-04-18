@@ -4,6 +4,7 @@ const Post = require('../models/Post');
 const StoryItem = require('../models/StoryItem');
 const Ad = require('../models/Ad');
 const Comment = require('../models/Comment');
+const Tweet = require('../models/tweet.model');
 
 const REPORT_REASONS = [
   'I just don\'t like it',
@@ -58,6 +59,15 @@ const resolveContent = async (contentType, contentId) => {
     }).select('_id post_id user.id text').lean();
     if (!item) return { error: { status: 404, message: 'comment not found' } };
     return { ownerId: item.user.id, item };
+  }
+
+  if (contentType === 'tweet') {
+    const item = await Tweet.findOne({
+      _id: objectId,
+      isDeleted: false,
+    }).select('_id author content media').lean();
+    if (!item) return { error: { status: 404, message: 'tweet not found' } };
+    return { ownerId: item.author, item };
   }
 
   return { error: { status: 400, message: 'Invalid content_type' } };

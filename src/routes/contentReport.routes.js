@@ -7,7 +7,7 @@ const ctrl = require('../controllers/contentReport.controller');
  * @swagger
  * tags:
  *   - name: Content Reports
- *     description: Report posts, reels, stories and ads
+ *     description: Report posts, reels, stories, ads, comments and tweets
  */
 
 /**
@@ -41,7 +41,7 @@ router.get('/reasons', auth, ctrl.getReportReasons);
  * @swagger
  * /api/content-reports:
  *   post:
- *     summary: Report a post, reel, story or ad
+ *     summary: Report a post, reel, story, ad, comment or tweet
  *     tags: [Content Reports]
  *     security:
  *       - bearerAuth: []
@@ -55,7 +55,7 @@ router.get('/reasons', auth, ctrl.getReportReasons);
  *             properties:
  *               content_type:
  *                 type: string
- *                 enum: [post, reel, story, ad, comment]
+ *                 enum: [post, reel, story, ad, comment, tweet]
  *               content_id:
  *                 type: string
  *               reason:
@@ -137,7 +137,7 @@ router.get('/my', auth, ctrl.getMyContentReports);
  *         name: content_type
  *         schema:
  *           type: string
- *           enum: [post, reel, story, ad, comment]
+ *           enum: [post, reel, story, ad, comment, tweet]
  *       - in: query
  *         name: status
  *         schema:
