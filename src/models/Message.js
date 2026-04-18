@@ -42,8 +42,12 @@ const messageSchema = new mongoose.Schema({
   },
   mediaType: {
     type: String,
-    enum: ['image', 'video', 'none'],
+    enum: ['image', 'video', 'audio', 'none'],
     default: 'none',
+  },
+  audioDuration: {
+    type: Number,
+    default: null,
   },
   replyTo: {
     messageId: {

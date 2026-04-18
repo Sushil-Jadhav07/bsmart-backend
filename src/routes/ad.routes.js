@@ -3,7 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const rateLimit = require('../middleware/rateLimit');
-const upload = require('../config/multer');
+const { upload } = require('../config/multer');
 const {
   createAd,
   listAds,

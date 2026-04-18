@@ -36,4 +36,29 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-module.exports = upload;
+const audioStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '.webm');
+  }
+});
+
+const audioFileFilter = (req, file, cb) => {
+  const allowed = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/x-m4a'];
+  if (allowed.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only audio files are allowed'));
+  }
+};
+
+const uploadAudio = multer({
+  storage: audioStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: audioFileFilter,
+});
+
+module.exports = { upload, uploadAudio };

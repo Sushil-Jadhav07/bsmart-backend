@@ -5,7 +5,7 @@ const fs = require('fs');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
-const upload = require('../config/multer');
+const { upload } = require('../config/multer');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
 
 // ─── Stories feed rate limiter (dynamic — values set via query params) ───────

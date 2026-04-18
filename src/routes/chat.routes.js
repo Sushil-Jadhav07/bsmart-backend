@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
-const upload = require('../config/multer');
+const { upload, uploadAudio } = require('../config/multer');
 const {
   createConversation,
   getConversations,
@@ -12,6 +12,7 @@ const {
   removeMessageReaction,
   deleteMessage,
   uploadChatMedia,
+  uploadVoiceMessage,
 } = require('../controllers/chat.controller');
 
 /**
@@ -50,7 +51,10 @@ const {
  *           type: string
  *         mediaType:
  *           type: string
- *           enum: [image, video, none]
+ *           enum: [image, video, audio, none]
+ *         audioDuration:
+ *           type: number
+ *           nullable: true
  *         seenBy:
  *           type: array
  *           items:
@@ -248,7 +252,7 @@ router.get('/conversations/:conversationId/messages', verifyToken, getConversati
  *                 type: string
  *               mediaType:
  *                 type: string
- *                 enum: [image, video, none]
+ *                 enum: [image, video, audio, none]
  *     responses:
  *       200:
  *         description: Message created successfully
@@ -266,6 +270,56 @@ router.get('/conversations/:conversationId/messages', verifyToken, getConversati
  *         description: Server error
  */
 router.post('/conversations/:conversationId/messages', verifyToken, createMessage);
+
+/**
+ * @swagger
+ * /api/chat/conversations/{conversationId}/voice:
+ *   post:
+ *     summary: Upload and send a voice message in one step
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               audio:
+ *                 type: string
+ *                 format: binary
+ *               duration:
+ *                 type: string
+ *                 description: Duration in seconds
+ *     responses:
+ *       200:
+ *         description: Voice message created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  '/conversations/:conversationId/voice',
+  verifyToken,
+  uploadAudio.single('audio'),
+  uploadVoiceMessage
+);
 
 /**
  * @swagger

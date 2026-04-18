@@ -494,3 +494,55 @@ exports.uploadChatMedia = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+exports.uploadVoiceMessage = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    const conversation = await findConversationForUser(conversationId, userId);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Conversation not found or not authorized' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No audio file uploaded' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const audioUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    const audioDuration = req.body.duration ? parseFloat(req.body.duration) : null;
+
+    const message = await Message.create({
+      conversationId,
+      sender: userId,
+      text: '',
+      mediaUrl: audioUrl,
+      mediaType: 'audio',
+      audioDuration,
+      seenBy: [userId],
+      seenAt: null,
+    });
+
+    await Conversation.findByIdAndUpdate(conversationId, {
+      lastMessage: message._id,
+      lastMessageAt: message.createdAt,
+    });
+
+    const populatedMessage = await populateMessage(Message.findById(message._id));
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(conversationId)).emit('new-message', populatedMessage.toObject());
+    }
+
+    res.json(populatedMessage);
+  } catch (error) {
+    console.error('[uploadVoiceMessage]', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
