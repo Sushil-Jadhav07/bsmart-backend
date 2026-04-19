@@ -20,10 +20,28 @@ const sanitizeMedia = (media = []) => {
 
   return media
     .filter((item) => item && typeof item === 'object' && item.url && item.type)
-    .map((item) => ({
-      url: item.url,
-      type: item.type,
-    }))
+    .map((item) => {
+      const aspectRatio = Number(item.aspectRatio || item.originalAspect);
+      const cropSettings = item.cropSettings && typeof item.cropSettings === 'object'
+        ? {
+            mode: item.cropSettings.mode || 'original',
+            aspect_ratio: item.cropSettings.aspect_ratio || null,
+            zoom: Number(item.cropSettings.zoom || 1),
+            x: Number(item.cropSettings.x || 0),
+            y: Number(item.cropSettings.y || 0),
+          }
+        : undefined;
+
+      return {
+        url: item.url,
+        type: item.type,
+        aspectRatio: Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : null,
+        originalAspect: Number.isFinite(Number(item.originalAspect)) && Number(item.originalAspect) > 0
+          ? Number(item.originalAspect)
+          : null,
+        ...(cropSettings ? { cropSettings } : {}),
+      };
+    })
     .filter((item) => item.type === 'image');
 };
 

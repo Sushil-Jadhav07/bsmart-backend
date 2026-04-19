@@ -10,6 +10,36 @@ const tweetMediaSchema = new mongoose.Schema({
     enum: ['image'],
     required: true,
   },
+  aspectRatio: {
+    type: Number,
+    default: null,
+  },
+  originalAspect: {
+    type: Number,
+    default: null,
+  },
+  cropSettings: {
+    mode: {
+      type: String,
+      default: 'original',
+    },
+    aspect_ratio: {
+      type: String,
+      default: null,
+    },
+    zoom: {
+      type: Number,
+      default: 1,
+    },
+    x: {
+      type: Number,
+      default: 0,
+    },
+    y: {
+      type: Number,
+      default: 0,
+    },
+  },
 }, { _id: false });
 
 const tweetSchema = new mongoose.Schema({
