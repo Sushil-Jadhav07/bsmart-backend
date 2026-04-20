@@ -112,7 +112,14 @@ exports.createConversation = async (req, res) => {
 exports.getOnlineUsers = async (req, res) => {
   try {
     const onlineUsers = req.app.get('onlineUsers');
-    const onlineUserIds = onlineUsers instanceof Map ? Array.from(onlineUsers.keys()) : [];
+    const onlineUserIds = onlineUsers instanceof Map
+      ? Array.from(onlineUsers.entries())
+          .filter(([, socketIds]) => {
+            if (socketIds instanceof Set) return socketIds.size > 0;
+            return Boolean(socketIds);
+          })
+          .map(([userId]) => String(userId))
+      : [];
     const ids = typeof req.query.ids === 'string'
       ? normalizeUniqueIds(req.query.ids.split(',').map((id) => id.trim()).filter(Boolean))
       : [];

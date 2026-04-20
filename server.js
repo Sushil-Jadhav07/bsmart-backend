@@ -69,21 +69,37 @@ const io = new Server(server, {
 // userId → socketId mapping (in-memory)
 const onlineUsers = new Map();
 
+const emitOnlineUsersUpdate = () => {
+  io.emit('online-users-updated', {
+    onlineUserIds: Array.from(onlineUsers.keys()),
+  });
+};
+
 io.on('connection', (socket) => {
   console.log('[Socket] Connected:', socket.id);
 
   socket.on('register', (userId) => {
     if (!userId) return;
     // If user already has a socket, remove old entry first
-    onlineUsers.set(String(userId), socket.id);
+    const normalizedUserId = String(userId);
+    const socketIds = onlineUsers.get(normalizedUserId) || new Set();
+    socketIds.add(socket.id);
+    onlineUsers.set(normalizedUserId, socketIds);
+    emitOnlineUsersUpdate();
     console.log(`[Socket] User ${userId} registered → ${socket.id}`);
   });
 
   socket.on('disconnect', () => {
-    for (const [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) {
-        onlineUsers.delete(userId);
+    for (const [userId, socketIds] of onlineUsers.entries()) {
+      if (socketIds.has(socket.id)) {
+        socketIds.delete(socket.id);
+        if (!socketIds.size) {
+          onlineUsers.delete(userId);
+        } else {
+          onlineUsers.set(userId, socketIds);
+        }
         console.log(`[Socket] User ${userId} disconnected`);
+        emitOnlineUsersUpdate();
         break;
       }
     }
