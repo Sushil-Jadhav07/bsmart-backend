@@ -26,7 +26,7 @@ const {
  * @swagger
  * tags:
  *   name: Chat
- *   description: Direct message conversations and messages
+ *   description: Direct messages, group chats, requests, and chat messages
  *
  * components:
  *   schemas:
@@ -97,6 +97,30 @@ const {
  *       properties:
  *         _id:
  *           type: string
+ *         isGroup:
+ *           type: boolean
+ *         groupName:
+ *           type: string
+ *         groupAvatar:
+ *           type: string
+ *         groupAdmin:
+ *           oneOf:
+ *             - type: string
+ *             - $ref: '#/components/schemas/ChatParticipant'
+ *         createdBy:
+ *           oneOf:
+ *             - type: string
+ *             - $ref: '#/components/schemas/ChatParticipant'
+ *         isRequest:
+ *           type: boolean
+ *         requestStatus:
+ *           type: string
+ *           enum: [pending, accepted, declined]
+ *         requestedBy:
+ *           nullable: true
+ *           oneOf:
+ *             - type: string
+ *             - $ref: '#/components/schemas/ChatParticipant'
  *         participants:
  *           type: array
  *           items:
@@ -117,13 +141,53 @@ const {
  *         updatedAt:
  *           type: string
  *           format: date-time
+ *     OnlineUsersResponse:
+ *       type: object
+ *       properties:
+ *         onlineUserIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *     CreateGroupConversationRequest:
+ *       type: object
+ *       required: [participantIds, groupName]
+ *       properties:
+ *         participantIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *         groupName:
+ *           type: string
+ *         groupAvatar:
+ *           type: string
+ *     UpdateGroupRequest:
+ *       type: object
+ *       properties:
+ *         groupName:
+ *           type: string
+ *         groupAvatar:
+ *           type: string
+ *     AddGroupMemberRequest:
+ *       type: object
+ *       required: [userId]
+ *       properties:
+ *         userId:
+ *           type: string
+ *     SimpleSuccessResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         conversationDeleted:
+ *           type: boolean
+ *           nullable: true
  */
 
 /**
  * @swagger
  * /api/chat/conversations:
  *   post:
- *     summary: Create or return a direct conversation
+ *     summary: Create or return a direct conversation or pending request
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -154,9 +218,158 @@ const {
  *         description: Server error
  */
 router.post('/conversations', verifyToken, createConversation);
+
+/**
+ * @swagger
+ * /api/chat/groups:
+ *   post:
+ *     summary: Create a new group conversation
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateGroupConversationRequest'
+ *     responses:
+ *       201:
+ *         description: Group conversation created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Conversation'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: One or more participants not found
+ *       500:
+ *         description: Server error
+ */
 router.post('/groups', verifyToken, createGroupConversation);
+
+/**
+ * @swagger
+ * /api/chat/groups/{conversationId}:
+ *   patch:
+ *     summary: Update a group's name or avatar
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateGroupRequest'
+ *     responses:
+ *       200:
+ *         description: Group updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Conversation'
+ *       400:
+ *         description: Invalid conversationId
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only the group admin can update the group
+ *       404:
+ *         description: Group conversation not found
+ *       500:
+ *         description: Server error
+ */
 router.patch('/groups/:conversationId', verifyToken, updateGroup);
+
+/**
+ * @swagger
+ * /api/chat/groups/{conversationId}/members:
+ *   post:
+ *     summary: Add a member to a group conversation
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AddGroupMemberRequest'
+ *     responses:
+ *       200:
+ *         description: Group member added successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Conversation'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only the group admin can add members
+ *       404:
+ *         description: Group conversation or user not found
+ *       500:
+ *         description: Server error
+ */
 router.post('/groups/:conversationId/members', verifyToken, addGroupMember);
+
+/**
+ * @swagger
+ * /api/chat/groups/{conversationId}/members/{userId}:
+ *   delete:
+ *     summary: Remove a member from a group conversation or leave the group
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Group member removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - $ref: '#/components/schemas/Conversation'
+ *                 - $ref: '#/components/schemas/SimpleSuccessResponse'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to remove this member
+ *       404:
+ *         description: Group conversation or member not found
+ *       500:
+ *         description: Server error
+ */
 router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGroupMember);
 
 /**
@@ -167,6 +380,14 @@ router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGrou
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [normal, requests]
+ *           default: normal
+ *         description: Fetch normal conversations or only incoming message requests
  *     responses:
  *       200:
  *         description: Conversations fetched successfully
@@ -182,6 +403,33 @@ router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGrou
  *         description: Server error
  */
 router.get('/conversations', verifyToken, getConversations);
+
+/**
+ * @swagger
+ * /api/chat/online-users:
+ *   get:
+ *     summary: Get currently online user IDs
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: ids
+ *         schema:
+ *           type: string
+ *         description: Optional comma-separated list of user IDs to filter against
+ *     responses:
+ *       200:
+ *         description: Online users fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/OnlineUsersResponse'
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.get('/online-users', verifyToken, getOnlineUsers);
 
 /**
@@ -236,7 +484,73 @@ router.get('/online-users', verifyToken, getOnlineUsers);
  *         description: Server error
  */
 router.get('/conversations/:conversationId/messages', verifyToken, getConversationMessages);
+
+/**
+ * @swagger
+ * /api/chat/conversations/{conversationId}/accept:
+ *   put:
+ *     summary: Accept an incoming message request
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Message request accepted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Conversation'
+ *       400:
+ *         description: Invalid request or request is not pending
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only the recipient can accept
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Server error
+ */
 router.put('/conversations/:conversationId/accept', verifyToken, acceptMessageRequest);
+
+/**
+ * @swagger
+ * /api/chat/conversations/{conversationId}/decline:
+ *   delete:
+ *     summary: Decline an incoming message request
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Message request declined successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SimpleSuccessResponse'
+ *       400:
+ *         description: Invalid request or request is not pending
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only the recipient can decline
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Server error
+ */
 router.delete('/conversations/:conversationId/decline', verifyToken, declineMessageRequest);
 
 /**
