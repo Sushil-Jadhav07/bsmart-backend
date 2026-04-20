@@ -121,6 +121,14 @@ io.on('connection', (socket) => {
     socket.to(data.conversationId).emit('message-reaction-update', data);
   });
 
+  socket.on('group-member-added', (data) => {
+    socket.to(data.conversationId).emit('group-member-added', data);
+  });
+
+  socket.on('group-member-removed', (data) => {
+    socket.to(data.conversationId).emit('group-member-removed', data);
+  });
+
   // Catch any socket-level errors so they don't bubble up and crash the process
   socket.on('error', (err) => {
     console.error('[Socket] Error on socket', socket.id, err.message);

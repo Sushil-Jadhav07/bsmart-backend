@@ -4,7 +4,14 @@ const verifyToken = require('../middleware/auth');
 const { upload, uploadAudio } = require('../config/multer');
 const {
   createConversation,
+  getOnlineUsers,
   getConversations,
+  createGroupConversation,
+  updateGroup,
+  addGroupMember,
+  removeGroupMember,
+  acceptMessageRequest,
+  declineMessageRequest,
   getConversationMessages,
   createMessage,
   markMessageSeen,
@@ -147,6 +154,10 @@ const {
  *         description: Server error
  */
 router.post('/conversations', verifyToken, createConversation);
+router.post('/groups', verifyToken, createGroupConversation);
+router.patch('/groups/:conversationId', verifyToken, updateGroup);
+router.post('/groups/:conversationId/members', verifyToken, addGroupMember);
+router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGroupMember);
 
 /**
  * @swagger
@@ -171,6 +182,7 @@ router.post('/conversations', verifyToken, createConversation);
  *         description: Server error
  */
 router.get('/conversations', verifyToken, getConversations);
+router.get('/online-users', verifyToken, getOnlineUsers);
 
 /**
  * @swagger
@@ -224,6 +236,8 @@ router.get('/conversations', verifyToken, getConversations);
  *         description: Server error
  */
 router.get('/conversations/:conversationId/messages', verifyToken, getConversationMessages);
+router.put('/conversations/:conversationId/accept', verifyToken, acceptMessageRequest);
+router.delete('/conversations/:conversationId/decline', verifyToken, declineMessageRequest);
 
 /**
  * @swagger

@@ -4,6 +4,7 @@ const Comment      = require('../models/Comment');
 const Ad           = require('../models/Ad');
 const AdView       = require('../models/AdView');
 const SavedPost    = require('../models/SavedPost');
+const Follow       = require('../models/Follow');
 const Tweet       = require('../models/tweet.model');
 const TweetLike   = require('../models/tweetLike.model');
 const TweetRepost = require('../models/tweetRepost.model');
@@ -77,6 +78,68 @@ const transformTweet = async (tweet, currentUserId = null) => {
     isLiked: !!liked,
     isReposted: !!reposted,
   };
+};
+
+const loadFeedAds = async (req, feedItems, baseUrl) => {
+  const adSlots = Math.floor(feedItems.length / 5);
+  if (adSlots <= 0) {
+    return feedItems;
+  }
+
+  const [ads, rewarded] = await Promise.all([
+    Ad.find({ status: 'active', isDeleted: false })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, adSlots))
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url gender location')
+      .lean(),
+    AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
+  ]);
+
+  if (!ads.length) {
+    return feedItems;
+  }
+
+  const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
+
+  const normalizedAds = ads.map((ad) => {
+    const normalizedMedia = Array.isArray(ad.media)
+      ? ad.media.map((m) => {
+        const fileUrl = m.fileUrl
+          ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
+          : (m.fileName ? `${baseUrl}/uploads/${m.fileName}` : '');
+        const thumbnails = Array.isArray(m.thumbnails)
+          ? m.thumbnails.map((t) => {
+            const thumbUrl = t.fileUrl
+              ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
+              : (t.fileName ? `${baseUrl}/uploads/${t.fileName}` : '');
+            return { ...t, fileUrl: thumbUrl };
+          })
+          : [];
+        return { ...m, fileUrl, thumbnails };
+      })
+      : [];
+
+    return {
+      item_type:        'ad',
+      ...ad,
+      media:            normalizedMedia,
+      is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
+      is_liked_by_me:   Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
+    };
+  });
+
+  const mixed = [];
+  let adIndex = 0;
+  for (let i = 0; i < feedItems.length; i++) {
+    mixed.push(feedItems[i]);
+    if ((i + 1) % 5 === 0) {
+      mixed.push(normalizedAds[adIndex % normalizedAds.length]);
+      adIndex++;
+    }
+  }
+
+  return mixed;
 };
 
 // ─── Fan-out helper ────────────────────────────────────────────────────────
@@ -194,19 +257,34 @@ exports.getFeed = async (req, res) => {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(50, parseInt(req.query.limit) || 20); // cap at 50
     const skip  = (page - 1) * limit;
+    const tab = ['all', 'following', 'tweets'].includes(req.query.tab) ? req.query.tab : 'all';
+    let followedIds = [];
+
+    if (tab === 'following') {
+      const follows = await Follow.find({ follower_id: req.userId }).select('followed_id').lean();
+      followedIds = follows.map((follow) => follow.followed_id);
+    }
+
+    const postQuery = tab === 'following'
+      ? { user_id: { $in: followedIds } }
+      : {};
+    const tweetQuery = {
+      audience: 'everyone',
+      isDeleted: false,
+      parentTweet: null,
+      ...(tab === 'following' ? { author: { $in: followedIds } } : {}),
+    };
 
     const [posts, saved, tweets] = await Promise.all([
-      Post.find()
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+      tab === 'tweets'
+        ? Promise.resolve([])
+        : Post.find(postQuery)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
       SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
-      Tweet.find({
-        audience: 'everyone',
-        isDeleted: false,
-        parentTweet: null,
-      })
+      Tweet.find(tweetQuery)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -223,71 +301,14 @@ exports.getFeed = async (req, res) => {
     const transformedTweets = await Promise.all(
       tweets.map((tweet) => transformTweet(tweet, req.userId))
     );
-    const feedItems = [...transformedPosts, ...transformedTweets]
+    const feedItems = (tab === 'tweets' ? transformedTweets : [...transformedPosts, ...transformedTweets])
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, limit);
+    const data = tab === 'tweets'
+      ? feedItems
+      : await loadFeedAds(req, feedItems, baseUrl);
 
-    // Interleave ads every 5 posts
-    const adSlots = Math.floor(feedItems.length / 5);
-    if (adSlots <= 0) {
-      return res.json({ page, limit, data: feedItems });
-    }
-
-    const [ads, rewarded] = await Promise.all([
-      Ad.find({ status: 'active', isDeleted: false })
-        .sort({ createdAt: -1 })
-        .limit(Math.max(1, adSlots))
-        .populate('vendor_id', 'business_name logo_url validated')
-        .populate('user_id', 'username full_name avatar_url gender location')
-        .lean(),
-      AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
-    ]);
-
-    if (!ads.length) {
-      return res.json({ page, limit, data: feedItems });
-    }
-
-    const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
-
-    const normalizedAds = ads.map((ad) => {
-      const normalizedMedia = Array.isArray(ad.media)
-        ? ad.media.map((m) => {
-          const fileUrl = m.fileUrl
-            ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
-            : (m.fileName ? `${baseUrl}/uploads/${m.fileName}` : '');
-          const thumbnails = Array.isArray(m.thumbnails)
-            ? m.thumbnails.map((t) => {
-              const thumbUrl = t.fileUrl
-                ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
-                : (t.fileName ? `${baseUrl}/uploads/${t.fileName}` : '');
-              return { ...t, fileUrl: thumbUrl };
-            })
-            : [];
-          return { ...m, fileUrl, thumbnails };
-        })
-        : [];
-
-      return {
-        item_type:        'ad',
-        ...ad,
-        media:            normalizedMedia,
-        is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
-        is_liked_by_me:   Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
-      };
-    });
-
-    // Mix posts and ads: insert one ad after every 5th post
-    const mixed = [];
-    let adIndex = 0;
-    for (let i = 0; i < feedItems.length; i++) {
-      mixed.push(feedItems[i]);
-      if ((i + 1) % 5 === 0) {
-        mixed.push(normalizedAds[adIndex % normalizedAds.length]);
-        adIndex++;
-      }
-    }
-
-    res.json({ page, limit, data: mixed });
+    res.json({ page, limit, data });
   } catch (error) {
     console.error('[Post] getFeed error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

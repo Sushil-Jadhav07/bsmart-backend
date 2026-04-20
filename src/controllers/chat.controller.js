@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const Follow = require('../models/Follow');
 
 const USER_SELECT = 'username full_name avatar_url';
 
@@ -12,12 +13,27 @@ const normalizeParticipantIds = (userIdA, userIdB) => {
   return [String(userIdA), String(userIdB)].sort();
 };
 
+const normalizeUniqueIds = (ids = []) => {
+  return [...new Set(ids.map((id) => String(id)))];
+};
+
 const findConversationForUser = async (conversationId, userId) => {
   return Conversation.findOne({
     _id: conversationId,
     participants: userId,
   });
 };
+
+const populateConversation = (query) => query
+  .populate('participants', USER_SELECT)
+  .populate('groupAdmin', USER_SELECT)
+  .populate('createdBy', USER_SELECT)
+  .populate('requestedBy', USER_SELECT)
+  .populate({
+    path: 'lastMessage',
+    match: { isDeleted: false },
+    populate: { path: 'sender', select: USER_SELECT },
+  });
 
 const populateMessage = (query) => query
   .populate('sender', USER_SELECT)
@@ -65,26 +81,25 @@ exports.createConversation = async (req, res) => {
       return res.status(404).json({ message: 'Participant not found' });
     }
 
-    let conversation = await Conversation.findOne({
+    let conversation = await populateConversation(Conversation.findOne({
       participants: { $all: [myId, participantId], $size: 2 },
-    })
-      .populate('participants', USER_SELECT)
-      .populate({
-        path: 'lastMessage',
-        match: { isDeleted: false },
-        populate: { path: 'sender', select: USER_SELECT },
-      });
+    }));
 
     if (!conversation) {
+      const [myFollow, participantFollow] = await Promise.all([
+        Follow.exists({ follower_id: myId, followed_id: participantId }),
+        Follow.exists({ follower_id: participantId, followed_id: myId }),
+      ]);
+      const isMutual = !!myFollow && !!participantFollow;
       const participants = normalizeParticipantIds(myId, participantId);
-      conversation = await Conversation.create({ participants });
-      conversation = await Conversation.findById(conversation._id)
-        .populate('participants', USER_SELECT)
-        .populate({
-          path: 'lastMessage',
-          match: { isDeleted: false },
-          populate: { path: 'sender', select: USER_SELECT },
-        });
+
+      conversation = await Conversation.create({
+        participants,
+        isRequest: !isMutual,
+        requestStatus: isMutual ? 'accepted' : 'pending',
+        requestedBy: isMutual ? null : myId,
+      });
+      conversation = await populateConversation(Conversation.findById(conversation._id));
     }
 
     res.json(conversation);
@@ -94,18 +109,47 @@ exports.createConversation = async (req, res) => {
   }
 };
 
+exports.getOnlineUsers = async (req, res) => {
+  try {
+    const onlineUsers = req.app.get('onlineUsers');
+    const onlineUserIds = onlineUsers instanceof Map ? Array.from(onlineUsers.keys()) : [];
+    const ids = typeof req.query.ids === 'string'
+      ? normalizeUniqueIds(req.query.ids.split(',').map((id) => id.trim()).filter(Boolean))
+      : [];
+
+    const filteredIds = ids.length
+      ? ids.filter((id) => onlineUserIds.includes(String(id)))
+      : onlineUserIds;
+
+    res.json({ onlineUserIds: filteredIds });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getConversations = async (req, res) => {
   try {
     const userId = req.userId;
+    const type = req.query.type === 'requests' ? 'requests' : 'normal';
+    const query = type === 'requests'
+      ? {
+          participants: userId,
+          isRequest: true,
+          requestStatus: 'pending',
+          requestedBy: { $ne: userId },
+        }
+      : {
+          participants: userId,
+          $or: [
+            { isRequest: false },
+            { isRequest: true, requestStatus: 'accepted' },
+          ],
+        };
 
-    const conversations = await Conversation.find({ participants: userId })
-      .sort({ lastMessageAt: -1 })
-      .populate('participants', USER_SELECT)
-      .populate({
-        path: 'lastMessage',
-        match: { isDeleted: false },
-        populate: { path: 'sender', select: USER_SELECT },
-      });
+    const conversations = await populateConversation(
+      Conversation.find(query).sort({ lastMessageAt: -1 })
+    );
 
     const conversationIds = conversations.map((conversation) => conversation._id);
     let unreadMap = new Map();
@@ -138,6 +182,294 @@ exports.getConversations = async (req, res) => {
     });
 
     res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.createGroupConversation = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const participantIds = Array.isArray(req.body.participantIds) ? req.body.participantIds : [];
+    const groupName = typeof req.body.groupName === 'string' ? req.body.groupName.trim() : '';
+    const groupAvatar = typeof req.body.groupAvatar === 'string' ? req.body.groupAvatar.trim() : '';
+    const uniqueParticipantIds = normalizeUniqueIds(
+      participantIds.filter((participantId) => String(participantId) !== String(userId))
+    );
+
+    if (!groupName) {
+      return res.status(400).json({ message: 'groupName is required' });
+    }
+
+    if (uniqueParticipantIds.length < 2) {
+      return res.status(400).json({ message: 'participantIds must include at least 2 other users' });
+    }
+
+    if (uniqueParticipantIds.length > 199) {
+      return res.status(400).json({ message: 'A group can have at most 200 participants' });
+    }
+
+    if (uniqueParticipantIds.some((participantId) => !isValidObjectId(participantId))) {
+      return res.status(400).json({ message: 'Invalid participantIds' });
+    }
+
+    const users = await User.find({ _id: { $in: uniqueParticipantIds } }).select('_id');
+    if (users.length !== uniqueParticipantIds.length) {
+      return res.status(404).json({ message: 'One or more participants not found' });
+    }
+
+    const conversation = await Conversation.create({
+      participants: [String(userId), ...uniqueParticipantIds],
+      isGroup: true,
+      groupName,
+      groupAvatar,
+      groupAdmin: userId,
+      createdBy: userId,
+      isRequest: false,
+      requestStatus: 'accepted',
+    });
+
+    const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
+
+    res.status(201).json(populatedConversation);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateGroup = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+    const groupName = typeof req.body.groupName === 'string' ? req.body.groupName.trim() : undefined;
+    const groupAvatar = typeof req.body.groupAvatar === 'string' ? req.body.groupAvatar.trim() : undefined;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    const conversation = await findConversationForUser(conversationId, userId);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ message: 'Group conversation not found' });
+    }
+
+    if (String(conversation.groupAdmin) !== String(userId)) {
+      return res.status(403).json({ message: 'Only the group admin can update this group' });
+    }
+
+    if (typeof groupName !== 'undefined') {
+      conversation.groupName = groupName;
+    }
+
+    if (typeof groupAvatar !== 'undefined') {
+      conversation.groupAvatar = groupAvatar;
+    }
+
+    await conversation.save();
+
+    const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
+    res.json(populatedConversation);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.addGroupMember = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+    const memberId = req.body.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    if (!memberId) {
+      return res.status(400).json({ message: 'userId is required' });
+    }
+
+    if (!isValidObjectId(memberId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    const conversation = await findConversationForUser(conversationId, userId);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ message: 'Group conversation not found' });
+    }
+
+    if (String(conversation.groupAdmin) !== String(userId)) {
+      return res.status(403).json({ message: 'Only the group admin can add members' });
+    }
+
+    if (conversation.participants.some((participantId) => String(participantId) === String(memberId))) {
+      return res.status(400).json({ message: 'User is already a group member' });
+    }
+
+    if (conversation.participants.length >= 200) {
+      return res.status(400).json({ message: 'A group can have at most 200 participants' });
+    }
+
+    const member = await User.findById(memberId).select('_id');
+    if (!member) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    conversation.participants.push(memberId);
+    await conversation.save();
+
+    const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
+    const io = req.app.get('io');
+
+    if (io) {
+      io.to(String(conversationId)).emit('group-member-added', {
+        conversationId: String(conversationId),
+        userId: String(memberId),
+      });
+    }
+
+    res.json(populatedConversation);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.removeGroupMember = async (req, res) => {
+  try {
+    const { conversationId, userId: memberId } = req.params;
+    const currentUserId = req.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    if (!isValidObjectId(memberId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    const conversation = await findConversationForUser(conversationId, currentUserId);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ message: 'Group conversation not found' });
+    }
+
+    const isAdmin = String(conversation.groupAdmin) === String(currentUserId);
+    const isSelf = String(memberId) === String(currentUserId);
+
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({ message: 'Not authorized to remove this member' });
+    }
+
+    if (!conversation.participants.some((participantId) => String(participantId) === String(memberId))) {
+      return res.status(404).json({ message: 'User is not a group member' });
+    }
+
+    const updatedParticipants = conversation.participants.filter(
+      (participantId) => String(participantId) !== String(memberId)
+    );
+
+    if (updatedParticipants.length < 2) {
+      await Message.deleteMany({ conversationId: conversation._id });
+      await conversation.deleteOne();
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(String(conversationId)).emit('group-member-removed', {
+          conversationId: String(conversationId),
+          userId: String(memberId),
+        });
+      }
+
+      return res.json({ success: true, conversationDeleted: true });
+    }
+
+    conversation.participants = updatedParticipants;
+
+    if (String(conversation.groupAdmin) === String(memberId)) {
+      conversation.groupAdmin = updatedParticipants[0];
+    }
+
+    await conversation.save();
+
+    const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
+    const io = req.app.get('io');
+
+    if (io) {
+      io.to(String(conversationId)).emit('group-member-removed', {
+        conversationId: String(conversationId),
+        userId: String(memberId),
+      });
+    }
+
+    res.json(populatedConversation);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.acceptMessageRequest = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    const conversation = await findConversationForUser(conversationId, userId);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    if (!conversation.isRequest || conversation.requestStatus !== 'pending') {
+      return res.status(400).json({ message: 'Message request is not pending' });
+    }
+
+    if (String(conversation.requestedBy) === String(userId)) {
+      return res.status(403).json({ message: 'Only the recipient can accept this message request' });
+    }
+
+    conversation.isRequest = false;
+    conversation.requestStatus = 'accepted';
+    await conversation.save();
+
+    const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
+    res.json(populatedConversation);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.declineMessageRequest = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    const conversation = await findConversationForUser(conversationId, userId);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    if (!conversation.isRequest || conversation.requestStatus !== 'pending') {
+      return res.status(400).json({ message: 'Message request is not pending' });
+    }
+
+    if (String(conversation.requestedBy) === String(userId)) {
+      return res.status(403).json({ message: 'Only the recipient can decline this message request' });
+    }
+
+    await Message.deleteMany({ conversationId: conversation._id });
+    await conversation.deleteOne();
+
+    res.json({ success: true });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -218,6 +550,10 @@ exports.createMessage = async (req, res) => {
     const conversation = await findConversationForUser(conversationId, userId);
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    if (conversation.isRequest && conversation.requestStatus === 'pending' && String(conversation.requestedBy) !== String(userId)) {
+      return res.status(403).json({ message: 'You cannot reply until this message request is accepted' });
     }
 
     let replyTo = undefined;
@@ -507,6 +843,10 @@ exports.uploadVoiceMessage = async (req, res) => {
     const conversation = await findConversationForUser(conversationId, userId);
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found or not authorized' });
+    }
+
+    if (conversation.isRequest && conversation.requestStatus === 'pending' && String(conversation.requestedBy) !== String(userId)) {
+      return res.status(403).json({ message: 'You cannot reply until this message request is accepted' });
     }
 
     if (!req.file) {
