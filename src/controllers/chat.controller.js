@@ -144,6 +144,7 @@ exports.getConversations = async (req, res) => {
           $or: [
             { isRequest: false },
             { isRequest: true, requestStatus: 'accepted' },
+            { isRequest: true, requestStatus: 'pending', requestedBy: userId },
           ],
         };
 
