@@ -188,6 +188,7 @@ const {
  * /api/chat/conversations:
  *   post:
  *     summary: Create or return a direct conversation or pending request
+ *     description: Creates a normal direct chat for mutual followers, otherwise creates or returns a pending message request. Existing pending direct chats are automatically converted to normal chats once the follow relationship becomes mutual.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -377,6 +378,7 @@ router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGrou
  * /api/chat/conversations:
  *   get:
  *     summary: Get all conversations for the logged-in user
+ *     description: Returns normal chats or incoming message requests depending on the type query. Pending direct chats are automatically normalized to accepted chats when both users follow each other.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -490,6 +492,7 @@ router.get('/conversations/:conversationId/messages', verifyToken, getConversati
  * /api/chat/conversations/{conversationId}/accept:
  *   put:
  *     summary: Accept an incoming message request
+ *     description: Moves a pending incoming request into the normal chat list by marking it as accepted.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -524,6 +527,7 @@ router.put('/conversations/:conversationId/accept', verifyToken, acceptMessageRe
  * /api/chat/conversations/{conversationId}/decline:
  *   delete:
  *     summary: Decline an incoming message request
+ *     description: Deletes a pending incoming request conversation and its messages.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []

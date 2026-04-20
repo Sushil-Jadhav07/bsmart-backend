@@ -17,6 +17,58 @@ const normalizeUniqueIds = (ids = []) => {
   return [...new Set(ids.map((id) => String(id)))];
 };
 
+const getParticipantObjectId = (participant) => participant?._id || participant;
+
+const syncDirectConversationRequestState = async (conversation) => {
+  if (
+    !conversation
+    || conversation.isGroup
+    || !conversation.isRequest
+    || conversation.requestStatus !== 'pending'
+  ) {
+    return conversation;
+  }
+
+  const participantIds = normalizeUniqueIds(
+    (conversation.participants || []).map((participant) => getParticipantObjectId(participant)).filter(Boolean)
+  );
+
+  if (participantIds.length !== 2) {
+    return conversation;
+  }
+
+  const [participantA, participantB] = participantIds;
+  const [aFollowsB, bFollowsA] = await Promise.all([
+    Follow.exists({ follower_id: participantA, followed_id: participantB }),
+    Follow.exists({ follower_id: participantB, followed_id: participantA }),
+  ]);
+
+  if (!aFollowsB || !bFollowsA) {
+    return conversation;
+  }
+
+  conversation.isRequest = false;
+  conversation.requestStatus = 'accepted';
+  conversation.requestedBy = null;
+  await conversation.save();
+  return conversation;
+};
+
+const syncUserPendingConversationRequests = async (userId) => {
+  const pendingConversations = await Conversation.find({
+    participants: userId,
+    isGroup: false,
+    isRequest: true,
+    requestStatus: 'pending',
+  }).select('_id participants isGroup isRequest requestStatus requestedBy');
+
+  if (!pendingConversations.length) {
+    return;
+  }
+
+  await Promise.all(pendingConversations.map((conversation) => syncDirectConversationRequestState(conversation)));
+};
+
 const findConversationForUser = async (conversationId, userId) => {
   return Conversation.findOne({
     _id: conversationId,
@@ -85,6 +137,11 @@ exports.createConversation = async (req, res) => {
       participants: { $all: [myId, participantId], $size: 2 },
     }));
 
+    if (conversation) {
+      conversation = await syncDirectConversationRequestState(conversation);
+      conversation = await populateConversation(Conversation.findById(conversation._id));
+    }
+
     if (!conversation) {
       const [myFollow, participantFollow] = await Promise.all([
         Follow.exists({ follower_id: myId, followed_id: participantId }),
@@ -138,6 +195,7 @@ exports.getOnlineUsers = async (req, res) => {
 exports.getConversations = async (req, res) => {
   try {
     const userId = req.userId;
+    await syncUserPendingConversationRequests(userId);
     const type = req.query.type === 'requests' ? 'requests' : 'normal';
     const query = type === 'requests'
       ? {
