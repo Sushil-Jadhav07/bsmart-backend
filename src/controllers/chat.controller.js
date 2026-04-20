@@ -230,6 +230,21 @@ exports.createGroupConversation = async (req, res) => {
       requestStatus: 'accepted',
     });
 
+    const systemMessage = await Message.create({
+      conversationId: conversation._id,
+      sender: userId,
+      text: 'Created the group.',
+      mediaUrl: '',
+      mediaType: 'none',
+      seenBy: [userId],
+      seenAt: null,
+    });
+
+    await Conversation.findByIdAndUpdate(conversation._id, {
+      lastMessage: systemMessage._id,
+      lastMessageAt: systemMessage.createdAt,
+    });
+
     const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
 
     res.status(201).json(populatedConversation);
