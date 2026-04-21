@@ -47,6 +47,19 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
     ? savedSet.has(postObj._id.toString())
     : false;
 
+  const explicitCommentCount =
+    postObj.commentsCount
+    ?? postObj.comments_count
+    ?? postObj.commentCount
+    ?? postObj.comment_count;
+  const normalizedCommentCount = Number.isFinite(Number(explicitCommentCount))
+    ? Number(explicitCommentCount)
+    : (Array.isArray(postObj.comments) ? postObj.comments.length : 0);
+  postObj.commentsCount = normalizedCommentCount;
+  postObj.comments_count = normalizedCommentCount;
+  postObj.commentCount = normalizedCommentCount;
+  postObj.comment_count = normalizedCommentCount;
+
   return postObj;
 };
 
@@ -57,9 +70,23 @@ const transformTweet = async (tweet, currentUserId = null) => {
     currentUserId ? TweetRepost.exists({ user: currentUserId, tweet: tweetObj._id }) : false,
   ]);
 
+  const explicitCommentCount =
+    tweetObj.commentsCount
+    ?? tweetObj.comments_count
+    ?? tweetObj.commentCount
+    ?? tweetObj.comment_count
+    ?? tweetObj.repliesCount;
+  const normalizedCommentCount = Number.isFinite(Number(explicitCommentCount))
+    ? Number(explicitCommentCount)
+    : (Array.isArray(tweetObj.comments) ? tweetObj.comments.length : 0);
+
   return {
     item_type: 'tweet',
     ...tweetObj,
+    commentsCount: normalizedCommentCount,
+    comments_count: normalizedCommentCount,
+    commentCount: normalizedCommentCount,
+    comment_count: normalizedCommentCount,
     author: tweetObj.author ? {
       ...(tweetObj.author.toObject ? tweetObj.author.toObject() : tweetObj.author),
       name: tweetObj.author.full_name || '',
@@ -123,6 +150,10 @@ const loadFeedAds = async (req, feedItems, baseUrl) => {
     return {
       item_type:        'ad',
       ...ad,
+      commentsCount: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      comments_count: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      commentCount: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      comment_count: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
       media:            normalizedMedia,
       is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
       is_liked_by_me:   Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
