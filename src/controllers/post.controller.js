@@ -22,6 +22,11 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
 
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => {
+      const rawFileName = item.fileName || '';
+      const inferredIsVideoByName = /\.(mp4|mov|webm|ogg|mkv|m4v)$/i.test(String(rawFileName));
+      const normalizedType = (item.type === 'video' || item.media_type === 'video' || (postObj.type === 'reel' && inferredIsVideoByName))
+        ? 'video'
+        : (item.type || 'image');
       const fileUrl = item.fileName ? `${baseUrl}/uploads/${item.fileName}` : item.fileUrl;
       let thumbnailArray = [];
       if (Array.isArray(item.thumbnails)) {
@@ -35,7 +40,7 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
           fileUrl: `${baseUrl}/uploads/${item.thumbnail.fileName}`,
         }];
       }
-      return { ...item, fileUrl, thumbnail: thumbnailArray };
+      return { ...item, type: normalizedType, media_type: normalizedType, fileUrl, thumbnail: thumbnailArray };
     });
   }
 
@@ -421,6 +426,7 @@ exports.createReel = async (req, res) => {
 
     const normalizedMedia = media.map(m => {
       const nm = { ...m };
+      nm.type = 'video';
       if (Array.isArray(nm.thumbnail))              { nm.thumbnails = nm.thumbnail; delete nm.thumbnail; }
       if (nm['finalLength-start'] !== undefined)    { nm.finalLength_start = nm['finalLength-start']; }
       if (nm['finallength-end'] !== undefined)      { nm.finalLength_end = nm['finallength-end']; }
