@@ -82,9 +82,6 @@ exports.register = async (req, res) => {
       address,
       role,
       company_details,
-      // ── `credits` is intentionally removed from destructuring.
-      // All new users (member & vendor) start with 0 coins.
-      // Vendors receive coins only when they purchase a package.
     } = req.body;
 
     // 0. Role Validation
@@ -142,14 +139,11 @@ exports.register = async (req, res) => {
       ...(memberAddress ? { address: memberAddress } : {})
     });
 
-    // ── Wallet always starts at 0 for every role ──────────────────────────
+    // Wallet always starts at 0 for every role
     const wallet = await Wallet.create({
       user_id: user._id,
       balance: 0
     });
-    // No VENDOR_REGISTRATION_CREDIT transaction is created here.
-    // Coins are granted only when the vendor purchases a package via
-    // POST /api/vendor-packages/:packageId/buy
 
     if (userRole === 'member') {
       await Member.create({ user_id: user._id });
@@ -170,7 +164,7 @@ exports.register = async (req, res) => {
         social_media_links: {},
         validated: false,
         profile_completion_percentage: 30,
-        credits: 0,           // always zero at registration
+        credits: 0,
         credits_expires_at: null
       });
     }
@@ -202,6 +196,7 @@ exports.register = async (req, res) => {
         location: user.location,
         ...(userRole === 'member' ? { address: user.address } : {}),
         role: user.role,
+        isPrivate: user.isPrivate ?? false,   // ← ADDED
         twoFA: {
           enabled: !!user.twoFA?.enabled
         },
@@ -261,9 +256,7 @@ exports.googleLogin = async (req, res) => {
     const client = new OAuth2Client();
     let ticket;
     try {
-      ticket = await client.verifyIdToken({
-        idToken: id_token,
-      });
+      ticket = await client.verifyIdToken({ idToken: id_token });
     } catch (e) {
       console.error('Google token verification failed:', e.message);
       return res.status(401).json({ message: 'Invalid Google token' });
@@ -314,6 +307,7 @@ exports.googleLogin = async (req, res) => {
         gender: user.gender,
         location: user.location,
         role: user.role,
+        isPrivate: user.isPrivate ?? false,   // ← ADDED
         twoFA: {
           enabled: !!user.twoFA?.enabled
         },
@@ -474,6 +468,7 @@ exports.login = async (req, res) => {
         gender: user.gender,
         location: user.location,
         role: user.role,
+        isPrivate: user.isPrivate ?? false,   // ← ADDED
         twoFA: {
           enabled: !!user.twoFA?.enabled
         },
@@ -525,9 +520,14 @@ exports.getMe = async (req, res) => {
     if (wallet) {
       userData.wallet = wallet;
     }
+
     userData.twoFA = {
       enabled: !!user.twoFA?.enabled
     };
+
+    // isPrivate is already included via toObject() — ensure it's always a boolean
+    userData.isPrivate = userData.isPrivate ?? false;   // ← ADDED
+
     if (vendorData) {
       Object.assign(userData, vendorData);
     }

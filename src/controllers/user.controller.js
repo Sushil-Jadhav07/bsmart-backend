@@ -46,8 +46,9 @@ exports.getAllUsers = async (req, res) => {
       }
 
       const userObj = user.toObject();
-      userObj.gender = (userObj.gender !== undefined && userObj.gender !== null) ? String(userObj.gender) : '';
+      userObj.gender   = (userObj.gender   !== undefined && userObj.gender   !== null) ? String(userObj.gender)   : '';
       userObj.location = (userObj.location !== undefined && userObj.location !== null) ? String(userObj.location) : '';
+      userObj.isPrivate = userObj.isPrivate ?? false;   // ← ADDED
       result.push({
         ...userObj,
         posts: enrichedPosts
@@ -61,9 +62,9 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// @desc    Get user profile
+// @desc    Get user profile by ID
 // @route   GET /api/users/:id
-// @access  Public (or Private depending on requirement)
+// @access  Public
 exports.getUserById = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -80,14 +81,16 @@ exports.getUserById = async (req, res) => {
     const obj = user.toObject ? user.toObject() : user;
 
     // Force gender and location to always be present as strings for ALL roles
-    // Old MongoDB records created before these schema fields existed return undefined
-    obj.gender = (obj.gender !== undefined && obj.gender !== null) ? String(obj.gender) : '';
+    obj.gender   = (obj.gender   !== undefined && obj.gender   !== null) ? String(obj.gender)   : '';
     obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+
+    obj.isPrivate = obj.isPrivate ?? false;   // ← ADDED
 
     obj.validated = validated;
     if (vendor) {
       obj.vendor_id = vendor._id;
     }
+
     res.json(obj);
 
   } catch (error) {
@@ -127,7 +130,7 @@ exports.listUsersProfiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const users = await User.find({})
-      .select('_id username full_name avatar_url phone role gender location followers_count following_count createdAt updatedAt')
+      .select('_id username full_name avatar_url phone role gender location followers_count following_count isPrivate createdAt updatedAt')  // ← isPrivate added to select
       .sort({ createdAt: -1 })
       .lean();
     const ids = users.map(u => u._id);
@@ -135,9 +138,9 @@ exports.listUsersProfiles = async (req, res) => {
     const vmap = new Map(vendors.map(v => [v.user_id.toString(), v]));
     const results = [];
     for (const u of users) {
-      // Force gender and location to always be strings for ALL roles
-      u.gender = (u.gender !== undefined && u.gender !== null) ? String(u.gender) : '';
+      u.gender   = (u.gender   !== undefined && u.gender   !== null) ? String(u.gender)   : '';
       u.location = (u.location !== undefined && u.location !== null) ? String(u.location) : '';
+      u.isPrivate = u.isPrivate ?? false;   // ← ADDED
       const vendor = vmap.get(u._id.toString());
       u.validated = vendor ? !!vendor.validated : false;
       if (vendor) {
@@ -174,17 +177,15 @@ exports.listUsersProfiles = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 exports.updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
 
-    // Check if user is authorized (updating own profile or admin)
-    // Note: Assuming req.user is populated by auth middleware
     if (req.user.id !== userId && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to update this profile' });
     }
 
-    // Update fields
     const { full_name, bio, avatar_url, phone, username, age, gender, location, address, twoFA } = req.body;
 
     const normalizeAddress = (raw = {}) => {
@@ -200,17 +201,16 @@ exports.updateUser = async (req, res) => {
       };
     };
 
-    // Build update object
     const updateFields = {};
-    if (full_name) updateFields.full_name = full_name;
-    if (bio) updateFields.bio = bio;
-    if (avatar_url) updateFields.avatar_url = avatar_url;
-    if (phone) updateFields.phone = phone;
-    if (username) updateFields.username = username;
-    if (typeof age !== 'undefined') updateFields.age = age;
-    if (typeof gender !== 'undefined') updateFields.gender = gender;
+    if (full_name)                  updateFields.full_name  = full_name;
+    if (bio)                        updateFields.bio        = bio;
+    if (avatar_url)                 updateFields.avatar_url = avatar_url;
+    if (phone)                      updateFields.phone      = phone;
+    if (username)                   updateFields.username   = username;
+    if (typeof age      !== 'undefined') updateFields.age      = age;
+    if (typeof gender   !== 'undefined') updateFields.gender   = gender;
     if (typeof location !== 'undefined') updateFields.location = location;
-    if (typeof address !== 'undefined') updateFields.address = normalizeAddress(address);
+    if (typeof address  !== 'undefined') updateFields.address  = normalizeAddress(address);
     if (typeof twoFA !== 'undefined' && typeof twoFA === 'object' && typeof twoFA.enabled === 'boolean') {
       updateFields.twoFA = { enabled: twoFA.enabled };
     }
@@ -272,21 +272,16 @@ exports.deleteUser = async (req, res) => {
   try {
     const userId = req.params.id;
 
-    // Check if user is authorized (deleting own profile or admin)
     if (req.userId.toString() !== userId.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to delete this profile' });
     }
 
-    // 1. Find user
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // 2. Delete user's posts
     await Post.deleteMany({ user_id: userId });
-
-    // 3. Delete user
     await User.findByIdAndDelete(userId);
 
     res.json({ message: 'User and all associated data deleted successfully' });

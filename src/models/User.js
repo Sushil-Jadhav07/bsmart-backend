@@ -114,7 +114,17 @@ const userSchema = new mongoose.Schema({
   },
   deletedAt: {
     type: Date
-  }
+  },
+
+isPrivate: {
+  type: Boolean,
+  default: false,
+},
+
+followRequests: [
+  { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+],
+
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt
 });
