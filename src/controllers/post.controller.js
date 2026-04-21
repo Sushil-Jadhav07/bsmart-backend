@@ -16,6 +16,12 @@ const UserNotificationPreference = require('../models/UserNotificationPreference
 // Adds fileUrl, is_liked_by_me, is_saved_by_me to each post.
 const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => {
   const postObj = post.toObject ? post.toObject() : post;
+  const toAbsolute = (value) => {
+    if (!value) return value;
+    const str = String(value);
+    if (str.startsWith('http')) return str;
+    return `${baseUrl}${str.startsWith('/') ? '' : '/'}${str}`;
+  };
 
   postObj.post_id = postObj._id;
   postObj.item_type = postObj.type === 'reel' ? 'reel' : 'post';
@@ -23,16 +29,19 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => {
       const rawFileName = item.fileName || '';
-      const inferredIsVideoByName = /\.(mp4|mov|webm|ogg|mkv|m4v)$/i.test(String(rawFileName));
-      const normalizedType = (item.type === 'video' || item.media_type === 'video' || (postObj.type === 'reel' && inferredIsVideoByName))
+      const rawMediaUrl = item.fileUrl || item.url || '';
+      const inferredIsVideoByName = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)$/i.test(String(rawFileName));
+      const inferredIsVideoByUrl = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)(\?.*)?$/i.test(String(rawMediaUrl));
+      const normalizedType = (item.type === 'video' || item.media_type === 'video' || (postObj.type === 'reel' && (inferredIsVideoByName || inferredIsVideoByUrl)))
         ? 'video'
         : (item.type || 'image');
-      const fileUrl = item.fileName ? `${baseUrl}/uploads/${item.fileName}` : item.fileUrl;
+      const fileUrl = item.fileName ? `${baseUrl}/uploads/${item.fileName}` : toAbsolute(item.fileUrl);
+      const url = item.url ? toAbsolute(item.url) : fileUrl;
       let thumbnailArray = [];
       if (Array.isArray(item.thumbnails)) {
         thumbnailArray = item.thumbnails.map(t => ({
           ...t,
-          fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : t.fileUrl,
+          fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : toAbsolute(t.fileUrl),
         }));
       } else if (item.thumbnail && item.thumbnail.fileName) {
         thumbnailArray = [{
@@ -40,7 +49,7 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
           fileUrl: `${baseUrl}/uploads/${item.thumbnail.fileName}`,
         }];
       }
-      return { ...item, type: normalizedType, media_type: normalizedType, fileUrl, thumbnail: thumbnailArray };
+      return { ...item, type: normalizedType, media_type: normalizedType, fileUrl, url, thumbnail: thumbnailArray };
     });
   }
 
