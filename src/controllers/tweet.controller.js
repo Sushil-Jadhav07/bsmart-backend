@@ -115,11 +115,20 @@ const mapRepostAuthor = (repostOf) => {
 
 const mapTweetDoc = (tweet, options = {}) => {
   const tweetObj = tweet.toObject ? tweet.toObject() : { ...tweet };
+  const resolvedCommentsCount = Number.isFinite(options.commentsCount)
+    ? options.commentsCount
+    : (tweetObj.commentsCount || 0);
+  const resolvedCommentsTotal = Number.isFinite(options.commentsTotal)
+    ? options.commentsTotal
+    : resolvedCommentsCount;
 
   return {
     ...tweetObj,
     author: mapAuthor(tweetObj.author),
     repostOf: mapRepostAuthor(tweetObj.repostOf),
+    commentsCount: resolvedCommentsCount,
+    comments_count: resolvedCommentsCount,
+    commentsTotal: resolvedCommentsTotal,
     isLiked: !!options.isLiked,
     isReposted: !!options.isReposted,
   };
@@ -130,17 +139,44 @@ const decorateTweets = async (tweets, userId) => {
 
   const tweetIds = tweets.map((tweet) => tweet._id);
 
-  const [likes, reposts] = await Promise.all([
+  const [likes, reposts, commentStats] = await Promise.all([
     TweetLike.find({ user: userId, tweet: { $in: tweetIds } }).select('tweet').lean(),
     TweetRepost.find({ user: userId, tweet: { $in: tweetIds } }).select('tweet').lean(),
+    TweetComment.aggregate([
+      {
+        $match: {
+          tweet_id: { $in: tweetIds },
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: '$tweet_id',
+          total: { $sum: 1 },
+          topLevel: {
+            $sum: {
+              $cond: [{ $eq: ['$parent_id', null] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
   ]);
 
   const likedSet = new Set(likes.map((item) => item.tweet.toString()));
   const repostSet = new Set(reposts.map((item) => item.tweet.toString()));
+  const commentStatMap = new Map(
+    commentStats.map((item) => [
+      item._id.toString(),
+      { total: item.total || 0, topLevel: item.topLevel || 0 },
+    ])
+  );
 
   return tweets.map((tweet) => mapTweetDoc(tweet, {
     isLiked: likedSet.has(tweet._id.toString()),
     isReposted: repostSet.has(tweet._id.toString()),
+    commentsCount: commentStatMap.get(tweet._id.toString())?.topLevel ?? 0,
+    commentsTotal: commentStatMap.get(tweet._id.toString())?.total ?? 0,
   }));
 };
 
