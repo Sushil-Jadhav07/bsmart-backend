@@ -3,6 +3,14 @@ const User = require('../models/User');
 const AdView = require('../models/AdView');
 const mongoose = require('mongoose');
 
+const DEFAULT_AD_CATEGORIES = [
+  'Accessories',
+  'Electronics',
+  'Fashion',
+  'Food',
+  'Travel',
+];
+
 // ─── Admin Ad Management ────────────────────────────────────────────────────
 
 /**
@@ -172,7 +180,21 @@ exports.searchAds = async (req, res) => {
 
 exports.createAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 exports.getUserAdsWithComments = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
-exports.getAdCategories = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+exports.getAdCategories = async (req, res) => {
+  try {
+    const fromDb = await Ad.distinct('category', { isDeleted: false });
+    const normalizedFromDb = fromDb
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    const categories = Array.from(new Set([...DEFAULT_AD_CATEGORIES, ...normalizedFromDb])).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+    return res.json({ categories });
+  } catch (error) {
+    console.error('[Ad] getAdCategories error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 exports.addAdCategory = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 exports.likeAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
 exports.dislikeAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
