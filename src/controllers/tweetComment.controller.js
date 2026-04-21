@@ -3,6 +3,27 @@ const Tweet = require('../models/tweet.model');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 
+const toCommentResponse = (commentDoc, currentUserId, replyCount = 0) => {
+  const comment = commentDoc.toObject ? commentDoc.toObject() : commentDoc;
+  const likes = Array.isArray(comment.likes) ? comment.likes : [];
+  const normalizedUserId = currentUserId ? currentUserId.toString() : null;
+  const isLikedByMe = normalizedUserId
+    ? likes.some((id) => id && id.toString() === normalizedUserId)
+    : false;
+  const normalizedLikesCount = Number.isInteger(comment.likes_count)
+    ? comment.likes_count
+    : likes.length;
+
+  return {
+    ...comment,
+    comment_id: comment._id,
+    likes_count: normalizedLikesCount,
+    is_liked_by_me: isLikedByMe,
+    reply_count: replyCount,
+    replies_count: replyCount,
+  };
+};
+
 exports.addTweetComment = async (req, res) => {
   try {
     const { tweetId } = req.params;
@@ -94,10 +115,33 @@ exports.getTweetComments = async (req, res) => {
       isDeleted: false,
     }).sort({ createdAt: -1 });
 
+    if (!commentsRaw.length) {
+      return res.json([]);
+    }
+
+    const commentIds = commentsRaw.map((comment) => comment._id);
+    const replyCountsRaw = await TweetComment.aggregate([
+      {
+        $match: {
+          parent_id: { $in: commentIds },
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: '$parent_id',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const replyCountMap = new Map(
+      replyCountsRaw.map((item) => [item._id.toString(), item.count])
+    );
+
     const comments = commentsRaw.map((comment) => {
-      const obj = comment.toObject ? comment.toObject() : comment;
-      obj.comment_id = obj._id;
-      return obj;
+      const count = replyCountMap.get(comment._id.toString()) || 0;
+      return toCommentResponse(comment, req.userId, count);
     });
 
     return res.json(comments);
@@ -115,11 +159,7 @@ exports.getTweetCommentReplies = async (req, res) => {
       isDeleted: false,
     }).sort({ createdAt: 1 });
 
-    const replies = repliesRaw.map((reply) => {
-      const obj = reply.toObject ? reply.toObject() : reply;
-      obj.comment_id = obj._id;
-      return obj;
-    });
+    const replies = repliesRaw.map((reply) => toCommentResponse(reply, req.userId, 0));
 
     return res.json(replies);
   } catch (error) {
