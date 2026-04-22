@@ -10,6 +10,8 @@ const {
   updateGroup,
   addGroupMember,
   removeGroupMember,
+  leaveGroupConversation,
+  deleteGroupConversationForUser,
   acceptMessageRequest,
   declineMessageRequest,
   getConversationMessages,
@@ -372,6 +374,8 @@ router.post('/groups/:conversationId/members', verifyToken, addGroupMember);
  *         description: Server error
  */
 router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGroupMember);
+router.post('/groups/:conversationId/leave', verifyToken, leaveGroupConversation);
+router.delete('/groups/:conversationId/delete', verifyToken, deleteGroupConversationForUser);
 
 /**
  * @swagger

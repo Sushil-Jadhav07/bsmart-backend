@@ -89,6 +89,13 @@ const messageSchema = new mongoose.Schema({
     type: [reactionSchema],
     default: [],
   },
+  deletedFor: {
+    type: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+    default: [],
+  },
 }, {
   timestamps: true,
 });

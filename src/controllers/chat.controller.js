@@ -76,6 +76,22 @@ const findConversationForUser = async (conversationId, userId) => {
   });
 };
 
+const findGroupConversationByParticipant = async (conversationId, userId) => {
+  return Conversation.findOne({
+    _id: conversationId,
+    isGroup: true,
+    participants: userId,
+  });
+};
+
+const findGroupConversationForDelete = async (conversationId, userId) => {
+  return Conversation.findOne({
+    _id: conversationId,
+    isGroup: true,
+    leftUsers: userId,
+  });
+};
+
 const populateConversation = (query) => query
   .populate('participants', USER_SELECT)
   .populate('groupAdmin', USER_SELECT)
@@ -200,12 +216,21 @@ exports.getConversations = async (req, res) => {
     const query = type === 'requests'
       ? {
           participants: userId,
+          deletedFor: { $ne: userId },
           isRequest: true,
           requestStatus: 'pending',
           requestedBy: { $ne: userId },
         }
       : {
-          participants: userId,
+          $and: [
+            {
+              $or: [
+                { participants: userId },
+                { leftUsers: userId },
+              ],
+            },
+            { deletedFor: { $ne: userId } },
+          ],
           $or: [
             { isRequest: false },
             { isRequest: true, requestStatus: 'accepted' },
@@ -226,6 +251,7 @@ exports.getConversations = async (req, res) => {
           $match: {
             conversationId: { $in: conversationIds },
             isDeleted: false,
+            deletedFor: { $ne: new mongoose.Types.ObjectId(String(userId)) },
             sender: { $ne: new mongoose.Types.ObjectId(String(userId)) },
             seenBy: { $ne: new mongoose.Types.ObjectId(String(userId)) },
           },
@@ -243,7 +269,10 @@ exports.getConversations = async (req, res) => {
 
     const result = conversations.map((conversation) => {
       const obj = conversation.toObject();
-      obj.unreadCount = unreadMap.get(String(conversation._id)) || 0;
+      const isActiveParticipant = (conversation.participants || []).some(
+        (participantId) => String(getParticipantObjectId(participantId)) === String(userId)
+      );
+      obj.unreadCount = isActiveParticipant ? (unreadMap.get(String(conversation._id)) || 0) : 0;
       return obj;
     });
 
@@ -376,8 +405,8 @@ exports.addGroupMember = async (req, res) => {
       return res.status(400).json({ message: 'Invalid userId' });
     }
 
-    const conversation = await findConversationForUser(conversationId, userId);
-    if (!conversation || !conversation.isGroup) {
+    const conversation = await findGroupConversationByParticipant(conversationId, userId);
+    if (!conversation) {
       return res.status(404).json({ message: 'Group conversation not found' });
     }
 
@@ -398,6 +427,12 @@ exports.addGroupMember = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    conversation.leftUsers = (conversation.leftUsers || []).filter(
+      (leftUserId) => String(leftUserId) !== String(memberId)
+    );
+    conversation.deletedFor = (conversation.deletedFor || []).filter(
+      (deletedUserId) => String(deletedUserId) !== String(memberId)
+    );
     conversation.participants.push(memberId);
     await conversation.save();
 
@@ -431,8 +466,8 @@ exports.removeGroupMember = async (req, res) => {
       return res.status(400).json({ message: 'Invalid userId' });
     }
 
-    const conversation = await findConversationForUser(conversationId, currentUserId);
-    if (!conversation || !conversation.isGroup) {
+    const conversation = await findGroupConversationByParticipant(conversationId, currentUserId);
+    if (!conversation) {
       return res.status(404).json({ message: 'Group conversation not found' });
     }
 
@@ -467,6 +502,7 @@ exports.removeGroupMember = async (req, res) => {
     }
 
     conversation.participants = updatedParticipants;
+    conversation.leftUsers = normalizeUniqueIds([...(conversation.leftUsers || []), memberId]);
 
     if (String(conversation.groupAdmin) === String(memberId)) {
       conversation.groupAdmin = updatedParticipants[0];
@@ -488,6 +524,91 @@ exports.removeGroupMember = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.leaveGroupConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    const conversation = await findGroupConversationByParticipant(conversationId, userId);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Group conversation not found' });
+    }
+
+    const updatedParticipants = conversation.participants.filter(
+      (participantId) => String(participantId) !== String(userId)
+    );
+
+    if (updatedParticipants.length < 2) {
+      await Message.deleteMany({ conversationId: conversation._id });
+      await conversation.deleteOne();
+      return res.json({ success: true, conversationDeleted: true });
+    }
+
+    conversation.participants = updatedParticipants;
+    conversation.leftUsers = normalizeUniqueIds([...(conversation.leftUsers || []), userId]);
+    conversation.deletedFor = (conversation.deletedFor || []).filter(
+      (deletedUserId) => String(deletedUserId) !== String(userId)
+    );
+
+    if (String(conversation.groupAdmin) === String(userId)) {
+      conversation.groupAdmin = updatedParticipants[0];
+    }
+
+    await conversation.save();
+    const populatedConversation = await populateConversation(Conversation.findById(conversation._id));
+    return res.json(populatedConversation);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.deleteGroupConversationForUser = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: 'Invalid conversationId' });
+    }
+
+    const activeGroup = await findGroupConversationByParticipant(conversationId, userId);
+    if (activeGroup) {
+      return res.status(400).json({
+        message: 'To stop receiving new messages from this chat, first leave the chat then delete it.',
+      });
+    }
+
+    const conversation = await findGroupConversationForDelete(conversationId, userId);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Group conversation not found or already deleted for this user' });
+    }
+
+    await Promise.all([
+      Conversation.updateOne(
+        { _id: conversation._id },
+        { $addToSet: { deletedFor: userId } }
+      ),
+      Message.updateMany(
+        { conversationId: conversation._id },
+        { $addToSet: { deletedFor: userId } }
+      ),
+    ]);
+
+    return res.json({
+      success: true,
+      message: 'This will remove the chat from your inbox and erase the chat history.',
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -568,7 +689,14 @@ exports.getConversationMessages = async (req, res) => {
       return res.status(400).json({ message: 'Invalid conversationId' });
     }
 
-    const conversation = await findConversationForUser(conversationId, userId);
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      $or: [
+        { participants: userId },
+        { leftUsers: userId },
+      ],
+      deletedFor: { $ne: userId },
+    });
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
@@ -577,6 +705,7 @@ exports.getConversationMessages = async (req, res) => {
     const messages = await Message.find({
       conversationId,
       isDeleted: false,
+      deletedFor: { $ne: userId },
     })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -628,7 +757,11 @@ exports.createMessage = async (req, res) => {
       return res.status(400).json({ message: 'mediaUrl is required when mediaType is not none' });
     }
 
-    const conversation = await findConversationForUser(conversationId, userId);
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: userId,
+      deletedFor: { $ne: userId },
+    });
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
