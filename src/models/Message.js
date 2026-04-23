@@ -72,7 +72,7 @@ const messageSchema = new mongoose.Schema({
   sharedContent: {
     contentType: {
       type: String,
-      enum: ['post', 'reel', 'ad'],
+      enum: ['post', 'reel', 'ad', 'tweet'],
       default: null,
     },
     contentId: {

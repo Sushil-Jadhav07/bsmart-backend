@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Follow = require('../models/Follow');
 const Post = require('../models/Post');
 const Ad = require('../models/Ad');
+const Tweet = require('../models/tweet.model');
 
 const USER_SELECT = 'username full_name avatar_url';
 
@@ -97,6 +98,32 @@ const resolveShareContent = async (req, contentType, contentId) => {
       creatorAvatarUrl: ad?.user_id?.avatar_url || '',
       creatorVerified: false,
       shareUrl: `${appUrl}/ads/${ad._id}/details`,
+    };
+  }
+
+  if (contentType === 'tweet') {
+    const tweet = await Tweet.findOne({ _id: contentId, isDeleted: { $ne: true } })
+      .populate('author', USER_SELECT)
+      .lean();
+    if (!tweet) return null;
+
+    const ownerName = tweet?.author?.username || tweet?.author?.full_name || 'user';
+    const caption = typeof tweet?.content === 'string' ? tweet.content.trim() : '';
+    const hasImage = Array.isArray(tweet?.media) && tweet.media.length > 0;
+    const previewCandidate = hasImage ? (tweet?.media?.[0]?.url || '') : '';
+
+    return {
+      contentType,
+      contentId: tweet._id,
+      title: caption || `Tweet by ${ownerName}`,
+      caption,
+      previewUrl: toUploadsUrl(req, previewCandidate) || (tweet?.author?.avatar_url || ''),
+      previewType: hasImage ? 'image' : 'none',
+      creatorId: tweet?.author?._id || null,
+      creatorUsername: tweet?.author?.username || '',
+      creatorAvatarUrl: tweet?.author?.avatar_url || '',
+      creatorVerified: false,
+      shareUrl: `${appUrl}/post/${tweet._id}?type=tweet`,
     };
   }
 
@@ -896,12 +923,13 @@ exports.shareContentToUsers = async (req, res) => {
   try {
     const userId = req.userId;
     const recipientIdsRaw = Array.isArray(req.body.recipientIds) ? req.body.recipientIds : [];
+    const conversationIdsRaw = Array.isArray(req.body.conversationIds) ? req.body.conversationIds : [];
     const contentType = typeof req.body.contentType === 'string' ? req.body.contentType.trim().toLowerCase() : '';
     const contentId = typeof req.body.contentId === 'string' ? req.body.contentId.trim() : '';
     const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
 
-    if (!['post', 'reel', 'ad'].includes(contentType)) {
-      return res.status(400).json({ message: 'contentType must be one of post, reel, ad' });
+    if (!['post', 'reel', 'ad', 'tweet'].includes(contentType)) {
+      return res.status(400).json({ message: 'contentType must be one of post, reel, ad, tweet' });
     }
 
     if (!isValidObjectId(contentId)) {
@@ -911,26 +939,32 @@ exports.shareContentToUsers = async (req, res) => {
     const recipientIds = normalizeUniqueIds(
       recipientIdsRaw.filter((id) => String(id) !== String(userId))
     );
+    const conversationIds = normalizeUniqueIds(conversationIdsRaw);
 
-    if (!recipientIds.length) {
-      return res.status(400).json({ message: 'recipientIds must include at least one user' });
+    if (!recipientIds.length && !conversationIds.length) {
+      return res.status(400).json({ message: 'Select at least one recipient or conversation' });
     }
 
     if (recipientIds.some((id) => !isValidObjectId(id))) {
       return res.status(400).json({ message: 'Invalid recipientIds' });
     }
+    if (conversationIds.some((id) => !isValidObjectId(id))) {
+      return res.status(400).json({ message: 'Invalid conversationIds' });
+    }
 
-    const followed = await Follow.find({
-      follower_id: userId,
-      followed_id: { $in: recipientIds },
-    }).select('followed_id').lean();
-    const allowedRecipientIds = new Set(followed.map((item) => String(item.followed_id)));
-    const blockedRecipients = recipientIds.filter((id) => !allowedRecipientIds.has(String(id)));
-    if (blockedRecipients.length) {
-      return res.status(403).json({
-        message: 'You can only share to users you are following',
-        blockedRecipientIds: blockedRecipients,
-      });
+    if (recipientIds.length) {
+      const followed = await Follow.find({
+        follower_id: userId,
+        followed_id: { $in: recipientIds },
+      }).select('followed_id').lean();
+      const allowedRecipientIds = new Set(followed.map((item) => String(item.followed_id)));
+      const blockedRecipients = recipientIds.filter((id) => !allowedRecipientIds.has(String(id)));
+      if (blockedRecipients.length) {
+        return res.status(403).json({
+          message: 'You can only share to users you are following',
+          blockedRecipientIds: blockedRecipients,
+        });
+      }
     }
 
     const sharedContent = await resolveShareContent(req, contentType, contentId);
@@ -939,8 +973,29 @@ exports.shareContentToUsers = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    const sentConversationIds = [];
+    const candidateConversations = new Map();
     const failures = [];
+
+    if (conversationIds.length) {
+      const existingConversations = await Conversation.find({
+        _id: { $in: conversationIds },
+        participants: userId,
+        deletedFor: { $ne: userId },
+      }).lean();
+      const existingById = new Map(existingConversations.map((conversation) => [String(conversation._id), conversation]));
+
+      for (const conversationId of conversationIds) {
+        const conversation = existingById.get(String(conversationId));
+        if (!conversation) {
+          failures.push({
+            conversationId: String(conversationId),
+            reason: 'Conversation not found or not accessible',
+          });
+          continue;
+        }
+        candidateConversations.set(String(conversation._id), conversation);
+      }
+    }
 
     for (const recipientId of recipientIds) {
       let conversation = await Conversation.findOne({
@@ -976,6 +1031,22 @@ exports.shareContentToUsers = async (req, res) => {
         });
         continue;
       }
+      candidateConversations.set(String(conversation._id), conversation);
+    }
+
+    const sentConversationIds = [];
+    for (const conversation of candidateConversations.values()) {
+      if (
+        conversation.isRequest
+        && conversation.requestStatus === 'pending'
+        && String(conversation.requestedBy) !== String(userId)
+      ) {
+        failures.push({
+          conversationId: String(conversation._id),
+          reason: 'Conversation request pending',
+        });
+        continue;
+      }
 
       const text = note;
       const message = await Message.create({
@@ -1001,13 +1072,17 @@ exports.shareContentToUsers = async (req, res) => {
         seenAt: null,
       });
 
+      const participantIds = normalizeUniqueIds([
+        userId,
+        ...(Array.isArray(conversation.participants) ? conversation.participants : []),
+      ]);
       await Conversation.findByIdAndUpdate(conversation._id, {
         $set: {
           lastMessage: message._id,
           lastMessageAt: message.createdAt,
         },
         $pull: {
-          deletedFor: { $in: [userId, recipientId] },
+          deletedFor: { $in: participantIds },
         },
       });
 

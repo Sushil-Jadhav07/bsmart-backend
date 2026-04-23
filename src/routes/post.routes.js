@@ -354,6 +354,12 @@ router.post('/', verifyToken, createPost);
  * /api/posts/feed:
  *   get:
  *     summary: Get posts feed
+ *     description: |
+ *       Returns a mixed feed of posts/tweets (and ad inserts), paginated as `{ page, limit, data }`.
+ *       Content from private accounts is excluded unless the viewer follows that account.
+ *       Each post/ad item may include:
+ *       - `is_author_followed_by_me` (boolean)
+ *       - `can_view_by_me` (boolean)
  *     tags: [Posts]
  *     security:
  *       - bearerAuth: []
@@ -366,13 +372,20 @@ router.post('/', verifyToken, createPost);
  *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
  *     responses:
  *       200:
- *         description: List of posts
+ *         description: Paginated feed payload
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Post'
+ *               type: object
+ *               properties:
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Post'
  *       429:
  *         description: Too many requests — rate limit exceeded
  *         content:
@@ -441,6 +454,9 @@ router.post('/reels', verifyToken, createReel);
  * /api/posts/reels:
  *   get:
  *     summary: List all reels
+ *     description: |
+ *       Returns paginated reels as `{ page, limit, data }`.
+ *       Reels from private accounts are excluded unless the viewer follows the author.
  *     tags: [Reels]
  *     security:
  *       - bearerAuth: []
@@ -453,13 +469,20 @@ router.post('/reels', verifyToken, createReel);
  *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
  *     responses:
  *       200:
- *         description: List of reels
+ *         description: Paginated reels payload
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Post'
+ *               type: object
+ *               properties:
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Post'
  *       429:
  *         description: Too many requests — rate limit exceeded
  *         content:
@@ -476,6 +499,7 @@ router.get('/reels', verifyToken, reelsRateLimit, listReels);
  * /api/posts/reels/{id}:
  *   get:
  *     summary: Get a reel by ID
+ *     description: Requires follow access when the reel author account is private.
  *     tags: [Reels]
  *     security:
  *       - bearerAuth: []
@@ -494,6 +518,8 @@ router.get('/reels', verifyToken, reelsRateLimit, listReels);
  *               $ref: '#/components/schemas/Post'
  *       404:
  *         description: Reel not found
+ *       403:
+ *         description: This account is private. Follow to view reels.
  */
 router.get('/reels/:id', verifyToken, getReelById);
 
@@ -502,6 +528,7 @@ router.get('/reels/:id', verifyToken, getReelById);
  * /api/posts/{id}:
  *   get:
  *     summary: Get a single post by ID
+ *     description: Requires follow access when the post author account is private.
  *     tags: [Posts]
  *     security:
  *       - bearerAuth: []
@@ -518,6 +545,8 @@ router.get('/reels/:id', verifyToken, getReelById);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Post'
+ *       403:
+ *         description: This account is private. Follow to view posts.
  *       404:
  *         description: Post not found
  */

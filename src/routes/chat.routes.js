@@ -65,6 +65,34 @@ const {
  *         audioDuration:
  *           type: number
  *           nullable: true
+ *         sharedContent:
+ *           type: object
+ *           nullable: true
+ *           properties:
+ *             contentType:
+ *               type: string
+ *               enum: [post, reel, ad, tweet]
+ *             contentId:
+ *               type: string
+ *             title:
+ *               type: string
+ *             caption:
+ *               type: string
+ *             previewUrl:
+ *               type: string
+ *             previewType:
+ *               type: string
+ *               enum: [image, video, none]
+ *             creatorId:
+ *               type: string
+ *             creatorUsername:
+ *               type: string
+ *             creatorAvatarUrl:
+ *               type: string
+ *             creatorVerified:
+ *               type: boolean
+ *             shareUrl:
+ *               type: string
  *         seenBy:
  *           type: array
  *           items:
@@ -165,19 +193,54 @@ const {
  *           type: string
  *     ShareContentRequest:
  *       type: object
- *       required: [recipientIds, contentType, contentId]
+ *       required: [contentType, contentId]
+ *       description: Provide one or both of recipientIds and conversationIds.
  *       properties:
  *         recipientIds:
  *           type: array
  *           items:
  *             type: string
+ *         conversationIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: Existing direct/group conversation IDs to share into
  *         contentType:
  *           type: string
- *           enum: [post, reel, ad]
+ *           enum: [post, reel, ad, tweet]
  *         contentId:
  *           type: string
  *         note:
  *           type: string
+ *     ShareContentFailure:
+ *       type: object
+ *       properties:
+ *         recipientId:
+ *           type: string
+ *         conversationId:
+ *           type: string
+ *         reason:
+ *           type: string
+ *     ShareContentResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         contentType:
+ *           type: string
+ *           enum: [post, reel, ad, tweet]
+ *         contentId:
+ *           type: string
+ *         sentCount:
+ *           type: integer
+ *         conversationIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *         failures:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ShareContentFailure'
  *     UpdateGroupRequest:
  *       type: object
  *       properties:
@@ -274,7 +337,7 @@ router.post('/groups', verifyToken, createGroupConversation);
  * @swagger
  * /api/chat/share:
  *   post:
- *     summary: Share a post, reel, or ad to followed users in chat
+ *     summary: Share a post, reel, ad, or tweet to chats and group chats
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -287,12 +350,16 @@ router.post('/groups', verifyToken, createGroupConversation);
  *     responses:
  *       200:
  *         description: Content shared successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ShareContentResponse'
  *       400:
  *         description: Invalid request
  *       401:
  *         description: Unauthorized
  *       403:
- *         description: Can only share to users you are following
+ *         description: Can only share to users you are following (when using recipientIds)
  *       404:
  *         description: Shared content not found
  *       500:

@@ -548,6 +548,12 @@ router.post('/categories', auth, addAdCategory);
  * /api/ads/feed:
  *   get:
  *     summary: Get active ads feed for user
+ *     description: |
+ *       Returns paginated ads as `{ page, limit, data }`.
+ *       Ads from private accounts are excluded unless the viewer follows that account.
+ *       Each ad item may include:
+ *       - `is_author_followed_by_me` (boolean)
+ *       - `can_view_by_me` (boolean)
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -566,6 +572,19 @@ router.post('/categories', auth, addAdCategory);
  *     responses:
  *       200:
  *         description: List of active ads with user status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  *       429:
  *         description: Too many requests — rate limit exceeded
  *         content:
@@ -1008,6 +1027,7 @@ router.get('/:id/stats', auth, getAdStats);
  * /api/ads/{id}:
  *   get:
  *     summary: Get ad by ID
+ *     description: Requires follow access when the ad owner account is private.
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -1022,6 +1042,8 @@ router.get('/:id/stats', auth, getAdStats);
  *         description: Ad details
  *       404:
  *         description: Ad not found
+ *       403:
+ *         description: This account is private. Follow to view ads.
  */
 router.get('/:id', auth, getAdById);
 
