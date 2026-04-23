@@ -84,9 +84,37 @@ const messageSchema = new mongoose.Schema({
       default: '',
       trim: true,
     },
+    caption: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     previewUrl: {
       type: String,
       default: '',
+    },
+    previewType: {
+      type: String,
+      enum: ['image', 'video', 'none'],
+      default: 'none',
+    },
+    creatorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    creatorUsername: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    creatorAvatarUrl: {
+      type: String,
+      default: '',
+    },
+    creatorVerified: {
+      type: Boolean,
+      default: false,
     },
     shareUrl: {
       type: String,

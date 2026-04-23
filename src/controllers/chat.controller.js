@@ -47,11 +47,19 @@ const resolveShareContent = async (req, contentType, contentId) => {
     if (contentType === 'post' && post.type === 'reel') return null;
 
     const ownerName = post?.user_id?.username || post?.user_id?.full_name || 'user';
+    const previewType = String(post?.media?.[0]?.type || '').toLowerCase() === 'video' ? 'video' : 'image';
+    const caption = typeof post?.caption === 'string' ? post.caption.trim() : '';
     return {
       contentType,
       contentId: post._id,
       title: post.caption || `${contentType === 'reel' ? 'Reel' : 'Post'} by ${ownerName}`,
+      caption,
       previewUrl: toUploadsUrl(req, post?.media?.[0]?.fileName),
+      previewType,
+      creatorId: post?.user_id?._id || null,
+      creatorUsername: post?.user_id?.username || '',
+      creatorAvatarUrl: post?.user_id?.avatar_url || '',
+      creatorVerified: false,
       shareUrl: contentType === 'reel'
         ? `${appUrl}/reels/${post._id}`
         : `${appUrl}/post/${post._id}`,
@@ -65,11 +73,19 @@ const resolveShareContent = async (req, contentType, contentId) => {
     if (!ad) return null;
 
     const ownerName = ad?.user_id?.username || ad?.user_id?.full_name || 'vendor';
+    const previewType = String(ad?.media?.[0]?.media_type || '').toLowerCase() === 'video' ? 'video' : 'image';
+    const caption = typeof ad?.caption === 'string' ? ad.caption.trim() : '';
     return {
       contentType,
       contentId: ad._id,
       title: ad.ad_title || ad.caption || `Ad by ${ownerName}`,
+      caption,
       previewUrl: toUploadsUrl(req, ad?.media?.[0]?.fileName),
+      previewType,
+      creatorId: ad?.user_id?._id || null,
+      creatorUsername: ad?.user_id?.username || '',
+      creatorAvatarUrl: ad?.user_id?.avatar_url || '',
+      creatorVerified: false,
       shareUrl: `${appUrl}/ads/${ad._id}/details`,
     };
   }
@@ -951,7 +967,7 @@ exports.shareContentToUsers = async (req, res) => {
         continue;
       }
 
-      const text = `${note ? `${note}\n` : ''}${sharedContent.shareUrl}`.trim();
+      const text = note;
       const message = await Message.create({
         conversationId: conversation._id,
         sender: userId,
@@ -962,7 +978,13 @@ exports.shareContentToUsers = async (req, res) => {
           contentType: sharedContent.contentType,
           contentId: sharedContent.contentId,
           title: sharedContent.title,
+          caption: sharedContent.caption,
           previewUrl: sharedContent.previewUrl,
+          previewType: sharedContent.previewType,
+          creatorId: sharedContent.creatorId,
+          creatorUsername: sharedContent.creatorUsername,
+          creatorAvatarUrl: sharedContent.creatorAvatarUrl,
+          creatorVerified: sharedContent.creatorVerified,
           shareUrl: sharedContent.shareUrl,
         },
         seenBy: [userId],
