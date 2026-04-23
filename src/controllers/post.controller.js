@@ -10,6 +10,7 @@ const TweetLike   = require('../models/tweetLike.model');
 const TweetRepost = require('../models/tweetRepost.model');
 const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
+const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
 
 // ─── Helper ────────────────────────────────────────────────────────────────
 // Transforms a Mongoose post document into the API response shape.
@@ -121,18 +122,23 @@ const transformTweet = async (tweet, currentUserId = null) => {
   };
 };
 
-const loadFeedAds = async (req, feedItems, baseUrl) => {
+const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) => {
   const adSlots = Math.floor(feedItems.length / 5);
   if (adSlots <= 0) {
     return feedItems;
   }
 
+  const adQuery = { status: 'active', isDeleted: false };
+  if (blockedPrivateUserIds.length > 0) {
+    adQuery.user_id = { $nin: blockedPrivateUserIds };
+  }
+
   const [ads, rewarded] = await Promise.all([
-    Ad.find({ status: 'active', isDeleted: false })
+    Ad.find(adQuery)
       .sort({ createdAt: -1 })
       .limit(Math.max(1, adSlots))
       .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url gender location')
+      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
       .lean(),
     AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
   ]);
@@ -142,6 +148,10 @@ const loadFeedAds = async (req, feedItems, baseUrl) => {
   }
 
   const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
+
+  const followedIds = await getFollowedUserIds(req.userId);
+  const followedSet = new Set(followedIds.map((id) => String(id)));
+  const viewerId = String(req.userId);
 
   const normalizedAds = ads.map((ad) => {
     const normalizedMedia = Array.isArray(ad.media)
@@ -161,6 +171,8 @@ const loadFeedAds = async (req, feedItems, baseUrl) => {
       })
       : [];
 
+    const authorId = String(ad?.user_id?._id || ad?.user_id?.id || '');
+    const isAuthorFollowed = authorId ? followedSet.has(authorId) : false;
     return {
       item_type:        'ad',
       ...ad,
@@ -171,6 +183,8 @@ const loadFeedAds = async (req, feedItems, baseUrl) => {
       media:            normalizedMedia,
       is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
       is_liked_by_me:   Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
+      is_author_followed_by_me: isAuthorFollowed,
+      can_view_by_me: !ad?.user_id?.isPrivate || authorId === viewerId || isAuthorFollowed,
     };
   });
 
@@ -304,15 +318,21 @@ exports.getFeed = async (req, res) => {
     const skip  = (page - 1) * limit;
     const tab = ['all', 'following', 'tweets'].includes(req.query.tab) ? req.query.tab : 'all';
     let followedIds = [];
+    let blockedPrivateUserIds = [];
 
     if (tab === 'following') {
       const follows = await Follow.find({ follower_id: req.userId }).select('followed_id').lean();
       followedIds = follows.map((follow) => follow.followed_id);
+    } else {
+      [followedIds, blockedPrivateUserIds] = await Promise.all([
+        getFollowedUserIds(req.userId),
+        getBlockedPrivateUserIds(req.userId),
+      ]);
     }
 
     const postQuery = tab === 'following'
       ? { user_id: { $in: followedIds } }
-      : {};
+      : (blockedPrivateUserIds.length > 0 ? { user_id: { $nin: blockedPrivateUserIds } } : {});
     const tweetQuery = {
       audience: 'everyone',
       isDeleted: false,
@@ -327,7 +347,7 @@ exports.getFeed = async (req, res) => {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+            .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
       SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
       Tweet.find(tweetQuery)
         .sort({ createdAt: -1 })
@@ -346,12 +366,19 @@ exports.getFeed = async (req, res) => {
     const transformedTweets = await Promise.all(
       tweets.map((tweet) => transformTweet(tweet, req.userId))
     );
+    const followingSet = new Set(followedIds.map((id) => String(id)));
+    const viewerId = String(req.userId);
+    transformedPosts.forEach((postItem) => {
+      const authorId = String(postItem?.user_id?._id || postItem?.user_id?.id || '');
+      postItem.is_author_followed_by_me = authorId ? followingSet.has(authorId) : false;
+      postItem.can_view_by_me = !postItem?.user_id?.isPrivate || authorId === viewerId || postItem.is_author_followed_by_me;
+    });
     const feedItems = (tab === 'tweets' ? transformedTweets : [...transformedPosts, ...transformedTweets])
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, limit);
     const data = tab === 'tweets'
       ? feedItems
-      : await loadFeedAds(req, feedItems, baseUrl);
+      : await loadFeedAds(req, feedItems, baseUrl, blockedPrivateUserIds);
 
     res.json({ page, limit, data });
   } catch (error) {
@@ -366,13 +393,18 @@ exports.getPost = async (req, res) => {
   try {
     const [post, commentsRaw, isSaved] = await Promise.all([
       Post.findById(req.params.id)
-        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
       Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 }),
       SavedPost.exists({ user_id: req.userId, post_id: req.params.id }),
     ]);
 
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
+    }
+    const authorId = post?.user_id?._id || post?.user_id;
+    const canView = await canViewAuthorContent(req.userId, authorId);
+    if (!canView) {
+      return res.status(403).json({ message: 'This account is private. Follow to view posts.' });
     }
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
@@ -494,12 +526,18 @@ exports.listReels = async (req, res) => {
     const limit = Math.min(50, parseInt(req.query.limit) || 20);
     const skip  = (page - 1) * limit;
 
+    const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
+    const reelQuery = { type: 'reel' };
+    if (blockedPrivateUserIds.length > 0) {
+      reelQuery.user_id = { $nin: blockedPrivateUserIds };
+    }
+
     const [posts, saved] = await Promise.all([
-      Post.find({ type: 'reel' })
+      Post.find(reelQuery)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
       SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
     ]);
 
@@ -520,13 +558,18 @@ exports.getReelById = async (req, res) => {
   try {
     const [post, commentsRaw, isSaved] = await Promise.all([
       Post.findOne({ _id: req.params.id, type: 'reel' })
-        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
       Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 }),
       SavedPost.exists({ user_id: req.userId, post_id: req.params.id }),
     ]);
 
     if (!post) {
       return res.status(404).json({ message: 'Reel not found' });
+    }
+    const authorId = post?.user_id?._id || post?.user_id;
+    const canView = await canViewAuthorContent(req.userId, authorId);
+    if (!canView) {
+      return res.status(403).json({ message: 'This account is private. Follow to view reels.' });
     }
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;

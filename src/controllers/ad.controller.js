@@ -2,6 +2,7 @@ const Ad = require('../models/Ad');
 const User = require('../models/User');
 const AdView = require('../models/AdView');
 const mongoose = require('mongoose');
+const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
 
 const DEFAULT_AD_CATEGORIES = [
   'Accessories',
@@ -87,15 +88,34 @@ exports.getAdsFeed = async (req, res) => {
     const limit = Math.min(50, parseInt(req.query.limit) || 20);
     const skip = (page - 1) * limit;
 
-    const ads = await Ad.find({ status: 'active', isDeleted: false })
+    const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
+    const followedIds = await getFollowedUserIds(req.userId);
+    const followedSet = new Set(followedIds.map((id) => String(id)));
+    const viewerId = String(req.userId);
+    const adQuery = { status: 'active', isDeleted: false };
+    if (blockedPrivateUserIds.length > 0) {
+      adQuery.user_id = { $nin: blockedPrivateUserIds };
+    }
+
+    const ads = await Ad.find(adQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url gender location')
+      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
       .lean();
 
-    res.json({ page, limit, data: ads });
+    const data = ads.map((ad) => {
+      const authorId = String(ad?.user_id?._id || ad?.user_id?.id || '');
+      const isAuthorFollowed = authorId ? followedSet.has(authorId) : false;
+      return {
+        ...ad,
+        is_author_followed_by_me: isAuthorFollowed,
+        can_view_by_me: !ad?.user_id?.isPrivate || authorId === viewerId || isAuthorFollowed,
+      };
+    });
+
+    res.json({ page, limit, data });
   } catch (error) {
     console.error('[Ad] getAdsFeed error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -111,11 +131,16 @@ exports.getAdById = async (req, res) => {
 
     const ad = await Ad.findById(id)
       .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url gender location')
+      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
       .lean();
 
     if (!ad || ad.isDeleted) {
       return res.status(404).json({ message: 'Ad not found' });
+    }
+    const authorId = ad?.user_id?._id || ad?.user_id;
+    const canView = await canViewAuthorContent(req.userId, authorId);
+    if (!canView) {
+      return res.status(403).json({ message: 'This account is private. Follow to view ads.' });
     }
 
     res.json(ad);

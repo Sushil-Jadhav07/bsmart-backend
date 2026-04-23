@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Ad = require('../models/Ad');
 const Follow = require('../models/Follow');
 const mongoose = require('mongoose');
+const { getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
 
 // Helper to format media URLs
 const formatMedia = (media, baseUrl) => {
@@ -72,12 +73,17 @@ exports.getSuggestedReels = async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-    const suggestedReels = await Post.find({
+    const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
+    const reelQuery = {
       type: 'reel',
       isDeleted: { $ne: true }
-    })
-      .populate('user_id', 'username full_name avatar_url')
+    };
+    if (blockedPrivateUserIds.length > 0) {
+      reelQuery.user_id = { $nin: blockedPrivateUserIds };
+    }
+
+    const suggestedReels = await Post.find(reelQuery)
+      .populate('user_id', 'username full_name avatar_url isPrivate')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -103,13 +109,18 @@ exports.getSuggestedAds = async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-    const suggestedAds = await Ad.find({
+    const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
+    const adQuery = {
       status: 'active',
       isDeleted: false
-    })
+    };
+    if (blockedPrivateUserIds.length > 0) {
+      adQuery.user_id = { $nin: blockedPrivateUserIds };
+    }
+
+    const suggestedAds = await Ad.find(adQuery)
       .populate('vendor_id', 'business_name logo_url')
-      .populate('user_id', 'username full_name avatar_url')
+      .populate('user_id', 'username full_name avatar_url isPrivate')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -139,6 +150,23 @@ exports.getSuggestions = async (req, res) => {
 
     const following = await Follow.find({ follower_id: currentUserId }).distinct('followed_id');
     const excludeIds = [currentUserId, ...following];
+    const blockedPrivateUserIds = await getBlockedPrivateUserIds(currentUserId);
+
+    const reelQuery = {
+      type: 'reel',
+      isDeleted: { $ne: true }
+    };
+    if (blockedPrivateUserIds.length > 0) {
+      reelQuery.user_id = { $nin: blockedPrivateUserIds };
+    }
+
+    const adQuery = {
+      status: 'active',
+      isDeleted: false
+    };
+    if (blockedPrivateUserIds.length > 0) {
+      adQuery.user_id = { $nin: blockedPrivateUserIds };
+    }
 
     const [suggestedUsers, suggestedReels, suggestedAds] = await Promise.all([
       User.find({
@@ -150,20 +178,14 @@ exports.getSuggestions = async (req, res) => {
         .sort({ followers_count: -1 })
         .limit(limit)
         .lean(),
-      Post.find({
-        type: 'reel',
-        isDeleted: { $ne: true }
-      })
-        .populate('user_id', 'username full_name avatar_url')
+      Post.find(reelQuery)
+        .populate('user_id', 'username full_name avatar_url isPrivate')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),
-      Ad.find({
-        status: 'active',
-        isDeleted: false
-      })
+      Ad.find(adQuery)
         .populate('vendor_id', 'business_name logo_url')
-        .populate('user_id', 'username full_name avatar_url')
+        .populate('user_id', 'username full_name avatar_url isPrivate')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean()
