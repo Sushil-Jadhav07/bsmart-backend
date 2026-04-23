@@ -482,8 +482,10 @@ router.delete('/follow/followers/:followerId/remove', auth, removeFollower);
  *     summary: Accept a follow request
  *     description: >
  *       Accepts the pending request from `requesterId`.
- *       Creates a Follow record, updates follower/following counts,
- *       and sends a notification to the requester.
+ *       Creates a Follow record (if not already present), updates
+ *       follower/following counts only when a new relation is created,
+ *       clears the pending request, and sends a notification to the requester.
+ *       This endpoint is idempotent for duplicate follow relations.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -496,7 +498,7 @@ router.delete('/follow/followers/:followerId/remove', auth, removeFollower);
  *           example: "64f1a2b3c4d5e6f7a8b9c0d1"
  *     responses:
  *       200:
- *         description: Follow request accepted
+ *         description: Follow request accepted (or request cleared if relation already existed)
  *         content:
  *           application/json:
  *             schema:

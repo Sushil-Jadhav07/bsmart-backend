@@ -409,14 +409,18 @@ exports.acceptFollowRequest = async (req, res) => {
     const isPending = user.followRequests.some(id => toStr(id) === toStr(requesterId));
     if (!isPending) return res.status(404).json({ message: 'No pending request from this user' });
 
+    let createdFollow = false;
     try {
       await Follow.create({ follower_id: requesterId, followed_id: userId });
+      createdFollow = true;
     } catch (e) {
       if (e.code !== 11000) throw e;
     }
 
-    await User.findByIdAndUpdate(requesterId, { $inc: { following_count: 1 } });
-    await User.findByIdAndUpdate(userId, { $inc: { followers_count: 1 } });
+    if (createdFollow) {
+      await User.findByIdAndUpdate(requesterId, { $inc: { following_count: 1 } });
+      await User.findByIdAndUpdate(userId, { $inc: { followers_count: 1 } });
+    }
     await User.findByIdAndUpdate(userId, { $pull: { followRequests: requesterId } });
 
     await sendNotification(req.app, {

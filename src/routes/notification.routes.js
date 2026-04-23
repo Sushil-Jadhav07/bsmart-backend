@@ -78,7 +78,10 @@ const verifyToken = require('../middleware/auth');
  * @swagger
  * tags:
  *   name: Notifications
- *   description: Real-time notification management
+ *   description: >
+ *     Real-time notification management.
+ *     For `follow_request` notifications, use `/api/follow/requests/{requesterId}/accept`
+ *     or `/api/follow/requests/{requesterId}/decline` to take action.
  */
 
 /**
