@@ -20,6 +20,7 @@ const notificationSchema = new mongoose.Schema({
       'vendor_rejected',
       'coins_credited', 'coins_debited',
       'story_view', 'login_alert',
+      'follow_request', 'follow_accepted',
 
       // ── NEW types ──────────────────────────────────────────────────────────
       // Fired to subscribers when a watched user/vendor publishes content

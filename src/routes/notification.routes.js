@@ -51,6 +51,8 @@ const verifyToken = require('../middleware/auth');
  *             - coins_debited
  *             - story_view
  *             - login_alert
+ *             - follow_request
+ *             - follow_accepted
  *             - subscribed_user_post
  *             - subscribed_user_reel
  *             - subscribed_vendor_post

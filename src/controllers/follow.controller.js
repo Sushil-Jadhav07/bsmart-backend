@@ -59,8 +59,8 @@ exports.followUser = async (req, res) => {
           sender: followerId,
           type: 'follow_request',
           message: `${follower.username} requested to follow you`,
-          link: `/users/${followerId}`
-        });
+          link: `/profile/${followerId}`
+        }).catch(() => {});
       }
 
       return res.json({
@@ -92,8 +92,8 @@ exports.followUser = async (req, res) => {
           sender: followerId,
           type: 'follow',
           message: `${follower.username} started following you`,
-          link: `/users/${followerId}`
-        });
+          link: `/profile/${followerId}`
+        }).catch(() => {});
       }
     }
 
@@ -138,7 +138,7 @@ exports.followByParam = async (req, res) => {
         sender: followerId,
         type: 'follow_request',
         message: `${me?.username} requested to follow you`,
-        link: `/users/${followerId}`
+        link: `/profile/${followerId}`
       }).catch(() => {});
 
       return res.json({
@@ -286,7 +286,7 @@ exports.togglePrivacy = async (req, res) => {
           sender: req.userId,
           type: 'follow_accepted',
           message: `${user.username} accepted your follow request`,
-          link: `/users/${req.userId}`
+          link: `/profile/${req.userId}`
         }).catch(() => {});
       }
 
@@ -345,7 +345,7 @@ exports.setPrivacy = async (req, res) => {
           sender: req.userId,
           type: 'follow_accepted',
           message: `${user.username} accepted your follow request`,
-          link: `/users/${req.userId}`
+          link: `/profile/${req.userId}`
         }).catch(() => {});
       }
 
@@ -424,7 +424,7 @@ exports.acceptFollowRequest = async (req, res) => {
       sender: userId,
       type: 'follow_accepted',
       message: `${user.username} accepted your follow request`,
-      link: `/users/${userId}`
+      link: `/profile/${userId}`
     }).catch(() => {});
 
     return res.json({ success: true, message: 'Follow request accepted' });
