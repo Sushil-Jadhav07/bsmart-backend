@@ -511,7 +511,9 @@ router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGrou
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SimpleSuccessResponse'
+ *               oneOf:
+ *                 - $ref: '#/components/schemas/Conversation'
+ *                 - $ref: '#/components/schemas/SimpleSuccessResponse'
  *       400:
  *         description: Invalid request
  *       401:
@@ -530,7 +532,8 @@ router.post('/groups/:conversationId/leave', verifyToken, leaveGroupConversation
  *     summary: Delete a group chat from inbox for the logged-in user
  *     description: >
  *       Deletes this group chat only from the logged-in user's inbox/chat list.
- *       This does not delete the group for other members.
+ *       This does not remove the user from the group and does not delete the group for other members.
+ *       Future messages can make this conversation visible again for active participants.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -548,7 +551,7 @@ router.post('/groups/:conversationId/leave', verifyToken, leaveGroupConversation
  *             schema:
  *               $ref: '#/components/schemas/SimpleSuccessResponse'
  *       400:
- *         description: Invalid request
+ *         description: Invalid request (e.g. invalid conversationId)
  *       401:
  *         description: Unauthorized
  *       404:

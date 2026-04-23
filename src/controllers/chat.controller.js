@@ -201,7 +201,11 @@ const findGroupConversationForDelete = async (conversationId, userId) => {
   return Conversation.findOne({
     _id: conversationId,
     isGroup: true,
-    leftUsers: userId,
+    $or: [
+      { participants: userId },
+      { leftUsers: userId },
+    ],
+    deletedFor: { $ne: userId },
   });
 };
 
@@ -688,13 +692,6 @@ exports.deleteGroupConversationForUser = async (req, res) => {
       return res.status(400).json({ message: 'Invalid conversationId' });
     }
 
-    const activeGroup = await findGroupConversationByParticipant(conversationId, userId);
-    if (activeGroup) {
-      return res.status(400).json({
-        message: 'To stop receiving new messages from this chat, first leave the chat then delete it.',
-      });
-    }
-
     const conversation = await findGroupConversationForDelete(conversationId, userId);
     if (!conversation) {
       return res.status(404).json({ message: 'Group conversation not found or already deleted for this user' });
@@ -900,9 +897,17 @@ exports.createMessage = async (req, res) => {
       seenAt: null,
     });
 
+    const participantIds = normalizeUniqueIds(
+      (Array.isArray(conversation.participants) ? conversation.participants : []).map((participantId) => String(participantId))
+    );
     await Conversation.findByIdAndUpdate(conversationId, {
-      lastMessage: message._id,
-      lastMessageAt: message.createdAt,
+      $set: {
+        lastMessage: message._id,
+        lastMessageAt: message.createdAt,
+      },
+      $pull: {
+        deletedFor: { $in: participantIds },
+      },
     });
 
     const populatedMessage = await populateMessage(Message.findById(message._id));
@@ -940,6 +945,8 @@ exports.shareContentToUsers = async (req, res) => {
       recipientIdsRaw.filter((id) => String(id) !== String(userId))
     );
     const conversationIds = normalizeUniqueIds(conversationIdsRaw);
+    let recipientIdsForShare = recipientIds;
+    let blockedRecipientFailures = [];
 
     if (!recipientIds.length && !conversationIds.length) {
       return res.status(400).json({ message: 'Select at least one recipient or conversation' });
@@ -959,10 +966,17 @@ exports.shareContentToUsers = async (req, res) => {
       }).select('followed_id').lean();
       const allowedRecipientIds = new Set(followed.map((item) => String(item.followed_id)));
       const blockedRecipients = recipientIds.filter((id) => !allowedRecipientIds.has(String(id)));
-      if (blockedRecipients.length) {
+      recipientIdsForShare = recipientIds.filter((id) => allowedRecipientIds.has(String(id)));
+      blockedRecipientFailures = blockedRecipients.map((blockedId) => ({
+        recipientId: String(blockedId),
+        reason: 'You can only share to users you are following',
+      }));
+
+      if (!recipientIdsForShare.length && !conversationIds.length) {
         return res.status(403).json({
           message: 'You can only share to users you are following',
           blockedRecipientIds: blockedRecipients,
+          failures: blockedRecipientFailures,
         });
       }
     }
@@ -973,8 +987,9 @@ exports.shareContentToUsers = async (req, res) => {
     }
 
     const io = req.app.get('io');
+    const onlineUsers = req.app.get('onlineUsers');
     const candidateConversations = new Map();
-    const failures = [];
+    const failures = [...blockedRecipientFailures];
 
     if (conversationIds.length) {
       const existingConversations = await Conversation.find({
@@ -997,7 +1012,7 @@ exports.shareContentToUsers = async (req, res) => {
       }
     }
 
-    for (const recipientId of recipientIds) {
+    for (const recipientId of recipientIdsForShare) {
       let conversation = await Conversation.findOne({
         participants: { $all: [userId, recipientId], $size: 2 },
       });
@@ -1087,9 +1102,26 @@ exports.shareContentToUsers = async (req, res) => {
       });
 
       const populatedMessage = await populateMessage(Message.findById(message._id));
+      const serializedMessage = populatedMessage.toObject();
 
       if (io) {
-        io.to(String(conversation._id)).emit('new-message', populatedMessage.toObject());
+        io.to(String(conversation._id)).emit('new-message', serializedMessage);
+
+        const participantIds = normalizeUniqueIds(
+          (Array.isArray(conversation.participants) ? conversation.participants : []).map((participantId) => String(participantId))
+        );
+        const emittedSocketIds = new Set();
+
+        for (const participantId of participantIds) {
+          const socketsForUser = onlineUsers instanceof Map ? onlineUsers.get(String(participantId)) : null;
+          if (!(socketsForUser instanceof Set)) continue;
+
+          for (const socketId of socketsForUser) {
+            if (!socketId || emittedSocketIds.has(socketId)) continue;
+            io.to(socketId).emit('new-message', serializedMessage);
+            emittedSocketIds.add(socketId);
+          }
+        }
       }
 
       sentConversationIds.push(String(conversation._id));
@@ -1381,9 +1413,17 @@ exports.uploadVoiceMessage = async (req, res) => {
       seenAt: null,
     });
 
+    const participantIds = normalizeUniqueIds(
+      (Array.isArray(conversation.participants) ? conversation.participants : []).map((participantId) => String(participantId))
+    );
     await Conversation.findByIdAndUpdate(conversationId, {
-      lastMessage: message._id,
-      lastMessageAt: message.createdAt,
+      $set: {
+        lastMessage: message._id,
+        lastMessageAt: message.createdAt,
+      },
+      $pull: {
+        deletedFor: { $in: participantIds },
+      },
     });
 
     const populatedMessage = await populateMessage(Message.findById(message._id));
