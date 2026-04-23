@@ -49,12 +49,22 @@ const resolveShareContent = async (req, contentType, contentId) => {
     const ownerName = post?.user_id?.username || post?.user_id?.full_name || 'user';
     const previewType = String(post?.media?.[0]?.type || '').toLowerCase() === 'video' ? 'video' : 'image';
     const caption = typeof post?.caption === 'string' ? post.caption.trim() : '';
+    const media0 = post?.media?.[0] || {};
+    const thumbnailCandidate =
+      media0?.thumbnail?.fileUrl
+      || media0?.thumbnail?.fileName
+      || media0?.thumbnails?.[0]?.fileUrl
+      || media0?.thumbnails?.[0]?.fileName
+      || '';
+    const primaryMediaCandidate = media0?.fileUrl || media0?.fileName || '';
+    const previewCandidate = thumbnailCandidate || (previewType === 'image' ? primaryMediaCandidate : '');
+
     return {
       contentType,
       contentId: post._id,
       title: post.caption || `${contentType === 'reel' ? 'Reel' : 'Post'} by ${ownerName}`,
       caption,
-      previewUrl: toUploadsUrl(req, post?.media?.[0]?.fileName),
+      previewUrl: toUploadsUrl(req, previewCandidate) || (post?.user_id?.avatar_url || ''),
       previewType,
       creatorId: post?.user_id?._id || null,
       creatorUsername: post?.user_id?.username || '',
