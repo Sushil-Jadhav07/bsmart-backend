@@ -194,7 +194,7 @@ const {
  *     ShareContentRequest:
  *       type: object
  *       required: [contentType, contentId]
- *       description: Provide one or both of recipientIds and conversationIds.
+ *       description: Provide one or both of recipientIds and conversationIds. At least one target is required.
  *       properties:
  *         recipientIds:
  *           type: array
@@ -241,6 +241,19 @@ const {
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/ShareContentFailure'
+ *     ShareContentForbiddenResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *         blockedRecipientIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *         failures:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ShareContentFailure'
  *     UpdateGroupRequest:
  *       type: object
  *       properties:
@@ -259,6 +272,9 @@ const {
  *       properties:
  *         success:
  *           type: boolean
+ *         message:
+ *           type: string
+ *           nullable: true
  *         conversationDeleted:
  *           type: boolean
  *           nullable: true
@@ -338,6 +354,9 @@ router.post('/groups', verifyToken, createGroupConversation);
  * /api/chat/share:
  *   post:
  *     summary: Share a post, reel, ad, or tweet to chats and group chats
+ *     description: >
+ *       Shares content to selected existing conversations and/or followed users.
+ *       If some targets are invalid, request still succeeds for valid targets and returns failed targets in `failures`.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -349,7 +368,7 @@ router.post('/groups', verifyToken, createGroupConversation);
  *             $ref: '#/components/schemas/ShareContentRequest'
  *     responses:
  *       200:
- *         description: Content shared successfully
+ *         description: Content shared (fully or partially) successfully
  *         content:
  *           application/json:
  *             schema:
@@ -359,7 +378,11 @@ router.post('/groups', verifyToken, createGroupConversation);
  *       401:
  *         description: Unauthorized
  *       403:
- *         description: Can only share to users you are following (when using recipientIds)
+ *         description: All selected recipients are blocked because they are not followed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ShareContentForbiddenResponse'
  *       404:
  *         description: Shared content not found
  *       500:
@@ -496,6 +519,7 @@ router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGrou
  *     description: >
  *       Removes the logged-in user from the group participants.
  *       The user can no longer send or receive messages in that group unless added back.
+ *       If fewer than 2 participants remain, the group conversation is deleted.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
