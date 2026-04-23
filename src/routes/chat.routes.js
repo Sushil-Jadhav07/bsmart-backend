@@ -16,6 +16,7 @@ const {
   declineMessageRequest,
   getConversationMessages,
   createMessage,
+  shareContentToUsers,
   markMessageSeen,
   addMessageReaction,
   removeMessageReaction,
@@ -152,7 +153,7 @@ const {
  *             type: string
  *     CreateGroupConversationRequest:
  *       type: object
- *       required: [participantIds, groupName]
+ *       required: [participantIds]
  *       properties:
  *         participantIds:
  *           type: array
@@ -161,6 +162,21 @@ const {
  *         groupName:
  *           type: string
  *         groupAvatar:
+ *           type: string
+ *     ShareContentRequest:
+ *       type: object
+ *       required: [recipientIds, contentType, contentId]
+ *       properties:
+ *         recipientIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *         contentType:
+ *           type: string
+ *           enum: [post, reel, ad]
+ *         contentId:
+ *           type: string
+ *         note:
  *           type: string
  *     UpdateGroupRequest:
  *       type: object
@@ -253,6 +269,36 @@ router.post('/conversations', verifyToken, createConversation);
  *         description: Server error
  */
 router.post('/groups', verifyToken, createGroupConversation);
+
+/**
+ * @swagger
+ * /api/chat/share:
+ *   post:
+ *     summary: Share a post, reel, or ad to followed users in chat
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ShareContentRequest'
+ *     responses:
+ *       200:
+ *         description: Content shared successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Can only share to users you are following
+ *       404:
+ *         description: Shared content not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/share', verifyToken, shareContentToUsers);
 
 /**
  * @swagger

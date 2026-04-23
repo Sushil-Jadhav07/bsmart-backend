@@ -3,6 +3,8 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Follow = require('../models/Follow');
+const Post = require('../models/Post');
+const Ad = require('../models/Ad');
 
 const USER_SELECT = 'username full_name avatar_url';
 
@@ -15,6 +17,64 @@ const normalizeParticipantIds = (userIdA, userIdB) => {
 
 const normalizeUniqueIds = (ids = []) => {
   return [...new Set(ids.map((id) => String(id)))];
+};
+const getAppBaseUrl = (req) => {
+  const configured =
+    process.env.CLIENT_URL
+    || process.env.FRONTEND_URL
+    || process.env.APP_URL
+    || '';
+  if (configured) return String(configured).replace(/\/+$/, '');
+  return `${req.protocol}://${req.get('host')}`;
+};
+const toUploadsUrl = (req, fileName) => {
+  const trimmed = typeof fileName === 'string' ? fileName.trim() : '';
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `${req.protocol}://${req.get('host')}/uploads/${trimmed}`;
+};
+const resolveShareContent = async (req, contentType, contentId) => {
+  const appUrl = getAppBaseUrl(req);
+
+  if (contentType === 'post' || contentType === 'reel') {
+    const post = await Post.findOne({ _id: contentId, isDeleted: { $ne: true } })
+      .populate('user_id', USER_SELECT)
+      .lean();
+
+    if (!post) return null;
+
+    if (contentType === 'reel' && post.type !== 'reel') return null;
+    if (contentType === 'post' && post.type === 'reel') return null;
+
+    const ownerName = post?.user_id?.username || post?.user_id?.full_name || 'user';
+    return {
+      contentType,
+      contentId: post._id,
+      title: post.caption || `${contentType === 'reel' ? 'Reel' : 'Post'} by ${ownerName}`,
+      previewUrl: toUploadsUrl(req, post?.media?.[0]?.fileName),
+      shareUrl: contentType === 'reel'
+        ? `${appUrl}/reels/${post._id}`
+        : `${appUrl}/post/${post._id}`,
+    };
+  }
+
+  if (contentType === 'ad') {
+    const ad = await Ad.findOne({ _id: contentId, isDeleted: { $ne: true } })
+      .populate('user_id', USER_SELECT)
+      .lean();
+    if (!ad) return null;
+
+    const ownerName = ad?.user_id?.username || ad?.user_id?.full_name || 'vendor';
+    return {
+      contentType,
+      contentId: ad._id,
+      title: ad.ad_title || ad.caption || `Ad by ${ownerName}`,
+      previewUrl: toUploadsUrl(req, ad?.media?.[0]?.fileName),
+      shareUrl: `${appUrl}/ads/${ad._id}/details`,
+    };
+  }
+
+  return null;
 };
 
 const getParticipantObjectId = (participant) => participant?._id || participant;
@@ -292,10 +352,6 @@ exports.createGroupConversation = async (req, res) => {
     const uniqueParticipantIds = normalizeUniqueIds(
       participantIds.filter((participantId) => String(participantId) !== String(userId))
     );
-
-    if (!groupName) {
-      return res.status(400).json({ message: 'groupName is required' });
-    }
 
     if (uniqueParticipantIds.length < 2) {
       return res.status(400).json({ message: 'participantIds must include at least 2 other users' });
@@ -807,6 +863,142 @@ exports.createMessage = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.shareContentToUsers = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const recipientIdsRaw = Array.isArray(req.body.recipientIds) ? req.body.recipientIds : [];
+    const contentType = typeof req.body.contentType === 'string' ? req.body.contentType.trim().toLowerCase() : '';
+    const contentId = typeof req.body.contentId === 'string' ? req.body.contentId.trim() : '';
+    const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+
+    if (!['post', 'reel', 'ad'].includes(contentType)) {
+      return res.status(400).json({ message: 'contentType must be one of post, reel, ad' });
+    }
+
+    if (!isValidObjectId(contentId)) {
+      return res.status(400).json({ message: 'Invalid contentId' });
+    }
+
+    const recipientIds = normalizeUniqueIds(
+      recipientIdsRaw.filter((id) => String(id) !== String(userId))
+    );
+
+    if (!recipientIds.length) {
+      return res.status(400).json({ message: 'recipientIds must include at least one user' });
+    }
+
+    if (recipientIds.some((id) => !isValidObjectId(id))) {
+      return res.status(400).json({ message: 'Invalid recipientIds' });
+    }
+
+    const followed = await Follow.find({
+      follower_id: userId,
+      followed_id: { $in: recipientIds },
+    }).select('followed_id').lean();
+    const allowedRecipientIds = new Set(followed.map((item) => String(item.followed_id)));
+    const blockedRecipients = recipientIds.filter((id) => !allowedRecipientIds.has(String(id)));
+    if (blockedRecipients.length) {
+      return res.status(403).json({
+        message: 'You can only share to users you are following',
+        blockedRecipientIds: blockedRecipients,
+      });
+    }
+
+    const sharedContent = await resolveShareContent(req, contentType, contentId);
+    if (!sharedContent) {
+      return res.status(404).json({ message: 'Content not found' });
+    }
+
+    const io = req.app.get('io');
+    const sentConversationIds = [];
+    const failures = [];
+
+    for (const recipientId of recipientIds) {
+      let conversation = await Conversation.findOne({
+        participants: { $all: [userId, recipientId], $size: 2 },
+      });
+
+      if (conversation) {
+        conversation = await syncDirectConversationRequestState(conversation);
+      }
+
+      if (!conversation) {
+        const recipientFollowsMe = await Follow.exists({
+          follower_id: recipientId,
+          followed_id: userId,
+        });
+        const participants = normalizeParticipantIds(userId, recipientId);
+        conversation = await Conversation.create({
+          participants,
+          isRequest: !recipientFollowsMe,
+          requestStatus: recipientFollowsMe ? 'accepted' : 'pending',
+          requestedBy: recipientFollowsMe ? null : userId,
+        });
+      }
+
+      if (
+        conversation.isRequest
+        && conversation.requestStatus === 'pending'
+        && String(conversation.requestedBy) !== String(userId)
+      ) {
+        failures.push({
+          recipientId: String(recipientId),
+          reason: 'Conversation request pending for this recipient',
+        });
+        continue;
+      }
+
+      const text = `${note ? `${note}\n` : ''}${sharedContent.shareUrl}`.trim();
+      const message = await Message.create({
+        conversationId: conversation._id,
+        sender: userId,
+        text,
+        mediaUrl: '',
+        mediaType: 'none',
+        sharedContent: {
+          contentType: sharedContent.contentType,
+          contentId: sharedContent.contentId,
+          title: sharedContent.title,
+          previewUrl: sharedContent.previewUrl,
+          shareUrl: sharedContent.shareUrl,
+        },
+        seenBy: [userId],
+        seenAt: null,
+      });
+
+      await Conversation.findByIdAndUpdate(conversation._id, {
+        $set: {
+          lastMessage: message._id,
+          lastMessageAt: message.createdAt,
+        },
+        $pull: {
+          deletedFor: { $in: [userId, recipientId] },
+        },
+      });
+
+      const populatedMessage = await populateMessage(Message.findById(message._id));
+
+      if (io) {
+        io.to(String(conversation._id)).emit('new-message', populatedMessage.toObject());
+      }
+
+      sentConversationIds.push(String(conversation._id));
+    }
+
+    return res.json({
+      success: true,
+      contentType,
+      contentId,
+      sentCount: sentConversationIds.length,
+      conversationIds: sentConversationIds,
+      failures,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 

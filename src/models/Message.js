@@ -69,6 +69,30 @@ const messageSchema = new mongoose.Schema({
       default: '',
     },
   },
+  sharedContent: {
+    contentType: {
+      type: String,
+      enum: ['post', 'reel', 'ad'],
+      default: null,
+    },
+    contentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    title: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    previewUrl: {
+      type: String,
+      default: '',
+    },
+    shareUrl: {
+      type: String,
+      default: '',
+    },
+  },
   seenBy: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
