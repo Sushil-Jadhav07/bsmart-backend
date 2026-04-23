@@ -6,6 +6,24 @@ const sendNotification = require('../utils/sendNotification');
 // ─── HELPER ────────────────────────────────────────────────────────────────
 const toStr = (id) => id?.toString();
 
+const buildFollowStatus = ({
+  targetId,
+  isFollowing = false,
+  isFollowedBy = false,
+  isPending = false,
+}) => {
+  const normalizedPending = Boolean(!isFollowing && isPending);
+  return {
+    userId: String(targetId),
+    isFollowing: Boolean(isFollowing),
+    isFollowedBy: Boolean(isFollowedBy),
+    isPending: normalizedPending,
+    requestPending: normalizedPending,
+    requested: normalizedPending,
+    status: isFollowing ? 'following' : (normalizedPending ? 'pending' : 'not_following'),
+  };
+};
+
 // ─── followUser (body: { followedUserId }) ─────────────────────────────────
 exports.followUser = async (req, res) => {
   try {
@@ -45,7 +63,13 @@ exports.followUser = async (req, res) => {
         });
       }
 
-      return res.json({ requested: true, message: 'Follow request sent' });
+      return res.json({
+        requested: true,
+        pending: true,
+        requestPending: true,
+        status: 'pending',
+        message: 'Follow request sent',
+      });
     }
 
     // ── PUBLIC ACCOUNT: direct follow ──────────────────────────────────────
@@ -117,7 +141,13 @@ exports.followByParam = async (req, res) => {
         link: `/users/${followerId}`
       }).catch(() => {});
 
-      return res.json({ requested: true, message: 'Follow request sent' });
+      return res.json({
+        requested: true,
+        pending: true,
+        requestPending: true,
+        status: 'pending',
+        message: 'Follow request sent',
+      });
     }
 
     // ── PUBLIC ACCOUNT: direct follow ──────────────────────────────────────
@@ -454,6 +484,102 @@ exports.removeFollower = async (req, res) => {
     await User.findByIdAndUpdate(userId, { $inc: { followers_count: -1 } });
 
     return res.json({ success: true, message: 'Follower removed' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// GET /api/follows/check/:userId
+exports.checkFollowStatus = async (req, res) => {
+  try {
+    const me = req.userId;
+    const { userId } = req.params;
+
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    if (toStr(me) === toStr(userId)) {
+      return res.json(buildFollowStatus({
+        targetId: userId,
+        isFollowing: false,
+        isFollowedBy: false,
+        isPending: false,
+      }));
+    }
+
+    const [targetUser, followingRel, followedByRel] = await Promise.all([
+      User.findById(userId).select('_id followRequests'),
+      Follow.exists({ follower_id: me, followed_id: userId }),
+      Follow.exists({ follower_id: userId, followed_id: me }),
+    ]);
+
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isPending = targetUser.followRequests?.some((id) => toStr(id) === toStr(me));
+    return res.json(buildFollowStatus({
+      targetId: userId,
+      isFollowing: Boolean(followingRel),
+      isFollowedBy: Boolean(followedByRel),
+      isPending: Boolean(isPending),
+    }));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// POST /api/follows/status/bulk   body: { userIds: string[] }
+exports.bulkCheckFollowStatus = async (req, res) => {
+  try {
+    const me = req.userId;
+    const { userIds } = req.body || {};
+
+    if (!Array.isArray(userIds)) {
+      return res.status(400).json({ message: 'userIds must be an array' });
+    }
+
+    const cleanedIds = Array.from(
+      new Set(
+        userIds
+          .filter((id) => mongoose.isValidObjectId(id))
+          .map((id) => String(id))
+          .filter((id) => id !== String(me))
+      )
+    ).slice(0, 200);
+
+    if (!cleanedIds.length) {
+      return res.json([]);
+    }
+
+    const [targets, followingRels, followedByRels] = await Promise.all([
+      User.find({ _id: { $in: cleanedIds } }).select('_id followRequests').lean(),
+      Follow.find({ follower_id: me, followed_id: { $in: cleanedIds } }).select('followed_id').lean(),
+      Follow.find({ follower_id: { $in: cleanedIds }, followed_id: me }).select('follower_id').lean(),
+    ]);
+
+    const targetMap = new Map(targets.map((user) => [String(user._id), user]));
+    const followingSet = new Set(followingRels.map((rel) => String(rel.followed_id)));
+    const followedBySet = new Set(followedByRels.map((rel) => String(rel.follower_id)));
+
+    const result = cleanedIds
+      .filter((targetId) => targetMap.has(targetId))
+      .map((targetId) => {
+        const targetUser = targetMap.get(targetId);
+        const isFollowing = followingSet.has(targetId);
+        const isPending = (targetUser.followRequests || []).some((id) => toStr(id) === toStr(me));
+        return buildFollowStatus({
+          targetId,
+          isFollowing,
+          isFollowedBy: followedBySet.has(targetId),
+          isPending,
+        });
+      });
+
+    return res.json(result);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });

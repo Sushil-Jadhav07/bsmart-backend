@@ -420,7 +420,75 @@ router.post('/groups/:conversationId/members', verifyToken, addGroupMember);
  *         description: Server error
  */
 router.delete('/groups/:conversationId/members/:userId', verifyToken, removeGroupMember);
+
+/**
+ * @swagger
+ * /api/chat/groups/{conversationId}/leave:
+ *   post:
+ *     summary: Leave a group conversation
+ *     description: >
+ *       Removes the logged-in user from the group participants.
+ *       The user can no longer send or receive messages in that group unless added back.
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Left group conversation successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SimpleSuccessResponse'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Group conversation not found
+ *       500:
+ *         description: Server error
+ */
 router.post('/groups/:conversationId/leave', verifyToken, leaveGroupConversation);
+
+/**
+ * @swagger
+ * /api/chat/groups/{conversationId}/delete:
+ *   delete:
+ *     summary: Delete a group chat from inbox for the logged-in user
+ *     description: >
+ *       Deletes this group chat only from the logged-in user's inbox/chat list.
+ *       This does not delete the group for other members.
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: conversationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Group chat deleted from inbox successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SimpleSuccessResponse'
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Group conversation not found
+ *       500:
+ *         description: Server error
+ */
 router.delete('/groups/:conversationId/delete', verifyToken, deleteGroupConversationForUser);
 
 /**

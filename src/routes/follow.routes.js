@@ -9,6 +9,8 @@ const {
   getFollowing,
   getAllFollowers,
   getAllFollowing,
+  checkFollowStatus,
+  bulkCheckFollowStatus,
   // NEW: privacy
   togglePrivacy,
   setPrivacy,
@@ -24,6 +26,8 @@ const {
 router.post('/follow',              auth, followUser);
 router.post('/unfollow',            auth, unfollowUser);
 router.post('/follows/:userId',     auth, followByParam);
+router.get('/follows/check/:userId', auth, checkFollowStatus);
+router.post('/follows/status/bulk',  auth, bulkCheckFollowStatus);
 router.get('/users/:id/followers',  getFollowers);
 router.get('/users/:id/following',  getFollowing);
 router.get('/followers',            getAllFollowers);
@@ -94,7 +98,7 @@ router.delete('/follow/followers/:followerId/remove', auth, removeFollower);
  *                 value: { "followed": true, "alreadyFollowing": false }
  *               private_account:
  *                 summary: Private account — request sent
- *                 value: { "requested": true, "message": "Follow request sent" }
+ *                 value: { "requested": true, "pending": true, "requestPending": true, "status": "pending", "message": "Follow request sent" }
  *       400:
  *         description: Cannot follow yourself
  *       404:
@@ -153,6 +157,128 @@ router.delete('/follow/followers/:followerId/remove', auth, removeFollower);
  *         description: Followed or request sent
  *       409:
  *         description: Already following or request already sent
+ */
+
+/**
+ * @swagger
+ * /api/follows/check/{userId}:
+ *   get:
+ *     tags: [Follow]
+ *     summary: Check follow status for a user
+ *     description: >
+ *       Returns whether the logged-in user is following `userId`,
+ *       whether `userId` follows back, and whether a private follow request is pending.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Follow status payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:
+ *                   type: string
+ *                 isFollowing:
+ *                   type: boolean
+ *                 isFollowedBy:
+ *                   type: boolean
+ *                 isPending:
+ *                   type: boolean
+ *                 requestPending:
+ *                   type: boolean
+ *                 requested:
+ *                   type: boolean
+ *                 status:
+ *                   type: string
+ *                   enum: [following, pending, not_following]
+ *             examples:
+ *               following:
+ *                 value:
+ *                   userId: "64f1a2b3c4d5e6f7a8b9c0d1"
+ *                   isFollowing: true
+ *                   isFollowedBy: false
+ *                   isPending: false
+ *                   requestPending: false
+ *                   requested: false
+ *                   status: "following"
+ *               requested:
+ *                 value:
+ *                   userId: "64f1a2b3c4d5e6f7a8b9c0d1"
+ *                   isFollowing: false
+ *                   isFollowedBy: false
+ *                   isPending: true
+ *                   requestPending: true
+ *                   requested: true
+ *                   status: "pending"
+ *       400:
+ *         description: Invalid userId
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
+
+/**
+ * @swagger
+ * /api/follows/status/bulk:
+ *   post:
+ *     tags: [Follow]
+ *     summary: Check follow status in bulk
+ *     description: >
+ *       Returns follow status for multiple user IDs relative to the logged-in user.
+ *       Useful for followers/following lists and suggestions UI.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userIds]
+ *             properties:
+ *               userIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["64f1a2b3c4d5e6f7a8b9c0d1", "64f1a2b3c4d5e6f7a8b9c0d2"]
+ *     responses:
+ *       200:
+ *         description: Array of follow status objects
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   userId:
+ *                     type: string
+ *                   isFollowing:
+ *                     type: boolean
+ *                   isFollowedBy:
+ *                     type: boolean
+ *                   isPending:
+ *                     type: boolean
+ *                   requestPending:
+ *                     type: boolean
+ *                   requested:
+ *                     type: boolean
+ *                   status:
+ *                     type: string
+ *                     enum: [following, pending, not_following]
+ *       400:
+ *         description: userIds must be an array
+ *       401:
+ *         description: Unauthorized
  */
 
 /**
