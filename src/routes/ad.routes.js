@@ -649,7 +649,7 @@ router.get('/', auth, requireAdmin, listAds);
  * @swagger
  * /api/ads:
  *   post:
- *     summary: Create a new ad (Vendor only)
+ *     summary: Create a new ad (Vendor only, currently not implemented)
  *     description: |
  *       Creates a new ad and atomically deducts `total_budget_coins` from the vendor's wallet.
  *
@@ -871,23 +871,18 @@ router.get('/', auth, requireAdmin, listAds);
  *                   start_time: "09:00"
  *                   end_time: "21:00"
  *     responses:
- *       201:
- *         description: Ad created successfully and budget deducted from wallet
+ *       401:
+ *         description: Unauthorized
+ *       501:
+ *         description: Not implemented
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *               description: The created Ad document
- *       400:
- *         description: Missing required fields or insufficient wallet balance
- *         content:
- *           application/json:
- *             example:
- *               message: "Insufficient wallet balance for total budget"
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Vendor profile not found or not validated
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Not implemented
  *       500:
  *         description: Server error
  */
