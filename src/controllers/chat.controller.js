@@ -1107,12 +1107,12 @@ exports.shareContentToUsers = async (req, res) => {
       if (io) {
         io.to(String(conversation._id)).emit('new-message', serializedMessage);
 
-        const participantIds = normalizeUniqueIds(
+        const socketParticipantIds = normalizeUniqueIds(
           (Array.isArray(conversation.participants) ? conversation.participants : []).map((participantId) => String(participantId))
         );
         const emittedSocketIds = new Set();
 
-        for (const participantId of participantIds) {
+        for (const participantId of socketParticipantIds) {
           const socketsForUser = onlineUsers instanceof Map ? onlineUsers.get(String(participantId)) : null;
           if (!(socketsForUser instanceof Set)) continue;
 
