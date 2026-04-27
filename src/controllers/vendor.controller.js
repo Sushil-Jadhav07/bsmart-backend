@@ -4,6 +4,7 @@ const Wallet = require('../models/Wallet');
 const VendorContact = require('../models/VendorContact');
 const Ad = require('../models/Ad');
 const Follow = require('../models/Follow');
+const VendorPackagePurchase = require('../models/VendorPackagePurchase');
 const path = require('path');
 const fs = require('fs');
 const sendNotification = require('../utils/sendNotification');
@@ -360,6 +361,83 @@ exports.getVendorProfile = async (req, res) => {
   } catch (error) {
     console.error('Get vendor profile error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getVendorDashboardSummary = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Authorization check: user can only read own dashboard unless admin
+    if (req.user.role !== 'admin' && req.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId })
+      .populate('user_id', 'username full_name avatar_url email phone role')
+      .populate('assigned_sales_officer', '_id username full_name email phone avatar_url location');
+
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+    const [activeAdsCount, totalAdsCount, activePurchase] = await Promise.all([
+      Ad.countDocuments({ user_id: userId, isDeleted: false, status: 'active' }),
+      Ad.countDocuments({ user_id: userId, isDeleted: false }),
+      VendorPackagePurchase.findOne({ vendor_id: vendor._id, status: 'active' }).populate('package_id')
+    ]);
+
+    const pkg = activePurchase?.package_id || null;
+    const adsAllowedMax = Number(pkg?.ads_allowed_max || activePurchase?.package_snapshot?.ads_allowed_max || 0);
+    const expiresAt = activePurchase?.expires_at || null;
+    const now = Date.now();
+
+    let daysLeft = null;
+    if (expiresAt) {
+      const diffMs = new Date(expiresAt).getTime() - now;
+      daysLeft = diffMs > 0 ? Math.ceil(diffMs / (1000 * 60 * 60 * 24)) : 0;
+    }
+
+    const adsRemaining = adsAllowedMax > 0 ? Math.max(0, adsAllowedMax - activeAdsCount) : null;
+    const payload = {
+      vendor: {
+        user_id: userId,
+        company_name: vendor.company_details?.company_name || vendor.business_name || '',
+        registered_name: vendor.company_details?.registered_name || '',
+        validated: !!vendor.validated,
+        verification_status: vendor.verification_status || '',
+        profile_completion_percentage: vendor.profile_completion_percentage ?? 0,
+      },
+      package: activePurchase ? {
+        purchase_id: activePurchase._id,
+        name: pkg?.name || activePurchase?.package_snapshot?.name || '',
+        tier: pkg?.tier || activePurchase?.package_snapshot?.tier || '',
+        status: activePurchase.status || '',
+        ads_allowed_min: Number(pkg?.ads_allowed_min || activePurchase?.package_snapshot?.ads_allowed_min || 0),
+        ads_allowed_max: adsAllowedMax,
+        amount_paid: Number(activePurchase.amount_paid || 0),
+        purchased_at: activePurchase.purchased_at || null,
+        expires_at: expiresAt,
+        days_left: daysLeft,
+        ads_remaining: adsRemaining,
+      } : null,
+      ads: {
+        active_count: activeAdsCount,
+        total_count: totalAdsCount,
+      },
+      sales_officer: vendor.assigned_sales_officer ? {
+        _id: vendor.assigned_sales_officer._id,
+        username: vendor.assigned_sales_officer.username || '',
+        full_name: vendor.assigned_sales_officer.full_name || '',
+        email: vendor.assigned_sales_officer.email || '',
+        phone: vendor.assigned_sales_officer.phone || '',
+        avatar_url: vendor.assigned_sales_officer.avatar_url || '',
+        location: vendor.assigned_sales_officer.location || '',
+      } : null,
+    };
+
+    return res.json(payload);
+  } catch (error) {
+    console.error('Get vendor dashboard summary error:', error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 

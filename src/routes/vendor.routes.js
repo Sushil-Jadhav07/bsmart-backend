@@ -12,6 +12,7 @@ const {
   deleteVendorCoverImage,
   removeUserAvatar,
   getVendorProfile,
+  getVendorDashboardSummary,
   getPublicVendorProfile,
   adminProcessVendorVerification,
   getAllVendorsForAdmin,
@@ -53,6 +54,7 @@ router.get('/', listAllVendors);
  *         description: Vendor profile
  */
 router.get('/profile/:userId', getVendorProfile);
+router.get('/dashboard/:userId', auth, getVendorDashboardSummary);
 
 /**
  * @swagger
