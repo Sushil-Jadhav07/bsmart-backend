@@ -106,6 +106,31 @@ router.get('/profile/:userId', getVendorProfile);
  *                   properties:
  *                     active_count: { type: number }
  *                     total_count: { type: number }
+ *                 overview:
+ *                   type: object
+ *                   properties:
+ *                     followers: { type: number }
+ *                     views: { type: number }
+ *                     reach: { type: number }
+ *                     engagements: { type: number }
+ *                     website_clicks: { type: number }
+ *                     profile_link_clicks: { type: number }
+ *                 popular_ads:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       ad_id: { type: string }
+ *                       thumbnail: { type: string }
+ *                       caption: { type: string }
+ *                       published_at: { type: string, format: date-time }
+ *                       type: { type: string }
+ *                       views: { type: number }
+ *                       engagements: { type: number }
+ *                       likes: { type: number }
+ *                       comments: { type: number }
+ *                       shares: { type: number }
+ *                       saves: { type: number }
  *                 sales_officer:
  *                   nullable: true
  *                   type: object

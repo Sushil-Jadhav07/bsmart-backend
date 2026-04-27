@@ -5,6 +5,12 @@ const VendorContact = require('../models/VendorContact');
 const Ad = require('../models/Ad');
 const Follow = require('../models/Follow');
 const VendorPackagePurchase = require('../models/VendorPackagePurchase');
+const AdView = require('../models/AdView');
+const AdClick = require('../models/AdClick');
+const AdComment = require('../models/AdComment');
+const AdEngagement = require('../models/AdEngagement');
+const VendorProfileView = require('../models/VendorProfileView');
+const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
 const sendNotification = require('../utils/sendNotification');
@@ -379,11 +385,54 @@ exports.getVendorDashboardSummary = async (req, res) => {
 
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
 
-    const [activeAdsCount, totalAdsCount, activePurchase] = await Promise.all([
+    const [activeAdsCount, totalAdsCount, activePurchase, vendorAds, followerCount, profileLinkClicksAgg, websiteClicks] = await Promise.all([
       Ad.countDocuments({ user_id: userId, isDeleted: false, status: 'active' }),
       Ad.countDocuments({ user_id: userId, isDeleted: false }),
-      VendorPackagePurchase.findOne({ vendor_id: vendor._id, status: 'active' }).populate('package_id')
+      VendorPackagePurchase.findOne({ vendor_id: vendor._id, status: 'active' }).populate('package_id'),
+      Ad.find({ user_id: userId, isDeleted: false })
+        .select('_id ad_title caption ad_type createdAt media likes_count')
+        .sort({ createdAt: -1 })
+        .lean(),
+      Follow.countDocuments({ followed_id: userId }),
+      VendorProfileView.aggregate([
+        { $match: { vendor_user_id: new mongoose.Types.ObjectId(userId) } },
+        { $group: { _id: null, total: { $sum: '$view_count' } } }
+      ]),
+      AdClick.countDocuments({ vendor_id: vendor._id })
     ]);
+
+    const adIds = vendorAds.map((a) => a._id);
+    let viewsByAd = {};
+    let commentsByAd = {};
+    let savesByAd = {};
+    let totalViews = 0;
+    let reach = 0;
+
+    if (adIds.length > 0) {
+      const [viewsAgg, commentsAgg, savesAgg, reachDistinct] = await Promise.all([
+        AdView.aggregate([
+          { $match: { ad_id: { $in: adIds } } },
+          { $group: { _id: '$ad_id', views: { $sum: '$view_count' } } }
+        ]),
+        AdComment.aggregate([
+          { $match: { ad_id: { $in: adIds }, isDeleted: false } },
+          { $group: { _id: '$ad_id', comments: { $sum: 1 } } }
+        ]),
+        AdEngagement.aggregate([
+          { $match: { ad_id: { $in: adIds }, action_type: 'save' } },
+          { $group: { _id: '$ad_id', saves: { $sum: 1 } } }
+        ]),
+        AdView.distinct('user_id', { ad_id: { $in: adIds } })
+      ]);
+
+      viewsAgg.forEach((v) => {
+        viewsByAd[String(v._id)] = Number(v.views || 0);
+        totalViews += Number(v.views || 0);
+      });
+      commentsAgg.forEach((c) => { commentsByAd[String(c._id)] = Number(c.comments || 0); });
+      savesAgg.forEach((s) => { savesByAd[String(s._id)] = Number(s.saves || 0); });
+      reach = Array.isArray(reachDistinct) ? reachDistinct.length : 0;
+    }
 
     const pkg = activePurchase?.package_id || null;
     const adsAllowedMax = Number(pkg?.ads_allowed_max || activePurchase?.package_snapshot?.ads_allowed_max || 0);
@@ -397,6 +446,34 @@ exports.getVendorDashboardSummary = async (req, res) => {
     }
 
     const adsRemaining = adsAllowedMax > 0 ? Math.max(0, adsAllowedMax - activeAdsCount) : null;
+    const popularAds = vendorAds.map((ad) => {
+      const id = String(ad._id);
+      const likes = Number(ad.likes_count || 0);
+      const comments = Number(commentsByAd[id] || 0);
+      const saves = Number(savesByAd[id] || 0);
+      const views = Number(viewsByAd[id] || 0);
+      const engagements = likes + comments + saves;
+      const media0 = Array.isArray(ad.media) && ad.media.length > 0 ? ad.media[0] : null;
+      const thumbnail = media0?.fileUrl || '';
+
+      return {
+        ad_id: ad._id,
+        thumbnail,
+        caption: ad.ad_title || ad.caption || '',
+        published_at: ad.createdAt,
+        type: ad.ad_type || '',
+        views,
+        engagements,
+        likes,
+        comments,
+        shares: 0,
+        saves,
+      };
+    }).sort((a, b) => (b.views - a.views) || (b.engagements - a.engagements)).slice(0, 10);
+
+    const totalEngagements = popularAds.reduce((sum, ad) => sum + Number(ad.engagements || 0), 0);
+    const profileLinkClicks = Number(profileLinkClicksAgg?.[0]?.total || 0);
+
     const payload = {
       vendor: {
         user_id: userId,
@@ -423,6 +500,15 @@ exports.getVendorDashboardSummary = async (req, res) => {
         active_count: activeAdsCount,
         total_count: totalAdsCount,
       },
+      overview: {
+        followers: followerCount,
+        views: totalViews,
+        reach,
+        engagements: totalEngagements,
+        website_clicks: websiteClicks,
+        profile_link_clicks: profileLinkClicks,
+      },
+      popular_ads: popularAds,
       sales_officer: vendor.assigned_sales_officer ? {
         _id: vendor.assigned_sales_officer._id,
         username: vendor.assigned_sales_officer.username || '',
