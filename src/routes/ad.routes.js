@@ -608,7 +608,7 @@ router.get('/feed', auth, adsFeedRateLimit, getAdsFeed);
  * @swagger
  * /api/ads/user/{userId}:
  *   get:
- *     summary: Get all ads for a specific vendor with comments
+ *     summary: Get all ads created by a user
  *     tags: [Ads]
  *     parameters:
  *       - in: path
@@ -616,14 +616,69 @@ router.get('/feed', auth, adsFeedRateLimit, getAdsFeed);
  *         required: true
  *         schema:
  *           type: string
+ *         description: User ID (vendor owner)
  *       - in: query
  *         name: category
  *         schema:
  *           type: string
- *         description: Filter by category
+ *         description: Optional category filter (ignored when "All")
  *     responses:
  *       200:
- *         description: List of ads with comments
+ *         description: User ads fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ads:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id: { type: string }
+ *                       user_id:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           username: { type: string }
+ *                           full_name: { type: string }
+ *                           avatar_url: { type: string }
+ *                           gender: { type: string }
+ *                           location: { type: string }
+ *                       vendor_id:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           business_name: { type: string }
+ *                           logo_url: { type: string }
+ *                           validated: { type: boolean }
+ *                       ad_title: { type: string }
+ *                       ad_description: { type: string }
+ *                       caption: { type: string }
+ *                       ad_type: { type: string }
+ *                       category: { type: string }
+ *                       status: { type: string }
+ *                       likes_count: { type: number }
+ *                       comments_count: { type: number }
+ *                       views_count: { type: number }
+ *                       is_liked_by_me: { type: boolean }
+ *                       createdAt: { type: string, format: date-time }
+ *                       updatedAt: { type: string, format: date-time }
+ *                 total:
+ *                   type: integer
+ *                   example: 12
+ *       400:
+ *         description: Invalid user ID
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: Invalid user ID
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: Server error
  */
 router.get('/user/:userId', getUserAdsWithComments);
 

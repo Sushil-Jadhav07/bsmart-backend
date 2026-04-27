@@ -413,7 +413,43 @@ exports.searchAds = async (req, res) => {
 };
 
 exports.createAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
-exports.getUserAdsWithComments = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+exports.getUserAdsWithComments = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { category } = req.query || {};
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    const filter = {
+      user_id: userId,
+      isDeleted: false,
+    };
+
+    if (category && String(category).trim() && String(category).toLowerCase() !== 'all') {
+      filter.category = String(category).trim();
+    }
+
+    const ads = await Ad.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
+      .lean();
+
+    const data = ads.map((ad) => ({
+      ...ad,
+      likes_count: Number(ad?.likes_count || (Array.isArray(ad?.likes) ? ad.likes.length : 0)),
+      comments_count: Number(ad?.comments_count || 0),
+      is_liked_by_me: req.userId ? hasUserInList(ad?.likes, req.userId) : false,
+    }));
+
+    return res.json({ ads: data, total: data.length });
+  } catch (error) {
+    console.error('[Ad] getUserAdsWithComments error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 exports.getAdCategories = async (req, res) => {
   try {
     const fromDb = await Ad.distinct('category', { isDeleted: false });
