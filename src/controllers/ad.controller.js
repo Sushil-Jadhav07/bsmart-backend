@@ -274,7 +274,7 @@ const likeAdInternal = async ({ adId, userId, session }) => {
 
   ad.likes.push(userObjectId);
   ad.likes_count = ad.likes.length;
-  await ad.save({ session: session || undefined });
+  await ad.save({ session: session || undefined, validateBeforeSave: false });
 
   return {
     ad,
@@ -350,7 +350,7 @@ const dislikeAdInternal = async ({ adId, userId, session }) => {
   }
   ad.dislikes_count = ad.dislikes.length;
 
-  await ad.save({ session: session || undefined });
+  await ad.save({ session: session || undefined, validateBeforeSave: false });
 
   return {
     ad,
