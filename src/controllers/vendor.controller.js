@@ -25,6 +25,57 @@ const fireAndForget = (label, promise) => {
   promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
 };
 
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg', '.avif']);
+const STREAM_EXTENSIONS = new Set(['.m3u8', '.mpd', '.ts']);
+
+const getPathExtension = (value) => {
+  const str = String(value || '').trim();
+  if (!str) return '';
+  const clean = str.split('?')[0].split('#')[0];
+  const dotIndex = clean.lastIndexOf('.');
+  if (dotIndex === -1) return '';
+  return clean.slice(dotIndex).toLowerCase();
+};
+
+const isImageLikePath = (value) => {
+  const ext = getPathExtension(value);
+  if (!ext) return true;
+  return IMAGE_EXTENSIONS.has(ext);
+};
+
+const isStreamLikePath = (value) => {
+  const ext = getPathExtension(value);
+  return STREAM_EXTENSIONS.has(ext);
+};
+
+const resolveAdThumbnail = (mediaList = []) => {
+  if (!Array.isArray(mediaList) || mediaList.length === 0) return '';
+
+  const firstMedia = mediaList[0] || {};
+  const firstThumb = Array.isArray(firstMedia?.thumbnails) ? firstMedia.thumbnails[0] : null;
+  const firstThumbUrl = firstThumb?.fileUrl || firstThumb?.fileName || '';
+  const firstFileUrl = firstMedia?.fileUrl || firstMedia?.fileName || '';
+
+  if (firstThumbUrl && isImageLikePath(firstThumbUrl)) {
+    return firstThumbUrl;
+  }
+  if (firstFileUrl && isImageLikePath(firstFileUrl) && !isStreamLikePath(firstFileUrl)) {
+    return firstFileUrl;
+  }
+
+  const anyImageMedia = mediaList.find((m) => {
+    const mThumb = Array.isArray(m?.thumbnails) ? m.thumbnails[0] : null;
+    const thumbPath = mThumb?.fileUrl || mThumb?.fileName || '';
+    const mediaPath = m?.fileUrl || m?.fileName || '';
+    return (thumbPath && isImageLikePath(thumbPath)) || (mediaPath && isImageLikePath(mediaPath) && !isStreamLikePath(mediaPath));
+  });
+
+  if (!anyImageMedia) return '';
+
+  const anyThumb = Array.isArray(anyImageMedia?.thumbnails) ? anyImageMedia.thumbnails[0] : null;
+  return anyThumb?.fileUrl || anyThumb?.fileName || anyImageMedia?.fileUrl || anyImageMedia?.fileName || '';
+};
+
 const calculateProfilePercentage = (vendor) => {
   let percentage = 30; // Base percentage for registered vendor
 
@@ -453,8 +504,7 @@ exports.getVendorDashboardSummary = async (req, res) => {
       const saves = Number(savesByAd[id] || 0);
       const views = Number(viewsByAd[id] || 0);
       const engagements = likes + comments + saves;
-      const media0 = Array.isArray(ad.media) && ad.media.length > 0 ? ad.media[0] : null;
-      const thumbnail = media0?.fileUrl || '';
+      const thumbnail = resolveAdThumbnail(ad.media);
 
       return {
         ad_id: ad._id,
