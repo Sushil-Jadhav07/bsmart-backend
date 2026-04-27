@@ -167,11 +167,41 @@ exports.getAdById = async (req, res) => {
 };
 
 const createWalletTransaction = async (payload, session) => {
-  if (session) {
-    await WalletTransaction.create([payload], { session });
-    return;
+  try {
+    if (session) {
+      await WalletTransaction.create([payload], { session });
+      return;
+    }
+    await WalletTransaction.create(payload);
+  } catch (error) {
+    // Some deployments still have stricter unique indexes on (user_id, ad_id, type).
+    // In that case we keep the write idempotent by aggregating into the existing row.
+    if (error?.code === 11000 && payload?.user_id && payload?.ad_id && payload?.type) {
+      const match = {
+        user_id: payload.user_id,
+        ad_id: payload.ad_id,
+        type: payload.type,
+      };
+      const update = {
+        $set: {
+          status: payload.status || 'SUCCESS',
+          description: payload.description || '',
+          ...(payload.vendor_id ? { vendor_id: payload.vendor_id } : {}),
+          transactionDate: new Date(),
+        },
+        $inc: {
+          amount: Number(payload.amount || 0),
+        },
+      };
+      await WalletTransaction.updateOne(
+        match,
+        update,
+        { upsert: true, ...(session ? { session } : {}) }
+      );
+      return;
+    }
+    throw error;
   }
-  await WalletTransaction.create(payload);
 };
 
 const likeAdInternal = async ({ adId, userId, session }) => {
