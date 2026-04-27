@@ -54,6 +54,74 @@ router.get('/', listAllVendors);
  *         description: Vendor profile
  */
 router.get('/profile/:userId', getVendorProfile);
+
+/**
+ * @swagger
+ * /api/vendors/dashboard/{userId}:
+ *   get:
+ *     summary: Get vendor dashboard summary by userId
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dashboard summary payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 vendor:
+ *                   type: object
+ *                   properties:
+ *                     user_id: { type: string }
+ *                     company_name: { type: string }
+ *                     registered_name: { type: string }
+ *                     validated: { type: boolean }
+ *                     verification_status: { type: string }
+ *                     profile_completion_percentage: { type: number }
+ *                 package:
+ *                   nullable: true
+ *                   type: object
+ *                   properties:
+ *                     purchase_id: { type: string }
+ *                     name: { type: string }
+ *                     tier: { type: string }
+ *                     status: { type: string }
+ *                     ads_allowed_min: { type: number }
+ *                     ads_allowed_max: { type: number }
+ *                     amount_paid: { type: number }
+ *                     purchased_at: { type: string, format: date-time }
+ *                     expires_at: { type: string, format: date-time }
+ *                     days_left: { type: number }
+ *                     ads_remaining: { type: number }
+ *                 ads:
+ *                   type: object
+ *                   properties:
+ *                     active_count: { type: number }
+ *                     total_count: { type: number }
+ *                 sales_officer:
+ *                   nullable: true
+ *                   type: object
+ *                   properties:
+ *                     _id: { type: string }
+ *                     username: { type: string }
+ *                     full_name: { type: string }
+ *                     email: { type: string }
+ *                     phone: { type: string }
+ *                     avatar_url: { type: string }
+ *                     location: { type: string }
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Vendor not found
+ */
 router.get('/dashboard/:userId', auth, getVendorDashboardSummary);
 
 /**
