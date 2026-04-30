@@ -1,8 +1,8 @@
 'use strict';
 
 const express = require('express');
-const router = express.Router();
-const auth = require('../middleware/auth');
+const router  = express.Router();
+const auth         = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const {
   getMyWallet,
@@ -11,6 +11,9 @@ const {
   getVendorWalletHistory,
   getAdWalletHistory,
   rechargeVendorWallet,
+  rechargeWallet,
+  getMyRechargeHistory,
+  getVendorRechargeHistory,
   updateWalletBalance,
 } = require('../controllers/wallet.controller');
 
@@ -18,7 +21,7 @@ const {
  * @swagger
  * tags:
  *   - name: Wallet
- *     description: Wallet balance and transaction history
+ *     description: Wallet balance, recharge, and transaction history
  */
 
 // ──────────────────────────────────────────────
@@ -36,21 +39,177 @@ const {
  *     responses:
  *       200:
  *         description: Returns wallet balance + last 50 transactions
+ */
+router.get('/me', auth, getMyWallet);
+
+// ──────────────────────────────────────────────
+// Vendor self-recharge
+// ──────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/wallet/recharge:
+ *   post:
+ *     summary: Vendor self-recharge — converts rupee amount to coins based on active package tier
+ *     description: |
+ *       **Coin formula:**
+ *       - Basic / Standard package (or no active package): `recharge_amount × 4`
+ *       - Premium / Enterprise package: `recharge_amount × 4 + recharge_amount`
+ *
+ *       Example: recharge_amount = 1000
+ *         - Basic → 1000 × 4 = **4000 coins**
+ *         - Premium → 1000 × 4 + 1000 = **5000 coins**
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [recharge_amount]
+ *             properties:
+ *               recharge_amount:
+ *                 type: number
+ *                 description: Amount in rupees to recharge (must be > 0)
+ *                 example: 1000
+ *     responses:
+ *       200:
+ *         description: Wallet recharged successfully
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 success:      { type: boolean }
+ *                 success:       { type: boolean }
+ *                 message:       { type: string }
+ *                 recharge:
+ *                   type: object
+ *                   properties:
+ *                     recharge_amount: { type: number }
+ *                     coins_credited:  { type: number }
+ *                     package_tier:    { type: string, example: "premium" }
+ *                     package_name:    { type: string }
+ *                     formula:         { type: string, example: "1000 × 4 + 1000 = 5000 coins" }
+ *                 wallet:
+ *                   type: object
+ *                   properties:
+ *                     user_id:     { type: string }
+ *                     new_balance: { type: number }
+ *                     currency:    { type: string }
+ *       400:
+ *         description: Invalid recharge_amount
+ *       403:
+ *         description: Only vendors can recharge
+ *       404:
+ *         description: User not found
+ */
+router.post('/recharge', auth, rechargeWallet);
+
+// ──────────────────────────────────────────────
+// Recharge history
+// ──────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/wallet/recharge/history:
+ *   get:
+ *     summary: Get the logged-in vendor's own recharge history
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50, maximum: 500 }
+ *       - in: query
+ *         name: startDate
+ *         schema: { type: string, format: date }
+ *         description: Filter from date (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         schema: { type: string, format: date }
+ *         description: Filter to date (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: Vendor's recharge history with summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 user:    { type: object }
  *                 wallet:
  *                   type: object
  *                   properties:
  *                     balance:  { type: number }
  *                     currency: { type: string }
- *                 total:        { type: integer }
- *                 transactions: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total_recharged_coins: { type: number }
+ *                     total_transactions:    { type: integer }
+ *                 pagination: { type: object }
+ *                 transactions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:         { type: string }
+ *                       type:        { type: string }
+ *                       label:       { type: string }
+ *                       amount:      { type: number }
+ *                       direction:   { type: string }
+ *                       description: { type: string }
+ *                       status:      { type: string }
+ *                       created_at:  { type: string, format: date-time }
+ *       403:
+ *         description: Only vendors have recharge history
  */
-router.get('/me', auth, getMyWallet);
+router.get('/recharge/history', auth, getMyRechargeHistory);
+
+/**
+ * @swagger
+ * /api/wallet/recharge/history/{userId}:
+ *   get:
+ *     summary: Get any vendor's recharge history (Admin only)
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *         description: Vendor's user ID
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50, maximum: 500 }
+ *       - in: query
+ *         name: startDate
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: endDate
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Vendor recharge history
+ *       400:
+ *         description: User is not a vendor / invalid id
+ *       403:
+ *         description: Forbidden – admin only
+ *       404:
+ *         description: User not found
+ */
+router.get('/recharge/history/:userId', auth, requireAdmin, getVendorRechargeHistory);
 
 // ──────────────────────────────────────────────
 // Member history
@@ -69,7 +228,6 @@ router.get('/me', auth, getMyWallet);
  *         name: userId
  *         required: true
  *         schema: { type: string }
- *         description: Member's user ID
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
@@ -79,52 +237,15 @@ router.get('/me', auth, getMyWallet);
  *       - in: query
  *         name: type
  *         schema: { type: string }
- *         description: Comma-separated transaction types to filter (e.g. AD_VIEW_REWARD,AD_LIKE_REWARD)
  *       - in: query
  *         name: startDate
  *         schema: { type: string, format: date }
- *         description: Filter from date (YYYY-MM-DD)
  *       - in: query
  *         name: endDate
  *         schema: { type: string, format: date }
- *         description: Filter to date (YYYY-MM-DD)
  *     responses:
  *       200:
  *         description: Member wallet history with summary stats
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 user:
- *                   type: object
- *                   properties:
- *                     _id:        { type: string }
- *                     username:   { type: string }
- *                     full_name:  { type: string }
- *                     avatar_url: { type: string }
- *                     role:       { type: string }
- *                 wallet:
- *                   type: object
- *                   properties:
- *                     balance:  { type: number }
- *                     currency: { type: string }
- *                 summary:
- *                   type: object
- *                   properties:
- *                     total_earned:        { type: number }
- *                     total_deducted:      { type: number }
- *                     total_transactions:  { type: integer }
- *                     earnings_by_type:    { type: object }
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     total: { type: integer }
- *                     page:  { type: integer }
- *                     limit: { type: integer }
- *                     pages: { type: integer }
- *                 transactions: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
  *       400:
  *         description: Not a member / invalid id
  *       403:
@@ -135,14 +256,20 @@ router.get('/me', auth, getMyWallet);
 router.get('/member/:userId/history', auth, getMemberWalletHistory);
 
 // ──────────────────────────────────────────────
-// Vendor history + recharge
+// Vendor history + admin recharge
 // ──────────────────────────────────────────────
 
 /**
  * @swagger
  * /api/wallet/vendor/{userId}/history:
  *   get:
- *     summary: Get a vendor's wallet history (credits, ad budget deductions, refunds)
+ *     summary: Get a vendor's wallet history (credits, recharges, ad budget deductions, refunds)
+ *     description: |
+ *       Returns all vendor wallet transaction types including **VENDOR_RECHARGE**.
+ *       The `summary.recharge` block shows aggregated recharge stats:
+ *       - `total_recharge_count` – number of recharges
+ *       - `total_recharged_coins` – total coins credited via recharge
+ *       - `last_recharge_at` – timestamp of most recent recharge
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -151,7 +278,6 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *         name: userId
  *         required: true
  *         schema: { type: string }
- *         description: Vendor's user ID
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
@@ -161,7 +287,7 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *       - in: query
  *         name: type
  *         schema: { type: string }
- *         description: Filter by transaction type(s), comma-separated
+ *         description: Filter by type e.g. VENDOR_RECHARGE or AD_BUDGET_DEDUCTION
  *       - in: query
  *         name: startDate
  *         schema: { type: string, format: date }
@@ -170,7 +296,7 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *         schema: { type: string, format: date }
  *     responses:
  *       200:
- *         description: Vendor wallet history with ad budget summary
+ *         description: Vendor wallet history with recharge summary section
  *         content:
  *           application/json:
  *             schema:
@@ -186,11 +312,17 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *                 summary:
  *                   type: object
  *                   properties:
- *                     total_credited:             { type: number }
- *                     total_debited:              { type: number }
- *                     total_transactions:         { type: integer }
- *                     total_ads_created:          { type: integer }
- *                     total_ad_budget_allocated:  { type: number }
+ *                     total_credited:            { type: number }
+ *                     total_debited:             { type: number }
+ *                     total_transactions:        { type: integer }
+ *                     total_ads_created:         { type: integer }
+ *                     total_ad_budget_allocated: { type: number }
+ *                     recharge:
+ *                       type: object
+ *                       properties:
+ *                         total_recharge_count:  { type: integer }
+ *                         total_recharged_coins: { type: number }
+ *                         last_recharge_at:      { type: string, format: date-time, nullable: true }
  *                 pagination: { type: object }
  *                 transactions: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
  *       400:
@@ -206,7 +338,7 @@ router.get('/vendor/:userId/history', auth, getVendorWalletHistory);
  * @swagger
  * /api/wallet/vendor/{userId}/recharge:
  *   post:
- *     summary: Recharge a vendor's wallet with coins (Admin only)
+ *     summary: Directly credit a vendor's wallet with coins (Admin only — no formula applied)
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -215,7 +347,6 @@ router.get('/vendor/:userId/history', auth, getVendorWalletHistory);
  *         name: userId
  *         required: true
  *         schema: { type: string }
- *         description: Vendor's user ID
  *     requestBody:
  *       required: true
  *       content:
@@ -226,13 +357,12 @@ router.get('/vendor/:userId/history', auth, getVendorWalletHistory);
  *             properties:
  *               amount:
  *                 type: number
- *                 description: Number of coins to add (must be > 0)
+ *                 description: Number of coins to add directly (no formula)
  *               description:
  *                 type: string
- *                 description: Optional note about the recharge
  *     responses:
  *       200:
- *         description: Recharge successful, returns new balance + transaction record
+ *         description: Recharge successful
  *       400:
  *         description: Invalid amount or user is not a vendor
  *       403:
@@ -274,45 +404,12 @@ router.post('/vendor/:userId/recharge', auth, requireAdmin, rechargeVendorWallet
  *       - in: query
  *         name: type
  *         schema: { type: string }
- *         description: Comma-separated types e.g. AD_LIKE_REWARD,AD_VIEW_DEDUCTION
  *       - in: query
  *         name: userId
  *         schema: { type: string }
- *         description: Filter transactions by a specific user
  *     responses:
  *       200:
- *         description: Ad budget breakdown + full per-action coin stats + transactions
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 ad:
- *                   type: object
- *                   properties:
- *                     _id:     { type: string }
- *                     caption: { type: string }
- *                     status:  { type: string }
- *                 budget:
- *                   type: object
- *                   properties:
- *                     total_budget_coins:  { type: number }
- *                     total_coins_spent:   { type: number }
- *                     balance_remaining:   { type: number }
- *                     spent_percentage:    { type: number }
- *                 actions:
- *                   type: object
- *                   properties:
- *                     views:    { type: object, properties: { count: { type: integer }, total_coins: { type: number } } }
- *                     likes:    { type: object, properties: { count: { type: integer }, total_coins: { type: number } } }
- *                     comments: { type: object, properties: { count: { type: integer }, total_coins: { type: number } } }
- *                     replies:  { type: object, properties: { count: { type: integer }, total_coins: { type: number } } }
- *                     saves:    { type: object, properties: { count: { type: integer }, total_coins: { type: number } } }
- *                     refunds:  { type: object, properties: { count: { type: integer }, total_coins: { type: number } } }
- *                 unique_users: { type: integer }
- *                 pagination: { type: object }
- *                 transactions: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+ *         description: Ad budget breakdown + per-action coin stats + transactions
  *       403:
  *         description: Forbidden – must be the ad owner or admin
  *       404:
@@ -329,10 +426,6 @@ router.get('/ads/:adId/history', auth, getAdWalletHistory);
  * /api/wallet:
  *   get:
  *     summary: Get all wallet transactions (Admin only)
- *     description: >
- *       Returns platform-wide transaction log with pagination + filtering,
- *       plus a complete list of all user wallets with balances and stats,
- *       plus a high-level platform summary (coins minted, ad spend, etc.)
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -346,15 +439,12 @@ router.get('/ads/:adId/history', auth, getAdWalletHistory);
  *       - in: query
  *         name: type
  *         schema: { type: string }
- *         description: Comma-separated transaction types
  *       - in: query
  *         name: role
  *         schema: { type: string, enum: [member, vendor, all] }
- *         description: Filter transactions + wallet list by user role
  *       - in: query
  *         name: userId
  *         schema: { type: string }
- *         description: Filter by a specific user ID
  *       - in: query
  *         name: startDate
  *         schema: { type: string, format: date }
@@ -364,46 +454,9 @@ router.get('/ads/:adId/history', auth, getAdWalletHistory);
  *       - in: query
  *         name: direction
  *         schema: { type: string, enum: [credit, debit, all] }
- *         description: Filter by credit (amount > 0) or debit (amount < 0)
  *     responses:
  *       200:
  *         description: Full platform wallet data
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 summary:
- *                   type: object
- *                   properties:
- *                     total_transactions:           { type: integer }
- *                     total_coins_minted:           { type: number }
- *                     total_coins_from_ads:         { type: number }
- *                     total_coins_from_reels:       { type: number }
- *                     total_ad_coins_spent:         { type: number }
- *                     total_vendor_coins_recharged: { type: number }
- *                     total_wallets:                { type: integer }
- *                     member_wallets:               { type: integer }
- *                     vendor_wallets:               { type: integer }
- *                 wallets:
- *                   type: array
- *                   description: All user wallets sorted by balance descending
- *                   items:
- *                     type: object
- *                     properties:
- *                       wallet_id:      { type: string }
- *                       user:           { type: object }
- *                       balance:        { type: number }
- *                       currency:       { type: string }
- *                       tx_count:       { type: integer }
- *                       total_credited: { type: number }
- *                       total_debited:  { type: number }
- *                       last_tx_at:     { type: string, format: date-time }
- *                 pagination: { type: object }
- *                 transactions:
- *                   type: array
- *                   items: { $ref: '#/components/schemas/Transaction' }
  *       403:
  *         description: Forbidden – admin only
  */
@@ -425,17 +478,10 @@ router.get('/', auth, requireAdmin, getAllWallets);
  *             type: object
  *             required: [userId, amount, type]
  *             properties:
- *               userId:
- *                 type: string
- *                 description: Target user's ID
- *               amount:
- *                 type: number
- *                 description: Positive to credit, negative to debit
- *               type:
- *                 type: string
- *                 default: ADMIN_ADJUSTMENT
- *               description:
- *                 type: string
+ *               userId:      { type: string }
+ *               amount:      { type: number, description: "Positive to credit, negative to debit" }
+ *               type:        { type: string, default: ADMIN_ADJUSTMENT }
+ *               description: { type: string }
  *     responses:
  *       200:
  *         description: Wallet adjusted successfully
@@ -460,21 +506,9 @@ router.post('/admin/adjust', auth, requireAdmin, updateWalletBalance);
  *         label:       { type: string }
  *         description: { type: string }
  *         status:      { type: string, enum: [SUCCESS, FAILED] }
- *         ad:
- *           type: object
- *           nullable: true
- *           properties:
- *             _id:   { type: string }
- *             title: { type: string }
- *         user:
- *           type: object
- *           properties:
- *             _id:       { type: string }
- *             username:  { type: string }
- *             full_name: { type: string }
- *             role:      { type: string }
- *             avatar_url: { type: string }
- *         created_at: { type: string, format: date-time }
+ *         ad:          { type: object, nullable: true }
+ *         user:        { type: object }
+ *         created_at:  { type: string, format: date-time }
  */
 
 module.exports = router;
