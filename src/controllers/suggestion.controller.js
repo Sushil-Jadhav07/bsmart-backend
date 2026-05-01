@@ -1,6 +1,7 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
 const Ad = require('../models/Ad');
+const Vendor = require('../models/Vendor');
 const Follow = require('../models/Follow');
 const mongoose = require('mongoose');
 const { getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
@@ -45,7 +46,8 @@ exports.getSuggestedUsers = async (req, res) => {
       isDeleted: { $ne: true },
       is_active: true
     })
-      .select('username full_name avatar_url followers_count bio')
+      .select('username full_name avatar_url followers_count bio role')
+      .populate('vendor_profile', 'business_name logo_url')
       .sort({ followers_count: -1 })
       .limit(limit)
       .lean();
@@ -54,7 +56,8 @@ exports.getSuggestedUsers = async (req, res) => {
       ...u,
       avatar_url: u.avatar_url && !u.avatar_url.startsWith('http') 
         ? `${baseUrl}/uploads/${u.avatar_url}` 
-        : u.avatar_url
+        : u.avatar_url,
+      vendor_details: u.role === 'vendor' ? u.vendor_profile : undefined
     }));
 
     res.json({ success: true, data: formattedUsers });
@@ -168,13 +171,14 @@ exports.getSuggestions = async (req, res) => {
       adQuery.user_id = { $nin: blockedPrivateUserIds };
     }
 
-    const [suggestedUsers, suggestedReels, suggestedAds] = await Promise.all([
+    const [suggestedUsers, suggestedReels, suggestedAds, suggestedVendors] = await Promise.all([
       User.find({
         _id: { $nin: excludeIds },
         isDeleted: { $ne: true },
         is_active: true
       })
-        .select('username full_name avatar_url followers_count bio')
+        .select('username full_name avatar_url followers_count bio role')
+        .populate('vendor_profile', 'business_name logo_url')
         .sort({ followers_count: -1 })
         .limit(limit)
         .lean(),
@@ -188,6 +192,13 @@ exports.getSuggestions = async (req, res) => {
         .populate('user_id', 'username full_name avatar_url isPrivate')
         .sort({ createdAt: -1 })
         .limit(limit)
+        .lean(),
+      Vendor.find({
+        user_id: { $nin: excludeIds },
+        isDeleted: { $ne: true }
+      })
+        .populate('user_id', 'username full_name avatar_url followers_count bio')
+        .limit(limit)
         .lean()
     ]);
 
@@ -195,7 +206,8 @@ exports.getSuggestions = async (req, res) => {
       ...u,
       avatar_url: u.avatar_url && !u.avatar_url.startsWith('http') 
         ? `${baseUrl}/uploads/${u.avatar_url}` 
-        : u.avatar_url
+        : u.avatar_url,
+      vendor_details: u.role === 'vendor' ? u.vendor_profile : undefined
     }));
 
     const formattedReels = suggestedReels.map(r => ({
@@ -208,16 +220,66 @@ exports.getSuggestions = async (req, res) => {
       media: formatMedia(ad.media, baseUrl)
     }));
 
+    const formattedVendors = suggestedVendors.map(v => ({
+      ...v,
+      user: {
+        ...v.user_id,
+        avatar_url: v.user_id?.avatar_url && !v.user_id.avatar_url.startsWith('http') 
+          ? `${baseUrl}/uploads/${v.user_id.avatar_url}` 
+          : v.user_id?.avatar_url
+      }
+    }));
+
     res.json({
       success: true,
       data: {
         users: formattedUsers,
         reels: formattedReels,
-        ads: formattedAds
+        ads: formattedAds,
+        vendors: formattedVendors
       }
     });
   } catch (error) {
     console.error('[getSuggestions] error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+/**
+ * Get suggested vendors
+ * @route GET /api/suggestions/vendors
+ * @access Private
+ */
+exports.getSuggestedVendors = async (req, res) => {
+  try {
+    const currentUserId = req.userId;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const following = await Follow.find({ follower_id: currentUserId }).distinct('followed_id');
+    const excludeIds = [currentUserId, ...following];
+
+    const suggestedVendors = await Vendor.find({
+      user_id: { $nin: excludeIds },
+      isDeleted: { $ne: true }
+    })
+      .populate('user_id', 'username full_name avatar_url followers_count bio')
+      .limit(limit)
+      .lean();
+
+    const formattedVendors = suggestedVendors.map(v => ({
+      ...v,
+      user: {
+        ...v.user_id,
+        avatar_url: v.user_id?.avatar_url && !v.user_id.avatar_url.startsWith('http') 
+          ? `${baseUrl}/uploads/${v.user_id.avatar_url}` 
+          : v.user_id?.avatar_url
+      }
+    }));
+
+    res.json({ success: true, data: formattedVendors });
+  } catch (error) {
+    console.error('[getSuggestedVendors] error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

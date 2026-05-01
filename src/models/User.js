@@ -126,7 +126,17 @@ followRequests: [
 ],
 
 }, {
-  timestamps: true // Automatically adds createdAt and updatedAt
+  timestamps: true, // Automatically adds createdAt and updatedAt
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// Virtual for vendor profile
+userSchema.virtual('vendor_profile', {
+  ref: 'Vendor',
+  localField: '_id',
+  foreignField: 'user_id',
+  justOne: true
 });
 
 module.exports = mongoose.model('User', userSchema);

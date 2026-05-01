@@ -5,7 +5,8 @@ const {
   getSuggestions, 
   getSuggestedUsers, 
   getSuggestedReels, 
-  getSuggestedAds 
+  getSuggestedAds,
+  getSuggestedVendors
 } = require('../controllers/suggestion.controller');
 
 /**
@@ -97,5 +98,25 @@ router.get('/reels', auth, getSuggestedReels);
  *         description: Ad suggestions retrieved successfully
  */
 router.get('/ads', auth, getSuggestedAds);
+
+/**
+ * @swagger
+ * /api/suggestions/vendors:
+ *   get:
+ *     summary: Get suggested vendors
+ *     tags: [Suggestions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Vendor suggestions retrieved successfully
+ */
+router.get('/vendors', auth, getSuggestedVendors);
 
 module.exports = router;
