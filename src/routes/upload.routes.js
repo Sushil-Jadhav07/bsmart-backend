@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 const verifyToken = require('../middleware/auth');
 const { upload } = require('../config/multer');
 const User = require('../models/User');
@@ -185,5 +186,133 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+
+// ─── POST /api/upload/promote-product ────────────────────────────────────────
+/**
+ * @swagger
+ * /api/upload/promote-product:
+ *   post:
+ *     summary: Upload a product image for a promote reel product card
+ *     description: |
+ *       Accepts a single image file and returns the full URL to be stored
+ *       as `promote_img` in the products array when creating / updating a
+ *       promote reel.
+ *
+ *       **Allowed types:** JPEG, JPG, PNG, WEBP, GIF
+ *       **Max size:** 10 MB
+ *
+ *       Example workflow:
+ *       1. Upload each product image → get back `{ promote_img: "https://..." }`
+ *       2. Include the URL in the `products[]` array body when calling
+ *          `POST /api/promote-reels` or `PATCH /api/promote-reels/:id`
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Product image file (JPEG / PNG / WEBP / GIF, max 10 MB)
+ *     responses:
+ *       200:
+ *         description: Image uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 promote_img:
+ *                   type: string
+ *                   example: "https://api.bebsmart.in/uploads/1717000000000-123456789.jpg"
+ *                   description: Full URL — use this as `promote_img` in the products array
+ *                 fileName:
+ *                   type: string
+ *                   example: "1717000000000-123456789.jpg"
+ *                 media_type:
+ *                   type: string
+ *                   example: image
+ *       400:
+ *         description: No file provided or invalid file type
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *       500:
+ *         description: Server error
+ */
+
+// Dedicated image-only multer instance for product images (10 MB cap)
+const productImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename:    (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, unique + path.extname(file.originalname).toLowerCase());
+  },
+});
+
+const productImageFilter = (_req, file, cb) => {
+  const allowed = /jpeg|jpg|png|webp|gif/;
+  const extOk   = allowed.test(path.extname(file.originalname).toLowerCase());
+  const mimeOk  = file.mimetype.startsWith('image/');
+  if (extOk && mimeOk) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed for product images (JPEG, PNG, WEBP, GIF).'));
+  }
+};
+
+const uploadProductImage = multer({
+  storage:    productImageStorage,
+  limits:     { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: productImageFilter,
+});
+
+router.post(
+  '/promote-product',
+  verifyToken,
+  (req, res, next) => {
+    uploadProductImage.single('file')(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ message: 'File too large. Maximum size is 10 MB.' });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      if (err) {
+        return res.status(400).json({ message: err.message });
+      }
+      next();
+    });
+  },
+  (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'Please upload an image file.' });
+      }
+
+      const baseUrl    = getPublicBaseUrl(req);
+      const promoteImg = `${baseUrl}/uploads/${req.file.filename}`;
+
+      return res.json({
+        promote_img: promoteImg,         // ← key name matches the model field
+        fileName:    req.file.filename,
+        media_type:  'image',
+      });
+    } catch (error) {
+      console.error('[Upload/promote-product] Error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  }
+);
 
 module.exports = router;
