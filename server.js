@@ -59,6 +59,29 @@ const server = http.createServer(app);
 
 app.set('trust proxy', true);
 
+// ─── CORS SETUP ────────────────────────────────────────────────────────────
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
+};
+
+app.use(cors(corsOptions));
+
+// ─── REQUEST LOGGER ────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+// ──────────────────────────────────────────────────────────────────────────
+
 // ─── SOCKET.IO SETUP ──────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
@@ -162,7 +185,6 @@ app.set('onlineUsers', onlineUsers);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(passport.initialize());
-app.use(cors({ origin: '*', credentials: true }));
 
 // Serve uploaded files statically with explicit CORS for HLS manifests/segments.
 app.use('/uploads', (req, res, next) => {
@@ -260,7 +282,7 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] Running on port ${PORT}`);
     });
   } catch (error) {
