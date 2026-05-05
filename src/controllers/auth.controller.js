@@ -528,6 +528,9 @@ exports.getMe = async (req, res) => {
     // isPrivate is already included via toObject() — ensure it's always a boolean
     userData.isPrivate = userData.isPrivate ?? false;   // ← ADDED
 
+    // ad_interests — always return an array (field added for interest/ad targeting)
+    userData.ad_interests = Array.isArray(userData.ad_interests) ? userData.ad_interests : [];
+
     if (vendorData) {
       Object.assign(userData, vendorData);
     }

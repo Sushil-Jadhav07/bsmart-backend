@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles, updateUserStatus } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const auth = require('../middleware/auth');
@@ -302,3 +302,77 @@ router.patch('/:id/status', auth, updateUserStatus);
 router.delete('/:id', auth, deleteUser);
 
 module.exports = router;
+
+// ─── Ad Interest Routes ────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/users/{id}/interests:
+ *   get:
+ *     summary: Get ad interest categories for a user profile
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User's ad interests and available categories
+ *       404:
+ *         description: User not found
+ */
+router.get('/:id/interests', getUserInterests);
+
+/**
+ * @swagger
+ * /api/users/{id}/interests:
+ *   post:
+ *     summary: Add or update ad interest categories (logged-in user only)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID (must match authenticated user)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               interests:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: "Full replacement list of interest categories"
+ *               add:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: "Categories to append (no duplicates)"
+ *               remove:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: "Categories to remove"
+ *     responses:
+ *       200:
+ *         description: Interests updated successfully
+ *       400:
+ *         description: Invalid category value(s)
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not allowed to update another user's interests
+ *       404:
+ *         description: User not found
+ */
+router.post('/:id/interests', auth, updateUserInterests);

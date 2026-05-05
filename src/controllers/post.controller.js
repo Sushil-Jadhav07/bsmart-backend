@@ -8,6 +8,7 @@ const Follow       = require('../models/Follow');
 const Tweet       = require('../models/tweet.model');
 const TweetLike   = require('../models/tweetLike.model');
 const TweetRepost = require('../models/tweetRepost.model');
+const PromoteReel  = require('../models/PromoteReel');
 const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
 const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
@@ -133,7 +134,8 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
     adQuery.user_id = { $nin: blockedPrivateUserIds };
   }
 
-  const [ads, rewarded] = await Promise.all([
+  // Fetch ads, rewarded views, AND promote reels in parallel
+  const [ads, rewarded, promoteReels] = await Promise.all([
     Ad.find(adQuery)
       .sort({ createdAt: -1 })
       .limit(Math.max(1, adSlots))
@@ -141,6 +143,12 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
       .populate('user_id', 'username full_name avatar_url gender location isPrivate')
       .lean(),
     AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
+    // One promote reel per ad slot so each ad is immediately followed by one
+    PromoteReel.find({ isDeleted: false })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, adSlots))
+      .populate('user_id', 'username full_name avatar_url isPrivate')
+      .lean(),
   ]);
 
   if (!ads.length) {
@@ -188,12 +196,61 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
     };
   });
 
+  // ── Normalise promote reels ────────────────────────────────────────────────
+  const normalizedPromoteReels = promoteReels.map((pr) => {
+    const toAbsolute = (val) => {
+      if (!val) return val;
+      const s = String(val);
+      return s.startsWith('http') ? s : `${baseUrl}${s.startsWith('/') ? '' : '/'}${s}`;
+    };
+
+    const normalizedMedia = Array.isArray(pr.media)
+      ? pr.media.map((m) => {
+        const fileUrl = m.fileName
+          ? `${baseUrl}/uploads/${m.fileName}`
+          : toAbsolute(m.fileUrl);
+        const thumbnails = Array.isArray(m.thumbnails)
+          ? m.thumbnails.map(t => ({
+            ...t,
+            fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : toAbsolute(t.fileUrl),
+          }))
+          : (m.thumbnail?.fileName
+            ? [{ ...m.thumbnail, fileUrl: `${baseUrl}/uploads/${m.thumbnail.fileName}` }]
+            : []);
+        return { ...m, type: 'video', media_type: 'video', fileUrl, url: fileUrl, thumbnails };
+      })
+      : [];
+
+    const prAuthorId = String(pr?.user_id?._id || pr?.user_id?.id || '');
+    const isPrAuthorFollowed = prAuthorId ? followedSet.has(prAuthorId) : false;
+    return {
+      item_type:       'promote_reel',
+      ...pr,
+      promote_reel_id: pr._id,
+      media:           normalizedMedia,
+      commentsCount:   Number(pr.comments_count ?? 0),
+      comments_count:  Number(pr.comments_count ?? 0),
+      commentCount:    Number(pr.comments_count ?? 0),
+      comment_count:   Number(pr.comments_count ?? 0),
+      is_liked_by_me:  Array.isArray(pr.likes) && pr.likes.some(id => id.toString() === req.userId.toString()),
+      is_author_followed_by_me: isPrAuthorFollowed,
+      can_view_by_me:  !pr?.user_id?.isPrivate || prAuthorId === viewerId || isPrAuthorFollowed,
+    };
+  });
+
+  // ── Interleave: every 5 posts → ad → promote_reel (if any) ───────────────
+  // Pattern: [post, post, post, post, post, ad, promote_reel, post, post, ...]
   const mixed = [];
   let adIndex = 0;
   for (let i = 0; i < feedItems.length; i++) {
     mixed.push(feedItems[i]);
     if ((i + 1) % 5 === 0) {
+      // 1. Push the ad
       mixed.push(normalizedAds[adIndex % normalizedAds.length]);
+      // 2. Push the promote reel immediately after the ad
+      if (normalizedPromoteReels.length > 0) {
+        mixed.push(normalizedPromoteReels[adIndex % normalizedPromoteReels.length]);
+      }
       adIndex++;
     }
   }
@@ -665,4 +722,3 @@ exports.updateReelMetadata = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-

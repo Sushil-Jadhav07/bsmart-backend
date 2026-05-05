@@ -104,6 +104,14 @@ const userSchema = new mongoose.Schema({
     year_established: { type: String, default: '' },
     company_type: { type: String, default: '' }
   },
+  // ─── Ad Interest Categories ───────────────────────────────────────────────
+  // Stores the list of ad categories the user is interested in.
+  // Values must come from /src/data/adCategories.js list.
+  ad_interests: {
+    type: [String],
+    default: [],
+  },
+
   isDeleted: {
     type: Boolean,
     default: false

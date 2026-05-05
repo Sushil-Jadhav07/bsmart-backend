@@ -86,6 +86,9 @@ exports.getUserById = async (req, res) => {
 
     obj.isPrivate = obj.isPrivate ?? false;   // ← ADDED
 
+    // ad_interests — always return an array
+    obj.ad_interests = Array.isArray(obj.ad_interests) ? obj.ad_interests : [];
+
     obj.validated = validated;
     if (vendor) {
       obj.vendor_id = vendor._id;
@@ -130,7 +133,7 @@ exports.listUsersProfiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const users = await User.find({})
-      .select('_id username full_name avatar_url phone role gender location followers_count following_count isPrivate createdAt updatedAt')  // ← isPrivate added to select
+      .select('_id username full_name avatar_url phone role gender location followers_count following_count isPrivate ad_interests createdAt updatedAt')  // ← isPrivate added to select
       .sort({ createdAt: -1 })
       .lean();
     const ids = users.map(u => u._id);
@@ -141,6 +144,7 @@ exports.listUsersProfiles = async (req, res) => {
       u.gender   = (u.gender   !== undefined && u.gender   !== null) ? String(u.gender)   : '';
       u.location = (u.location !== undefined && u.location !== null) ? String(u.location) : '';
       u.isPrivate = u.isPrivate ?? false;   // ← ADDED
+      u.ad_interests = Array.isArray(u.ad_interests) ? u.ad_interests : [];
       const vendor = vmap.get(u._id.toString());
       u.validated = vendor ? !!vendor.validated : false;
       if (vendor) {
@@ -288,6 +292,106 @@ exports.deleteUser = async (req, res) => {
 
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ─── Ad Interest Categories ────────────────────────────────────────────────
+const AD_CATEGORIES = require('../data/adCategories');
+
+// @desc    Get ad interest categories for a user profile (by user ID)
+// @route   GET /api/users/:id/interests
+// @access  Public
+exports.getUserInterests = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('ad_interests username full_name avatar_url');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({
+      user_id: user._id,
+      username: user.username,
+      full_name: user.full_name,
+      avatar_url: user.avatar_url,
+      ad_interests: user.ad_interests || [],
+      available_categories: AD_CATEGORIES,
+    });
+  } catch (error) {
+    console.error('[User] getUserInterests error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Add / update ad interest categories for the logged-in user
+// @route   POST /api/users/:id/interests
+// @access  Private (logged-in user can only update their own interests)
+// Body: { interests: ["Electronics", "Gaming"] }   — replaces the full list
+// Body: { add: ["Electronics"] }                   — appends without duplicates
+// Body: { remove: ["Electronics"] }                — removes listed items
+exports.updateUserInterests = async (req, res) => {
+  try {
+    const targetId = req.params.id;
+
+    // Only the authenticated user themselves may update their own interests
+    if (req.userId.toString() !== targetId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update interests for this user' });
+    }
+
+    const user = await User.findById(targetId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { interests, add, remove } = req.body;
+
+    // Validate all incoming categories against the master list
+    const validate = (arr) => {
+      if (!Array.isArray(arr)) return [];
+      const invalid = arr.filter(c => !AD_CATEGORIES.includes(c));
+      if (invalid.length) {
+        throw Object.assign(new Error(`Invalid categories: ${invalid.join(', ')}`), { status: 400 });
+      }
+      return arr;
+    };
+
+    let current = Array.isArray(user.ad_interests) ? [...user.ad_interests] : [];
+
+    if (Array.isArray(interests)) {
+      // Full replace
+      validate(interests);
+      current = [...new Set(interests)];
+    } else {
+      if (add) {
+        validate(add);
+        current = [...new Set([...current, ...add])];
+      }
+      if (remove) {
+        validate(remove);
+        const removeSet = new Set(remove);
+        current = current.filter(c => !removeSet.has(c));
+      }
+    }
+
+    user.ad_interests = current;
+    await user.save();
+
+    res.json({
+      message: 'Interests updated successfully',
+      user_id: user._id,
+      ad_interests: user.ad_interests,
+      available_categories: AD_CATEGORIES,
+    });
+  } catch (error) {
+    console.error('[User] updateUserInterests error:', error);
+    if (error.status === 400) {
+      return res.status(400).json({ message: error.message, available_categories: AD_CATEGORIES });
+    }
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'User not found' });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 };
