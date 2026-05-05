@@ -13,12 +13,12 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:5000',
-        description: 'Local Development Server',
+        url: 'https://api.bebsmart.in',
+        description: 'Production Server',
       },
       {
-        url: 'https://api.bebsmart.in/',
-        description: 'Production Server',
+        url: 'http://localhost:5000',
+        description: 'Local Development Server',
       }
     ],
     components: {
