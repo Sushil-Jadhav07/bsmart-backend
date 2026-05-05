@@ -2,6 +2,9 @@ const User = require('../models/User');
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
 const Vendor = require('../models/Vendor');
+const PromoteReel = require('../models/PromoteReel');
+const Tweet = require('../models/tweet.model');
+const mongoose = require('mongoose');
 
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
@@ -123,6 +126,69 @@ exports.getUserPostsDetails = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get user profile content in one payload (posts, reels, promote reels, tweets)
+// @route   GET /api/users/:id/profile-content
+// @access  Public
+exports.getUserProfileContent = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid user id' });
+    }
+
+    const userExists = await User.exists({ _id: userId });
+    if (!userExists) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
+
+    const [postsRaw, reelsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
+      Post.find({ user_id: userId, type: 'post', isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('user_id', 'username full_name avatar_url'),
+      Post.find({ user_id: userId, type: 'reel', isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('user_id', 'username full_name avatar_url'),
+      PromoteReel.find({ user_id: userId, isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('user_id', 'username full_name avatar_url'),
+      Tweet.find({ author: userId, isDeleted: false, parentTweet: null })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('author', 'username full_name avatar_url')
+    ]);
+
+    const posts = postsRaw.map((p) => withMediaUrls(p, baseUrl));
+    const reels = reelsRaw.map((r) => withMediaUrls(r, baseUrl));
+    const promoteReels = promoteReelsRaw.map((pr) => withMediaUrls(pr, baseUrl));
+    const tweets = tweetsRaw.map((t) => withMediaUrls(t, baseUrl));
+
+    return res.json({
+      user_id: userId,
+      counts: {
+        posts: posts.length,
+        reels: reels.length,
+        promote_reels: promoteReels.length,
+        tweets: tweets.length
+      },
+      data: {
+        posts,
+        reels,
+        promote_reels: promoteReels,
+        tweets
+      }
+    });
+  } catch (error) {
+    console.error('[User] getUserProfileContent error:', error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -394,4 +460,25 @@ exports.updateUserInterests = async (req, res) => {
     }
     res.status(500).json({ message: 'Server error' });
   }
+};
+
+const toUploadsUrl = (baseUrl, value) => {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  const clean = normalized.replace(/^\/+/, '').replace(/^uploads\//, '');
+  return `${baseUrl}/uploads/${clean}`;
+};
+
+const withMediaUrls = (item, baseUrl) => {
+  const obj = item.toObject ? item.toObject() : item;
+  if (Array.isArray(obj.media)) {
+    obj.media = obj.media.map((m) => ({
+      ...m,
+      fileUrl: toUploadsUrl(baseUrl, m?.fileName),
+      url: m?.url ? toUploadsUrl(baseUrl, m.url) : m?.url
+    }));
+  }
+  return obj;
 };

@@ -7,9 +7,11 @@
  */
 module.exports = (...roles) => (req, res, next) => {
   try {
+    const normalizeRole = (value) => String(value || '').trim().toLowerCase();
     // Flatten in case caller passes an array as first arg
-    const allowed = roles.flat();
-    if (!req.user || !allowed.includes(req.user.role)) {
+    const allowed = roles.flat().map(normalizeRole);
+    const currentRole = normalizeRole(req.user?.role);
+    if (!req.user || !allowed.includes(currentRole)) {
       return res.status(403).json({ message: 'Forbidden' });
     }
     next();

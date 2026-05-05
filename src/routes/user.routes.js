@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const auth = require('../middleware/auth');
@@ -80,6 +80,85 @@ const auth = require('../middleware/auth');
  *         description: Server error
  */
 router.get('/', auth, listUsersProfiles);
+
+/**
+ * @swagger
+ * /api/users/{id}/profile-content:
+ *   get:
+ *     summary: Get profile content (posts, reels, promote reels, tweets) in one response
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Max items per section (posts/reels/promote_reels/tweets)
+ *     responses:
+ *       200:
+ *         description: Profile content grouped by type
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user_id:
+ *                   type: string
+ *                 counts:
+ *                   type: object
+ *                   properties:
+ *                     posts: { type: integer }
+ *                     reels: { type: integer }
+ *                     promote_reels: { type: integer }
+ *                     tweets: { type: integer }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     posts:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     reels:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     promote_reels:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     tweets:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *             example:
+ *               user_id: "664f1a2b3c4d5e6f7a8b9c0d"
+ *               counts:
+ *                 posts: 2
+ *                 reels: 3
+ *                 promote_reels: 1
+ *                 tweets: 4
+ *               data:
+ *                 posts: []
+ *                 reels: []
+ *                 promote_reels: []
+ *                 tweets: []
+ *       400:
+ *         description: Invalid user id
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/:id/profile-content', getUserProfileContent);
 
 /**
  * @swagger

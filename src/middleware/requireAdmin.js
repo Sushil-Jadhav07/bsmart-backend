@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const normalizeRole = (value) => String(value || '').trim().toLowerCase();
+
 const requireAdmin = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -12,7 +14,7 @@ const requireAdmin = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
-    if (user.role !== 'admin') {
+    if (normalizeRole(user.role) !== 'admin') {
       return res.status(403).json({ message: 'Forbidden - Admin only' });
     }
     req.user = user;
