@@ -403,7 +403,7 @@ router.get('/users/:id', auth, getSalesByUserId);
  *       500:
  *         description: Server error
  */
-router.get('/officers', requireAdmin, getAllSalesOfficers);
+router.get('/officers', auth, getAllSalesOfficers);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ASSIGN SALES OFFICER TO VENDOR (Admin)
@@ -690,6 +690,6 @@ router.get('/my-officer', auth, requireRole('vendor'), getMyAssignedOfficer);
  *       500:
  *         description: Server error
  */
-router.get('/officers/:sales_user_id/vendors', requireAdmin, getVendorsAssignedToOfficer);
+router.get('/officers/:sales_user_id/vendors', auth, getVendorsAssignedToOfficer);
 
 module.exports = router;

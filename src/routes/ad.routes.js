@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const requireAdmin = require('../middleware/requireAdmin');
 const rateLimit = require('../middleware/rateLimit');
 const { upload } = require('../config/multer');
 const {
@@ -694,7 +693,7 @@ router.get('/user/:userId', getUserAdsWithComments);
  *       200:
  *         description: List of ads (no pagination)
  */
-router.get('/', auth, requireAdmin, listAds);
+router.get('/', auth, listAds);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/ads — Create Ad
