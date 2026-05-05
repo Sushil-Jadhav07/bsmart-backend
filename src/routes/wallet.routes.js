@@ -460,7 +460,7 @@ router.get('/ads/:adId/history', auth, getAdWalletHistory);
  *       403:
  *         description: Forbidden – admin only
  */
-router.get('/', auth, requireAdmin, getAllWallets);
+router.get('/', auth, getAllWallets);
 
 /**
  * @swagger
