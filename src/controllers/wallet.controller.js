@@ -133,7 +133,8 @@ const getOrCreateWallet = async (userId, session) => {
 
 const canAccessWallet = (requester, targetUserId) => {
   if (!requester) return false;
-  if (requester.role === 'admin') return true;
+  const role = String(requester.role || '').toLowerCase();
+  if (role === 'admin' || role === 'sales' || role === 'sales_officer') return true;
   return String(requester._id) === String(targetUserId);
 };
 
@@ -515,16 +516,27 @@ exports.getMemberWalletHistory = async (req, res) => {
 
 exports.getVendorWalletHistory = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: rawUserId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
+    if (!mongoose.Types.ObjectId.isValid(rawUserId)) {
       return res.status(400).json({ success: false, message: 'Invalid userId' });
     }
+
+    // Accept either a vendor user id or a vendor profile id.
+    let userId = rawUserId;
+    let user = await User.findById(userId).select('role username full_name avatar_url').lean();
+    if (!user || user.role !== 'vendor') {
+      const vendor = await Vendor.findById(rawUserId).select('user_id').lean();
+      if (vendor?.user_id && mongoose.Types.ObjectId.isValid(String(vendor.user_id))) {
+        userId = String(vendor.user_id);
+        user = await User.findById(userId).select('role username full_name avatar_url').lean();
+      }
+    }
+
     if (!canAccessWallet(req.user, userId)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
-    const user = await User.findById(userId).select('role username full_name avatar_url').lean();
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     if (user.role !== 'vendor') {
       return res.status(400).json({ success: false, message: 'User is not a vendor' });
