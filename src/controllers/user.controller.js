@@ -111,20 +111,54 @@ exports.getUserById = async (req, res) => {
 exports.getUserPostsDetails = async (req, res) => {
   try {
     const userId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid user id' });
+    }
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const posts = await Post.find({ user_id: userId })
-      .sort({ createdAt: -1 })
-      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+
+    // Fetch posts, promote reels, and tweets in parallel
+    const [postsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
+      Post.find({ user_id: userId, isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+      PromoteReel.find({ user_id: userId, isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .populate('user_id', 'username full_name avatar_url'),
+      Tweet.find({ author: userId, isDeleted: false, parentTweet: null })
+        .sort({ createdAt: -1 })
+        .populate('author', 'username full_name avatar_url'),
+    ]);
+
+    // Enrich posts with comments
     const enriched = [];
-    for (const post of posts) {
+    for (const post of postsRaw) {
       const p = transformPost(post, baseUrl);
       const comments = await Comment.find({ post_id: post._id }).sort({ createdAt: -1 });
       p.comments = comments;
       enriched.push(p);
     }
-    res.json(enriched);
+
+    // Transform promote reels and tweets with media URLs
+    const promoteReels = promoteReelsRaw.map((pr) => withMediaUrls(pr, baseUrl));
+    const tweets = tweetsRaw.map((t) => {
+      const obj = t.toObject ? t.toObject() : t;
+      // Resolve tweet media URLs
+      if (Array.isArray(obj.media)) {
+        obj.media = obj.media.map((m) => ({
+          ...m,
+          fileUrl: toUploadsUrl(baseUrl, m?.url || m?.fileName),
+        }));
+      }
+      return obj;
+    });
+
+    return res.json({
+      posts: enriched,
+      promote_reels: promoteReels,
+      tweets,
+    });
   } catch (error) {
-    console.error(error);
+    console.error('[User] getUserPostsDetails error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
