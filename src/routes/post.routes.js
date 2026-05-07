@@ -499,7 +499,7 @@ router.get('/reels', verifyToken, reelsRateLimit, listReels);
  * /api/posts/reels/{id}:
  *   get:
  *     summary: Get a reel by ID
- *     description: Requires follow access when the reel author account is private.
+ *     description: Accessible to any authenticated user (dashboard/admin view).
  *     tags: [Reels]
  *     security:
  *       - bearerAuth: []
@@ -519,7 +519,7 @@ router.get('/reels', verifyToken, reelsRateLimit, listReels);
  *       404:
  *         description: Reel not found
  *       403:
- *         description: This account is private. Follow to view reels.
+ *         description: Forbidden
  */
 router.get('/reels/:id', verifyToken, getReelById);
 
@@ -528,7 +528,7 @@ router.get('/reels/:id', verifyToken, getReelById);
  * /api/posts/{id}:
  *   get:
  *     summary: Get a single post by ID
- *     description: Requires follow access when the post author account is private.
+ *     description: Accessible to any authenticated user (dashboard/admin view).
  *     tags: [Posts]
  *     security:
  *       - bearerAuth: []
@@ -546,7 +546,7 @@ router.get('/reels/:id', verifyToken, getReelById);
  *             schema:
  *               $ref: '#/components/schemas/Post'
  *       403:
- *         description: This account is private. Follow to view posts.
+ *         description: Forbidden
  *       404:
  *         description: Post not found
  */

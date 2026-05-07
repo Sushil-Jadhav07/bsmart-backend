@@ -458,11 +458,8 @@ exports.getPost = async (req, res) => {
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
     }
-    const authorId = post?.user_id?._id || post?.user_id;
-    const canView = await canViewAuthorContent(req.userId, authorId);
-    if (!canView) {
-      return res.status(403).json({ message: 'This account is private. Follow to view posts.' });
-    }
+    // Dashboard requirement: allow authenticated users to inspect post details
+    // even when the author account is private.
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
     const savedSet = new Set();
@@ -623,11 +620,8 @@ exports.getReelById = async (req, res) => {
     if (!post) {
       return res.status(404).json({ message: 'Reel not found' });
     }
-    const authorId = post?.user_id?._id || post?.user_id;
-    const canView = await canViewAuthorContent(req.userId, authorId);
-    if (!canView) {
-      return res.status(403).json({ message: 'This account is private. Follow to view reels.' });
-    }
+    // Dashboard requirement: allow authenticated users to inspect reel details
+    // even when the author account is private.
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
     const savedSet = new Set();
