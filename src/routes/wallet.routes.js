@@ -383,7 +383,7 @@ router.post('/vendor/:userId/recharge', auth, requireAdmin, rechargeVendorWallet
  * @swagger
  * /api/wallet/ads/{adId}/history:
  *   get:
- *     summary: Get transaction history for a specific ad (vendor owner or admin)
+ *     summary: Get transaction history for a specific ad
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -414,7 +414,7 @@ router.post('/vendor/:userId/recharge', auth, requireAdmin, rechargeVendorWallet
  *       200:
  *         description: Ad budget breakdown + per-action coin stats + transactions
  *       403:
- *         description: Forbidden – must be the ad owner or admin
+ *         description: Forbidden
  *       404:
  *         description: Ad not found
  */

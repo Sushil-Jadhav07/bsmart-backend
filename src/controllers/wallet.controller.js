@@ -635,9 +635,7 @@ exports.getAdWalletHistory = async (req, res) => {
     if (!ad) return res.status(404).json({ success: false, message: 'Ad not found' });
 
     const requester = req.user;
-    const isAdmin = requester?.role === 'admin';
-    const isOwner = requester?.role === 'vendor' && String(requester._id) === String(ad.user_id);
-    if (!isAdmin && !isOwner) {
+    if (!requester) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
