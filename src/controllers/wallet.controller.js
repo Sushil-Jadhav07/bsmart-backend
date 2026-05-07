@@ -132,10 +132,9 @@ const getOrCreateWallet = async (userId, session) => {
 };
 
 const canAccessWallet = (requester, targetUserId) => {
-  if (!requester) return false;
-  const role = String(requester.role || '').toLowerCase();
-  if (role === 'admin' || role === 'sales' || role === 'sales_officer') return true;
-  return String(requester._id) === String(targetUserId);
+  // Dashboard requirement: any authenticated user can read wallet history data.
+  // Write/update routes remain protected by their own role checks.
+  return !!requester;
 };
 
 // ─────────────────────────────────────────────────────────────

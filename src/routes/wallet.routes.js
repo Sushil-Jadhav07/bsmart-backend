@@ -267,7 +267,7 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *     description: |
  *       Returns all vendor wallet transaction types including **VENDOR_RECHARGE**.
  *       `userId` can be either the vendor's user id or vendor profile id.
- *       Access is allowed for: admin, sales, sales_officer, or the same vendor user.
+ *       Access is allowed for any authenticated dashboard user.
  *       The `summary.recharge` block shows aggregated recharge stats:
  *       - `total_recharge_count` – number of recharges
  *       - `total_recharged_coins` – total coins credited via recharge
@@ -331,7 +331,7 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *       400:
  *         description: User is not a vendor / invalid id
  *       403:
- *         description: Forbidden – requester is not admin/sales/sales_officer and not the same vendor user
+ *         description: Forbidden
  *       404:
  *         description: User not found
  */
