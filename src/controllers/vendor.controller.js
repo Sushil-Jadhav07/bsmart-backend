@@ -660,7 +660,8 @@ exports.submitVendorVerificationByUserId = async (req, res) => {
 exports.adminProcessVendorVerification = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { action, rejection_reason } = req.body; // action: 'approve' | 'reject'
+    const { action, status, rejection_reason, note } = req.body; // action: 'approve' | 'reject', status: 'approved' | 'rejected'
+    const resolvedAction = action || (status === 'approved' ? 'approve' : status === 'rejected' ? 'reject' : undefined);
 
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
@@ -673,7 +674,7 @@ exports.adminProcessVendorVerification = async (req, res) => {
 
     const vendorUser = await User.findById(userId).select('email full_name username').lean();
 
-    if (action === 'approve') {
+    if (resolvedAction === 'approve') {
       vendor.verification_status = 'approved';
       vendor.validated = true;
       vendor.approved_at = new Date();
@@ -701,11 +702,11 @@ exports.adminProcessVendorVerification = async (req, res) => {
         );
       }
 
-    } else if (action === 'reject') {
+    } else if (resolvedAction === 'reject') {
       vendor.verification_status = 'rejected';
       vendor.validated = false;
       vendor.rejected_at = new Date();
-      vendor.rejection_reason = rejection_reason || 'Rejected by admin';
+      vendor.rejection_reason = rejection_reason || note || 'Rejected by admin';
       vendor.approved_at = null;
       vendor.approved_by = null;
 
@@ -714,7 +715,7 @@ exports.adminProcessVendorVerification = async (req, res) => {
           recipient: vendor.user_id,
           sender: null,
           type: 'vendor_rejected',
-          message: `Your vendor account has been rejected.${rejection_reason ? ' Reason: ' + rejection_reason : ' Please contact support for more details.'}`,
+          message: `Your vendor account has been rejected.${(rejection_reason || note) ? ' Reason: ' + (rejection_reason || note) : ' Please contact support for more details.'}`,
           link: '/vendor/profile'
         });
       } catch (notifErr) {
@@ -733,19 +734,55 @@ exports.adminProcessVendorVerification = async (req, res) => {
         );
       }
     } else {
-      return res.status(400).json({ message: 'Invalid action. Use "approve" or "reject"' });
+      return res.status(400).json({ message: 'Invalid action. Use "approve"/"reject" or status "approved"/"rejected"' });
     }
 
     await vendor.save();
 
     return res.json({
-      message: `Vendor profile ${action}d successfully`,
-      vendor_details: vendor
+      message: `Vendor profile ${resolvedAction === 'approve' ? 'approved' : 'rejected'} successfully`,
+      vendor_details: vendor,
+      success: true,
+      data: vendor
     });
 
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateVendorApprovalStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body || {};
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be approved or rejected' });
+    }
+
+    const vendor = await Vendor.findOne({ $or: [{ _id: id }, { user_id: id }] });
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: 'Vendor profile not found' });
+    }
+
+    vendor.validated = status === 'approved';
+    if (Vendor.schema.path('verification_status')) vendor.verification_status = status;
+    if (status === 'approved') {
+      if (Vendor.schema.path('approved_at')) vendor.approved_at = new Date();
+      if (Vendor.schema.path('approved_by')) vendor.approved_by = req.user._id;
+      if (Vendor.schema.path('rejection_reason')) vendor.rejection_reason = '';
+    } else {
+      if (Vendor.schema.path('rejected_at')) vendor.rejected_at = new Date();
+      if (Vendor.schema.path('rejection_reason')) vendor.rejection_reason = note || 'Rejected by admin';
+      if (Vendor.schema.path('notes')) vendor.notes = note;
+    }
+
+    await vendor.save();
+    return res.json({ success: true, data: vendor });
+  } catch (error) {
+    console.error('[Vendor] updateVendorApprovalStatus error:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
 

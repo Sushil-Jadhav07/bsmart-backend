@@ -1,5 +1,6 @@
 const Sales = require('../models/Sales');
 const User = require('../models/User');
+const Vendor = require('../models/Vendor');
 
 // Helper: fetch user fields and merge with sales object
 const mergeSalesWithUser = async (sales, userId) => {
@@ -47,10 +48,22 @@ exports.getMySales = async (req, res) => {
 // @access  Private (admin or sales)
 exports.getSalesByUserId = async (req, res) => {
   try {
-    const sales = await Sales.findOne({ user_id: req.params.id });
-    if (!sales) return res.status(404).json({ message: 'Sales profile not found' });
-    const merged = await mergeSalesWithUser(sales, req.params.id);
-    return res.json(merged);
+    const user = await User.findById(req.params.id).select('-password').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const [sales, assignedVendorsCount] = await Promise.all([
+      Sales.findOne({ user_id: req.params.id }).lean(),
+      Vendor.countDocuments({ assigned_sales_officer: req.params.id, isDeleted: false }),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        ...user,
+        sales_profile: sales || null,
+        assigned_vendors_count: assignedVendorsCount,
+      },
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });

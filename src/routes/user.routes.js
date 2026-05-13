@@ -1,9 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const auth = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) return next();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (user) {
+      req.user = user;
+      req.userId = user._id;
+    }
+  } catch (error) {
+    // Keep public user detail access unchanged when a token is absent or invalid.
+  }
+  next();
+};
 
 /**
  * @swagger
@@ -165,7 +183,10 @@ router.get('/:id/profile-content', getUserProfileContent);
  * /api/users/{id}:
  *   get:
  *     summary: Get user details
+ *     description: Returns public user details. When called with an admin bearer token, the response includes a `summary` object with post/reel and engagement totals.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -193,6 +214,13 @@ router.get('/:id/profile-content', getUserProfileContent);
  *                   gender: "male"
  *                   location: "Mumbai, India"
  *                   role: "member"
+ *                   summary:
+ *                     posts_count: 2
+ *                     reels_count: 1
+ *                     likes_count_total: 20
+ *                     comments_count_total: 5
+ *                     views_count_total: 100
+ *                     unique_views_count_total: 80
  *                   followers_count: 10
  *                   following_count: 5
  *                   createdAt: "2026-03-10T06:14:50.531Z"
@@ -202,7 +230,7 @@ router.get('/:id/profile-content', getUserProfileContent);
  *       500:
  *         description: Server error
  */
-router.get('/:id', getUserById);
+router.get('/:id', optionalAuth, getUserById);
 
 /**
  * @swagger
@@ -311,6 +339,52 @@ router.get('/:id/saved', auth, getSavedPostsByUser);
  *         description: Server error
  */
 router.put('/:id', auth, updateUser);
+
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   patch:
+ *     summary: Admin update user fields
+ *     description: Admin-only partial update. Password changes are not allowed here.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema: { type: string }
+ *         required: true
+ *         description: User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               is_active: { type: boolean }
+ *               role: { type: string, enum: [member, vendor, admin, sales] }
+ *               email: { type: string }
+ *               username: { type: string }
+ *               full_name: { type: string }
+ *               phone: { type: string }
+ *     responses:
+ *       200:
+ *         description: User updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   $ref: '#/components/schemas/User'
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: User not found
+ */
+router.patch('/:id', auth, adminPatchUser);
 
 /**
  * @swagger

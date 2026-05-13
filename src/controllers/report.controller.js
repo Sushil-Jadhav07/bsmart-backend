@@ -8,6 +8,8 @@ const MemberAdAction = require('../models/MemberAdAction');
 const WalletTransaction = require('../models/WalletTransaction');
 const VendorProfileView = require('../models/VendorProfileView');
 const Vendor = require('../models/Vendor');
+const User = require('../models/User');
+const Post = require('../models/Post');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -267,6 +269,86 @@ exports.getSummaryReport = async (req, res) => {
   } catch (err) {
     console.error('[SummaryReport]', err);
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.getAdminSummaryReport = async (req, res) => {
+  try {
+    const { range = '30d', start_date, end_date } = req.query;
+    const now = new Date();
+    let startDate = start_date ? new Date(start_date) : null;
+    let endDate = end_date ? new Date(end_date) : now;
+
+    if (!startDate) {
+      const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+      startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    }
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date range' });
+    }
+    endDate.setHours(23, 59, 59, 999);
+
+    const dateMatch = { createdAt: { $gte: startDate, $lte: endDate } };
+    const activeAdMatch = { status: 'active', isDeleted: false, ...dateMatch };
+
+    const [
+      adAgg,
+      spendAgg,
+      reachUsers,
+      totalUsers,
+      totalVendors,
+      totalPosts,
+      totalAds,
+      totalAdsPending,
+    ] = await Promise.all([
+      Ad.aggregate([
+        { $match: activeAdMatch },
+        {
+          $group: {
+            _id: null,
+            total_impressions: { $sum: { $ifNull: ['$views_count', 0] } },
+            total_clicks: { $sum: { $ifNull: ['$clicks_count', { $ifNull: ['$cta_clicks', 0] }] } },
+            total_likes: { $sum: { $ifNull: ['$likes_count', 0] } },
+            total_comments: { $sum: { $ifNull: ['$comments_count', 0] } },
+            conversions: { $sum: { $ifNull: ['$conversions_count', 0] } },
+          },
+        },
+      ]),
+      WalletTransaction.aggregate([
+        { $match: { type: 'AD_BUDGET_DEDUCTION', ...dateMatch } },
+        { $group: { _id: null, total_spend: { $sum: { $abs: '$amount' } } } },
+      ]),
+      AdView.distinct('user_id', dateMatch),
+      User.countDocuments({ isDeleted: false }),
+      Vendor.countDocuments({ isDeleted: false }),
+      Post.countDocuments({ isDeleted: { $ne: true } }),
+      Ad.countDocuments({ status: 'active', isDeleted: false }),
+      Ad.countDocuments({ status: 'pending', isDeleted: false }),
+    ]);
+
+    const metrics = adAgg[0] || {};
+    const totalImpressions = metrics.total_impressions || 0;
+    const totalEngagements = (metrics.total_likes || 0) + (metrics.total_comments || 0);
+
+    return res.json({
+      success: true,
+      data: {
+        total_impressions: totalImpressions,
+        total_clicks: metrics.total_clicks || 0,
+        engagement_rate: totalImpressions > 0 ? +((totalEngagements / totalImpressions) * 100).toFixed(2) : 0,
+        total_spend: spendAgg[0]?.total_spend || 0,
+        conversions: metrics.conversions || 0,
+        reach: Array.isArray(reachUsers) ? reachUsers.length : 0,
+        total_users: totalUsers,
+        total_vendors: totalVendors,
+        total_posts: totalPosts,
+        total_ads: totalAds,
+        total_ads_pending: totalAdsPending,
+      },
+    });
+  } catch (err) {
+    console.error('[AdminSummaryReport]', err);
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
 

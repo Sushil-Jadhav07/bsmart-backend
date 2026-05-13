@@ -298,8 +298,8 @@ router.put('/me', auth, requireRole('sales'), updateMySales);
  * @swagger
  * /api/sales/users/{id}:
  *   get:
- *     summary: Get sales profile by user ID
- *     description: Fetch the sales profile merged with user info (email, username, full_name, phone, location) for any user by their User _id.
+ *     summary: Admin get user sales details
+ *     description: Fetch a User document by ID, any matching sales profile, and how many vendors are assigned to that user as sales officer.
  *     tags: [Sales]
  *     security:
  *       - bearerAuth: []
@@ -313,37 +313,47 @@ router.put('/me', auth, requireRole('sales'), updateMySales);
  *         example: "64a1b2c3d4e5f67890123457"
  *     responses:
  *       200:
- *         description: Sales profile retrieved successfully
+ *         description: User and sales assignment summary
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SalesProfile'
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id: { type: string }
+ *                     email: { type: string }
+ *                     username: { type: string }
+ *                     full_name: { type: string }
+ *                     role: { type: string }
+ *                     sales_profile:
+ *                       type: object
+ *                       nullable: true
+ *                     assigned_vendors_count: { type: number }
  *             example:
- *               _id: "64a1b2c3d4e5f67890123456"
- *               user_id: "64a1b2c3d4e5f67890123457"
- *               bio: "Experienced sales officer covering the western region"
- *               territory: "Mumbai, Pune"
- *               target: 500000
- *               email: "john@example.com"
- *               username: "john_sales"
- *               full_name: "John Doe"
- *               avatar_url: ""
- *               phone: "+919876543210"
- *               location: "Mumbai, India"
- *               createdAt: "2024-01-01T00:00:00.000Z"
- *               updatedAt: "2024-01-01T00:00:00.000Z"
+ *               success: true
+ *               data:
+ *                 _id: "64a1b2c3d4e5f67890123457"
+ *                 email: "john@example.com"
+ *                 username: "john_sales"
+ *                 full_name: "John Doe"
+ *                 role: "sales"
+ *                 sales_profile: null
+ *                 assigned_vendors_count: 3
  *       401:
  *         description: Not authorized
  *       404:
- *         description: Sales profile not found
+ *         description: User not found
  *         content:
  *           application/json:
  *             example:
- *               message: "Sales profile not found"
+ *               message: "User not found"
  *       500:
  *         description: Server error
  */
-router.get('/users/:id', auth, getSalesByUserId);
+router.get('/users/:id', auth, requireAdmin, getSalesByUserId);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET ALL SALES OFFICERS (Admin)
@@ -522,7 +532,8 @@ router.post('/assign', requireAdmin, assignSalesOfficer);
  *         content:
  *           application/json:
  *             example:
- *               message: "Sales officer unassigned successfully"
+ *               success: true
+ *               message: "Sales officer unassigned"
  *       400:
  *         description: Invalid vendor_user_id
  *         content:

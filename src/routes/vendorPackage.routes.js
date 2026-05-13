@@ -9,6 +9,7 @@ const {
   createPackage,
   updatePackage,
   deletePackage,
+  adminListPackages,
   listPackages,
   getPackage,
   previewPackage,
@@ -44,6 +45,24 @@ const {
 /**
  * @swagger
  * /api/vendor-packages/admin:
+ *   get:
+ *     summary: List all packages for admin management
+ *     tags: [VendorPackages]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All packages, including inactive packages
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  *   post:
  *     summary: Create a new package (admin only)
  *     tags: [VendorPackages]
@@ -95,6 +114,11 @@ const {
  *                 type: number
  *                 example: 0
  *                 description: "Coins instantly credited to vendor wallet on purchase"
+ *               price_coins:
+ *                 type: number
+ *                 description: "Compatibility alias for base_price/final_price/coins_granted"
+ *               is_active:
+ *                 type: boolean
  *               validity_days:
  *                 type: number
  *                 example: 30
@@ -116,6 +140,7 @@ const {
  *       400:
  *         description: Missing required fields
  */
+router.get('/admin', auth, requireRole('admin'), adminListPackages);
 router.post('/admin', auth, requireRole('admin'), createPackage);
 
 /**
@@ -176,6 +201,7 @@ router.get('/admin/purchases', auth, requireRole('admin'), adminListPurchases);
  *               discount_percent: { type: number }
  *               final_price:      { type: number }
  *               coins_granted:    { type: number }
+ *               price_coins:      { type: number }
  *               validity_days:    { type: number }
  *               description:      { type: string }
  *               features:         { type: array, items: { type: string } }
@@ -187,6 +213,39 @@ router.get('/admin/purchases', auth, requireRole('admin'), adminListPurchases);
  *         description: Package not found
  */
 router.put('/admin/:packageId', auth, requireRole('admin'), updatePackage);
+
+/**
+ * @swagger
+ * /api/vendor-packages/admin/{packageId}:
+ *   patch:
+ *     summary: Partially update an existing package (admin only)
+ *     tags: [VendorPackages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: packageId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:             { type: string }
+ *               description:      { type: string }
+ *               price_coins:      { type: number }
+ *               features:         { type: array, items: { type: string } }
+ *               is_active:        { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Package updated
+ *       404:
+ *         description: Package not found
+ */
+router.patch('/admin/:packageId', auth, requireRole('admin'), updatePackage);
 
 /**
  * @swagger

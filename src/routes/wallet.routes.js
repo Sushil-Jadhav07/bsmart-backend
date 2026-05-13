@@ -220,6 +220,7 @@ router.get('/recharge/history/:userId', auth, requireAdmin, getVendorRechargeHis
  * /api/wallet/member/{userId}/history:
  *   get:
  *     summary: Get a member's wallet history (rewards earned from ads)
+ *     description: "Admin only. Returns success with data.wallet and data.transactions alongside the existing summary fields."
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -253,7 +254,7 @@ router.get('/recharge/history/:userId', auth, requireAdmin, getVendorRechargeHis
  *       404:
  *         description: User not found
  */
-router.get('/member/:userId/history', auth, getMemberWalletHistory);
+router.get('/member/:userId/history', auth, requireAdmin, getMemberWalletHistory);
 
 // ──────────────────────────────────────────────
 // Vendor history + admin recharge
@@ -267,7 +268,7 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *     description: |
  *       Returns all vendor wallet transaction types including **VENDOR_RECHARGE**.
  *       `userId` can be either the vendor's user id or vendor profile id.
- *       Access is allowed for any authenticated dashboard user.
+ *       Admin only.
  *       The `summary.recharge` block shows aggregated recharge stats:
  *       - `total_recharge_count` – number of recharges
  *       - `total_recharged_coins` – total coins credited via recharge
@@ -335,7 +336,7 @@ router.get('/member/:userId/history', auth, getMemberWalletHistory);
  *       404:
  *         description: User not found
  */
-router.get('/vendor/:userId/history', auth, getVendorWalletHistory);
+router.get('/vendor/:userId/history', auth, requireAdmin, getVendorWalletHistory);
 
 /**
  * @swagger
@@ -413,12 +414,25 @@ router.post('/vendor/:userId/recharge', auth, requireAdmin, rechargeVendorWallet
  *     responses:
  *       200:
  *         description: Ad budget breakdown + per-action coin stats + transactions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     transactions:
+ *                       type: array
+ *                       items: { $ref: '#/components/schemas/Transaction' }
+ *                     total_spent: { type: number }
  *       403:
  *         description: Forbidden
  *       404:
  *         description: Ad not found
  */
-router.get('/ads/:adId/history', auth, getAdWalletHistory);
+router.get('/ads/:adId/history', auth, requireAdmin, getAdWalletHistory);
 
 // ──────────────────────────────────────────────
 // Admin — all wallets + balance adjustment
@@ -463,7 +477,7 @@ router.get('/ads/:adId/history', auth, getAdWalletHistory);
  *       403:
  *         description: Forbidden – admin only
  */
-router.get('/', auth, getAllWallets);
+router.get('/', auth, requireAdmin, getAllWallets);
 
 /**
  * @swagger
@@ -479,7 +493,7 @@ router.get('/', auth, getAllWallets);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [userId, amount, type]
+ *             required: [userId, amount]
  *             properties:
  *               userId:      { type: string }
  *               amount:      { type: number, description: "Positive to credit, negative to debit" }

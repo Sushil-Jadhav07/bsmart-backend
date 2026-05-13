@@ -501,6 +501,10 @@ exports.getMemberWalletHistory = async (req, res) => {
       summary: { total_earned: agg?.total_earned ?? 0, total_deducted: agg?.total_deducted ?? 0, total_transactions: agg?.total_tx ?? 0, earnings_by_type: earningsByType },
       pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
       transactions,
+      data: {
+        wallet: { balance: wallet.balance, currency: wallet.currency },
+        transactions,
+      },
     });
   } catch (err) {
     console.error('[getMemberWalletHistory]', err);
@@ -610,6 +614,10 @@ exports.getVendorWalletHistory = async (req, res) => {
       },
       pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
       transactions,
+      data: {
+        wallet: { balance: wallet.balance, currency: wallet.currency },
+        transactions,
+      },
     });
   } catch (err) {
     console.error('[getVendorWalletHistory]', err);
@@ -645,7 +653,7 @@ exports.getAdWalletHistory = async (req, res) => {
     const skip     = (pageNum - 1) * limitNum;
 
     const adObjectId = new mongoose.Types.ObjectId(adId);
-    const match = { ad_id: adObjectId };
+    const match = { $or: [{ ad_id: adObjectId }, { reference: adId }] };
 
     if (startDate || endDate) {
       match.createdAt = {};
@@ -672,16 +680,20 @@ exports.getAdWalletHistory = async (req, res) => {
     }
 
     const AD_REFUND_TYPES = ['AD_LIKE_BUDGET_REFUND'];
-    const [deductionsAgg] = await WalletTransaction.aggregate([{ $match: { ad_id: adObjectId, type: { $in: AD_DEDUCTION_TYPES } } }, { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }]);
-    const [refundsAgg]    = await WalletTransaction.aggregate([{ $match: { ad_id: adObjectId, type: { $in: AD_REFUND_TYPES } } },  { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }]);
+    const adReferenceMatch = { $or: [{ ad_id: adObjectId }, { reference: adId }] };
+    const [deductionsAgg] = await WalletTransaction.aggregate([{ $match: { ...adReferenceMatch, type: { $in: AD_DEDUCTION_TYPES } } }, { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }]);
+    const [budgetSpentAgg] = await WalletTransaction.aggregate([{ $match: { ...adReferenceMatch, type: 'AD_BUDGET_DEDUCTION' } }, { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }]);
+    const [refundsAgg]    = await WalletTransaction.aggregate([{ $match: { ...adReferenceMatch, type: { $in: AD_REFUND_TYPES } } },  { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }]);
     const totalSpent = Math.max(0, (deductionsAgg?.total ?? 0) - (refundsAgg?.total ?? 0));
 
     const actionTypes = ['AD_VIEW_DEDUCTION', 'AD_LIKE_DEDUCTION', 'AD_COMMENT_DEDUCTION', 'AD_REPLY_DEDUCTION', 'AD_SAVE_DEDUCTION', 'AD_LIKE_BUDGET_REFUND'];
-    const actionRows  = await WalletTransaction.aggregate([{ $match: { ad_id: adObjectId, type: { $in: actionTypes } } }, { $group: { _id: '$type', count: { $sum: 1 }, total_coins: { $sum: { $abs: '$amount' } } } }]);
+    const actionRows  = await WalletTransaction.aggregate([{ $match: { ...adReferenceMatch, type: { $in: actionTypes } } }, { $group: { _id: '$type', count: { $sum: 1 }, total_coins: { $sum: { $abs: '$amount' } } } }]);
     const actionMap = {};
     actionRows.forEach((r) => { actionMap[r._id] = { count: r.count, total_coins: r.total_coins }; });
 
-    const [uniqueUsersAgg] = await WalletTransaction.aggregate([{ $match: { ad_id: adObjectId } }, { $group: { _id: '$user_id' } }, { $count: 'count' }]);
+    const [uniqueUsersAgg] = await WalletTransaction.aggregate([{ $match: adReferenceMatch }, { $group: { _id: '$user_id' } }, { $count: 'count' }]);
+
+    const transactions = rawTx.map((t) => enrichTransaction(t, 'caption'));
 
     res.json({
       success: true,
@@ -697,7 +709,11 @@ exports.getAdWalletHistory = async (req, res) => {
       },
       unique_users: uniqueUsersAgg?.count ?? 0,
       pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
-      transactions: rawTx.map((t) => enrichTransaction(t, 'caption')),
+      transactions,
+      data: {
+        transactions,
+        total_spent: budgetSpentAgg?.total ?? 0,
+      },
     });
   } catch (err) {
     console.error('[getAdWalletHistory]', err);
@@ -773,8 +789,8 @@ exports.updateWalletBalance = async (req, res) => {
   try {
     const { userId, amount, type, description } = req.body;
 
-    if (!userId || amount === undefined || !type) {
-      return res.status(400).json({ success: false, message: 'userId, amount, and type are required' });
+    if (!userId || amount === undefined) {
+      return res.status(400).json({ success: false, message: 'userId and amount are required' });
     }
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ success: false, message: 'Invalid userId' });
@@ -858,6 +874,9 @@ exports.getAllWallets = async (req, res) => {
       summary: { total_transactions: total, total_coins_minted: rewardSummary?.total_coins_minted ?? 0, total_coins_from_ads: (rewardSummary?.total_coins_minted ?? 0) - (reelSummary?.total ?? 0), total_coins_from_reels: reelSummary?.total ?? 0, total_ad_coins_spent: adSpendSummary?.total_ad_spend ?? 0, total_vendor_coins_recharged: rechargeSummary?.total ?? 0, total_wallets: enrichedWallets.length, member_wallets: enrichedWallets.filter((w) => w.user.role === 'member').length, vendor_wallets: enrichedWallets.filter((w) => w.user.role === 'vendor').length },
       wallets: enrichedWallets,
       pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
+      total,
+      page: pageNum,
+      limit: limitNum,
       transactions: rawTx.map((t) => enrichTransaction(t, 'caption')),
     });
   } catch (err) {

@@ -1,6 +1,7 @@
 const Ad = require('../models/Ad');
 const AdView = require('../models/AdView');
 const User = require('../models/User');
+const WalletTransaction = require('../models/WalletTransaction');
 const mongoose = require('mongoose');
 
 /**
@@ -199,8 +200,29 @@ exports.getAdStats = async (req, res) => {
       viewsByAge[item._id] = item.count;
     });
 
+    const [spendAgg] = await WalletTransaction.aggregate([
+      { $match: { ad_id: new mongoose.Types.ObjectId(id), type: 'AD_BUDGET_DEDUCTION' } },
+      { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } },
+    ]);
+
+    const flatStats = {
+      views_count: ad.views_count || 0,
+      likes_count: ad.likes_count || likedUserIds.length || 0,
+      comments_count: ad.comments_count || 0,
+      clicks_count: ad.clicks_count || 0,
+      total_budget_coins: ad.total_budget_coins || 0,
+      total_coins_spent: ad.total_coins_spent || spendAgg[0]?.total || 0,
+      budget: ad.budget || {},
+      spend_so_far: spendAgg[0]?.total || ad.total_coins_spent || 0,
+      start_date: ad.budget?.start_date || null,
+      end_date: ad.budget?.end_date || null,
+    };
+
     // ── 5. Build final response ───────────────────────────────────────────
     res.json({
+      success: true,
+      data: flatStats,
+      ...flatStats,
       ad_id:        ad._id,
       caption:      ad.caption,
       category:     ad.category,

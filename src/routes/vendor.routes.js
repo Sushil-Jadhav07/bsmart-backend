@@ -17,6 +17,7 @@ const {
   adminProcessVendorVerification,
   getAllVendorsForAdmin,
   deleteVendorByUserId,
+  updateVendorApprovalStatus,
   addVendorContact,
   getVendorContacts,
   updateVendorContact,
@@ -444,6 +445,12 @@ router.delete('/:userId/contacts/:contactId', auth, deleteVendorContact);
  *               action:
  *                 type: string
  *                 enum: [approve, reject]
+ *               status:
+ *                 type: string
+ *                 enum: [approved, rejected]
+ *                 description: Alternative to action
+ *               note:
+ *                 type: string
  *               rejection_reason:
  *                 type: string
  *     responses:
@@ -453,6 +460,54 @@ router.delete('/:userId/contacts/:contactId', auth, deleteVendorContact);
  *         description: Admin only
  */
 router.post('/profile/:userId/admin-process', requireAdmin, adminProcessVendorVerification);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{id}/approval:
+ *   patch:
+ *     summary: Admin approve or reject vendor profile
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor document ID or vendor User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [approved, rejected]
+ *               note:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Vendor approval status updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Invalid status
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: Vendor profile not found
+ */
+router.patch('/profile/:id/approval', requireAdmin, updateVendorApprovalStatus);
 
 /**
  * @swagger

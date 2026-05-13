@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const requireAdmin = require('../middleware/requireAdmin');
 const rateLimit = require('../middleware/rateLimit');
 const { upload } = require('../config/multer');
 const {
@@ -508,6 +509,12 @@ const { getAdStats } = require('../controllers/adstats.controller');
  *             schema:
  *               type: object
  *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: string
  *                 categories:
  *                   type: array
  *                   items:
@@ -1035,6 +1042,7 @@ router.get('/search', auth, searchAds);
  *   get:
  *     summary: Get engagement stats for an ad
  *     description: |
+ *       Admin only.
  *       Returns a full breakdown of engagement for a single ad including:
  *       - **Likes** — total count, list of user IDs, gender breakdown with profiles
  *       - **Dislikes** — explicit dislike array from Ad model, gender breakdown with profiles
@@ -1055,17 +1063,33 @@ router.get('/search', auth, searchAds);
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/AdStatsResponse'
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     views_count: { type: number }
+ *                     likes_count: { type: number }
+ *                     comments_count: { type: number }
+ *                     clicks_count: { type: number }
+ *                     total_budget_coins: { type: number }
+ *                     total_coins_spent: { type: number }
+ *                     spend_so_far: { type: number }
+ *                     start_date: { type: string, format: date-time, nullable: true }
+ *                     end_date: { type: string, format: date-time, nullable: true }
  *       400:
  *         description: Invalid ad ID
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
  *       404:
  *         description: Ad not found
  *       500:
  *         description: Server error
  */
-router.get('/:id/stats', auth, getAdStats);
+router.get('/:id/stats', auth, requireAdmin, getAdStats);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/ads/:id

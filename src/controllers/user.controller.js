@@ -97,6 +97,37 @@ exports.getUserById = async (req, res) => {
       obj.vendor_id = vendor._id;
     }
 
+    if (req.user?.role === 'admin') {
+      const [summaryAgg] = await Post.aggregate([
+        {
+          $match: {
+            user_id: new mongoose.Types.ObjectId(userId),
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            posts_count: { $sum: { $cond: [{ $eq: ['$type', 'post'] }, 1, 0] } },
+            reels_count: { $sum: { $cond: [{ $eq: ['$type', 'reel'] }, 1, 0] } },
+            likes_count_total: { $sum: { $ifNull: ['$likes_count', 0] } },
+            comments_count_total: { $sum: { $ifNull: ['$comments_count', 0] } },
+            views_count_total: { $sum: { $ifNull: ['$views_count', 0] } },
+            unique_views_count_total: { $sum: { $ifNull: ['$unique_views_count', 0] } },
+          },
+        },
+      ]);
+
+      obj.summary = {
+        posts_count: summaryAgg?.posts_count || 0,
+        reels_count: summaryAgg?.reels_count || 0,
+        likes_count_total: summaryAgg?.likes_count_total || 0,
+        comments_count_total: summaryAgg?.comments_count_total || 0,
+        views_count_total: summaryAgg?.views_count_total || 0,
+        unique_views_count_total: summaryAgg?.unique_views_count_total || 0,
+      };
+    }
+
     res.json(obj);
 
   } catch (error) {
@@ -515,4 +546,35 @@ const withMediaUrls = (item, baseUrl) => {
     }));
   }
   return obj;
+};
+
+exports.adminPatchUser = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+
+    const allowed = ['is_active', 'role', 'email', 'username', 'full_name', 'phone'];
+    const updates = {};
+    allowed.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        updates[field] = req.body[field];
+      }
+    });
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.json({ success: true, data: updatedUser });
+  } catch (error) {
+    console.error('[User] adminPatchUser error:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
 };

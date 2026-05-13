@@ -226,6 +226,15 @@ router.delete('/vendors/:id', auth, requireAdmin, deleteVendorByAdmin);
  *     responses:
  *       200:
  *         description: Ad status updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
  *       403:
  *         description: Forbidden - Admin only
  *       404:
@@ -237,7 +246,8 @@ router.patch('/ads/:id', auth, requireAdmin, adminUpdateAdStatus);
  * @swagger
  * /api/admin/ads/{id}:
  *   delete:
- *     summary: Admin permanently deletes (soft delete) an ad
+ *     summary: Admin permanently deletes an ad
+ *     description: Permanently removes the ad document.
  *     tags: [Admin, Ads]
  *     security:
  *       - bearerAuth: []
@@ -249,7 +259,14 @@ router.patch('/ads/:id', auth, requireAdmin, adminUpdateAdStatus);
  *           type: string
  *     responses:
  *       200:
- *         description: Ad deleted successfully
+ *         description: Ad deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string, example: "Ad deleted" }
  *       403:
  *         description: Forbidden - Admin only
  *       404:

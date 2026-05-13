@@ -8,6 +8,7 @@ const {
   getEngagementReport,
   getGeographicReport,
   getPerformanceSummaryReport,
+  getAdminSummaryReport,
 } = require('../controllers/report.controller');
 
 // Both vendor AND admin can access report routes
@@ -17,29 +18,53 @@ const allowReports = requireRole('vendor', 'admin');
  * @swagger
  * /api/reports/summary:
  *   get:
- *     summary: Summary overview for reports dashboard cards
+ *     summary: Admin reports summary
  *     description: |
- *       Returns high-level metrics for the reports overview cards:
- *       - **total_impressions** from AdView
- *       - **total_clicks** from AdClick
- *       - **engagement_rate** as (likes + comments + saves) / impressions * 100
- *       - **total_spend** from ad deduction wallet transactions
- *       - **conversions** currently mapped to unique clicks
- *       - **reach** as distinct viewers from AdView
+ *       Admin-only overview for dashboard cards.
+ *       Supports `range` (7d, 30d, 90d) or explicit `start_date` / `end_date`.
  *     tags: [Reports]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - $ref: '#/components/parameters/reportStartDate'
- *       - $ref: '#/components/parameters/reportEndDate'
- *       - $ref: '#/components/parameters/reportAdId'
- *       - $ref: '#/components/parameters/reportVendorId'
- *       - $ref: '#/components/parameters/reportCountry'
- *       - $ref: '#/components/parameters/reportGender'
- *       - $ref: '#/components/parameters/reportLanguage'
+ *       - in: query
+ *         name: range
+ *         schema:
+ *           type: string
+ *           enum: [7d, 30d, 90d]
+ *           default: 30d
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
  *     responses:
  *       200:
- *         description: Summary overview data
+ *         description: Admin summary metrics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total_impressions: { type: number }
+ *                     total_clicks: { type: number }
+ *                     engagement_rate: { type: number }
+ *                     total_spend: { type: number }
+ *                     conversions: { type: number }
+ *                     reach: { type: number }
+ *                     total_users: { type: number }
+ *                     total_vendors: { type: number }
+ *                     total_posts: { type: number }
+ *                     total_ads: { type: number }
+ *                     total_ads_pending: { type: number }
  *       401:
  *         description: Unauthorized
  *       403:
@@ -47,7 +72,7 @@ const allowReports = requireRole('vendor', 'admin');
  *       500:
  *         description: Server error
  */
-router.get('/summary', auth, allowReports, getSummaryReport);
+router.get('/summary', auth, requireRole('admin'), getAdminSummaryReport);
 
 // ─── Shared filter parameters (reused across both endpoints) ─────────────────
 /**

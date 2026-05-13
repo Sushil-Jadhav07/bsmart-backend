@@ -77,7 +77,7 @@ exports.unassignSalesOfficer = async (req, res) => {
     vendor.assigned_sales_officer = null;
     await vendor.save();
 
-    return res.status(200).json({ message: 'Sales officer unassigned successfully' });
+    return res.status(200).json({ success: true, message: 'Sales officer unassigned' });
 
   } catch (error) {
     console.error('[unassignSalesOfficer]', error);

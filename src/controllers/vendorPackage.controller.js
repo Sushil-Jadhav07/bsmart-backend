@@ -68,19 +68,24 @@ exports.createPackage = async (req, res) => {
   try {
     const {
       name,
-      tier,
-      ads_allowed_min,
-      ads_allowed_max,
+      tier = 'basic',
+      ads_allowed_min = 1,
+      ads_allowed_max = 5,
       base_price,
       discount_percent,
       final_price,
       coins_granted,
+      price_coins,
       validity_days,
       description,
       features,
+      is_active,
     } = req.body;
 
-    if (!name || !tier || base_price == null || coins_granted == null ||
+    const resolvedBasePrice = base_price ?? price_coins ?? final_price ?? 0;
+    const resolvedCoinsGranted = coins_granted ?? price_coins ?? 0;
+
+    if (!name || !tier || resolvedBasePrice == null || resolvedCoinsGranted == null ||
         ads_allowed_min == null || ads_allowed_max == null) {
       return res.status(400).json({
         success: false,
@@ -92,25 +97,36 @@ exports.createPackage = async (req, res) => {
     // Use provided final_price or auto-calculate from base_price and discount
     const resolvedFinalPrice = (final_price != null)
       ? final_price
-      : computeFinalPrice(base_price, discount);
+      : computeFinalPrice(resolvedBasePrice, discount);
 
     const pkg = await VendorPackage.create({
       name,
       tier,
       ads_allowed_min,
       ads_allowed_max,
-      base_price,
+      base_price: resolvedBasePrice,
       discount_percent: discount,
       final_price: resolvedFinalPrice,
-      coins_granted,
+      coins_granted: resolvedCoinsGranted,
       validity_days: validity_days ?? 30,
       description: description ?? '',
       features: features ?? [],
+      is_active: is_active ?? true,
     });
 
     return res.status(201).json({ success: true, message: 'Package created', package: pkg });
   } catch (err) {
     console.error('createPackage:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+exports.adminListPackages = async (req, res) => {
+  try {
+    const packages = await VendorPackage.find({}).sort({ createdAt: -1 });
+    return res.json({ success: true, data: packages, packages });
+  } catch (err) {
+    console.error('adminListPackages:', err);
     return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
@@ -129,6 +145,12 @@ exports.updatePackage = async (req, res) => {
   try {
     const { packageId } = req.params;
     const updates = { ...req.body };
+    if (updates.price_coins != null) {
+      updates.base_price = updates.base_price ?? updates.price_coins;
+      updates.final_price = updates.final_price ?? updates.price_coins;
+      updates.coins_granted = updates.coins_granted ?? updates.price_coins;
+      delete updates.price_coins;
+    }
 
     // Auto-recalculate final_price if pricing fields changed but final_price not supplied
     if ((updates.base_price != null || updates.discount_percent != null) && updates.final_price == null) {

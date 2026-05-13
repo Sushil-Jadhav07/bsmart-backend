@@ -41,6 +41,10 @@ exports.adminUpdateAdStatus = async (req, res) => {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
+    if (status && !['active', 'paused', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be active, paused, or rejected' });
+    }
+
     if (status) {
       ad.status = status;
       if (status === 'rejected') {
@@ -53,7 +57,7 @@ exports.adminUpdateAdStatus = async (req, res) => {
     }
 
     await ad.save();
-    res.json({ message: `Ad status updated to ${ad.status}`, ad });
+    res.json({ success: true, message: `Ad status updated to ${ad.status}`, data: ad, ad });
   } catch (error) {
     console.error('[Admin] adminUpdateAdStatus error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -77,12 +81,9 @@ exports.adminDeleteAd = async (req, res) => {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
-    ad.isDeleted = true;
-    ad.deletedBy = req.userId;
-    ad.deletedAt = new Date();
-    await ad.save();
+    await Ad.findByIdAndDelete(id);
 
-    res.json({ message: 'Ad deleted successfully by admin' });
+    res.json({ success: true, message: 'Ad deleted' });
   } catch (error) {
     console.error('[Admin] adminDeleteAd error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -459,7 +460,7 @@ exports.getAdCategories = async (req, res) => {
     const categories = Array.from(new Set([...DEFAULT_AD_CATEGORIES, ...normalizedFromDb])).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: 'base' })
     );
-    return res.json({ categories });
+    return res.json({ success: true, data: categories, categories });
   } catch (error) {
     console.error('[Ad] getAdCategories error:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
