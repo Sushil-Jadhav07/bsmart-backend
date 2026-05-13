@@ -18,9 +18,9 @@ const allowReports = requireRole('vendor', 'admin');
  * @swagger
  * /api/reports/summary:
  *   get:
- *     summary: Admin reports summary
+ *     summary: Reports summary
  *     description: |
- *       Admin-only overview for dashboard cards.
+ *       Authenticated dashboard overview for summary cards.
  *       Supports `range` (7d, 30d, 90d) or explicit `start_date` / `end_date`.
  *     tags: [Reports]
  *     security:
@@ -72,7 +72,7 @@ const allowReports = requireRole('vendor', 'admin');
  *       500:
  *         description: Server error
  */
-router.get('/summary', auth, requireRole('admin'), getAdminSummaryReport);
+router.get('/summary', auth, getAdminSummaryReport);
 
 // ─── Shared filter parameters (reused across both endpoints) ─────────────────
 /**

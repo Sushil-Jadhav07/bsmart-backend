@@ -1042,7 +1042,7 @@ router.get('/search', auth, searchAds);
  *   get:
  *     summary: Get engagement stats for an ad
  *     description: |
- *       Admin only.
+ *       Authenticated users can read ad engagement stats.
  *       Returns a full breakdown of engagement for a single ad including:
  *       - **Likes** — total count, list of user IDs, gender breakdown with profiles
  *       - **Dislikes** — explicit dislike array from Ad model, gender breakdown with profiles
@@ -1083,13 +1083,13 @@ router.get('/search', auth, searchAds);
  *       401:
  *         description: Unauthorized
  *       403:
- *         description: Forbidden - Admin only
+ *         description: Forbidden
  *       404:
  *         description: Ad not found
  *       500:
  *         description: Server error
  */
-router.get('/:id/stats', auth, requireAdmin, getAdStats);
+router.get('/:id/stats', auth, getAdStats);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/ads/:id

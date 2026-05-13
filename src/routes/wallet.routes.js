@@ -205,7 +205,7 @@ router.get('/recharge/history', auth, getMyRechargeHistory);
  *       400:
  *         description: User is not a vendor / invalid id
  *       403:
- *         description: Forbidden – admin only
+ *         description: Forbidden
  *       404:
  *         description: User not found
  */
@@ -220,7 +220,7 @@ router.get('/recharge/history/:userId', auth, requireAdmin, getVendorRechargeHis
  * /api/wallet/member/{userId}/history:
  *   get:
  *     summary: Get a member's wallet history (rewards earned from ads)
- *     description: "Admin only. Returns success with data.wallet and data.transactions alongside the existing summary fields."
+ *     description: "Authenticated users can read wallet history data. Returns success with data.wallet and data.transactions alongside the existing summary fields."
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -250,11 +250,11 @@ router.get('/recharge/history/:userId', auth, requireAdmin, getVendorRechargeHis
  *       400:
  *         description: Not a member / invalid id
  *       403:
- *         description: Forbidden – must be admin or the user themselves
+ *         description: Forbidden
  *       404:
  *         description: User not found
  */
-router.get('/member/:userId/history', auth, requireAdmin, getMemberWalletHistory);
+router.get('/member/:userId/history', auth, getMemberWalletHistory);
 
 // ──────────────────────────────────────────────
 // Vendor history + admin recharge
@@ -268,7 +268,7 @@ router.get('/member/:userId/history', auth, requireAdmin, getMemberWalletHistory
  *     description: |
  *       Returns all vendor wallet transaction types including **VENDOR_RECHARGE**.
  *       `userId` can be either the vendor's user id or vendor profile id.
- *       Admin only.
+ *       Authenticated users can read wallet history data.
  *       The `summary.recharge` block shows aggregated recharge stats:
  *       - `total_recharge_count` – number of recharges
  *       - `total_recharged_coins` – total coins credited via recharge
@@ -336,7 +336,7 @@ router.get('/member/:userId/history', auth, requireAdmin, getMemberWalletHistory
  *       404:
  *         description: User not found
  */
-router.get('/vendor/:userId/history', auth, requireAdmin, getVendorWalletHistory);
+router.get('/vendor/:userId/history', auth, getVendorWalletHistory);
 
 /**
  * @swagger
@@ -370,7 +370,7 @@ router.get('/vendor/:userId/history', auth, requireAdmin, getVendorWalletHistory
  *       400:
  *         description: Invalid amount or user is not a vendor
  *       403:
- *         description: Forbidden – admin only
+ *         description: Forbidden
  *       404:
  *         description: User not found
  */
@@ -432,7 +432,7 @@ router.post('/vendor/:userId/recharge', auth, requireAdmin, rechargeVendorWallet
  *       404:
  *         description: Ad not found
  */
-router.get('/ads/:adId/history', auth, requireAdmin, getAdWalletHistory);
+router.get('/ads/:adId/history', auth, getAdWalletHistory);
 
 // ──────────────────────────────────────────────
 // Admin — all wallets + balance adjustment
@@ -442,7 +442,7 @@ router.get('/ads/:adId/history', auth, requireAdmin, getAdWalletHistory);
  * @swagger
  * /api/wallet:
  *   get:
- *     summary: Get all wallet transactions (Admin only)
+ *     summary: Get all wallet transactions
  *     tags: [Wallet]
  *     security:
  *       - bearerAuth: []
@@ -475,9 +475,9 @@ router.get('/ads/:adId/history', auth, requireAdmin, getAdWalletHistory);
  *       200:
  *         description: Full platform wallet data
  *       403:
- *         description: Forbidden – admin only
+ *         description: Forbidden
  */
-router.get('/', auth, requireAdmin, getAllWallets);
+router.get('/', auth, getAllWallets);
 
 /**
  * @swagger
