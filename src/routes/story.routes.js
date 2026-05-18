@@ -275,7 +275,7 @@ router.get('/:storyId/views', verifyToken, getStoryViews);
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: Image or video file (max 500MB)
+ *                 description: Image or video file (max 5GB)
  *     responses:
  *       200:
  *         description: File uploaded successfully
