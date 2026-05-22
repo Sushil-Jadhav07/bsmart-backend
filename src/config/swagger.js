@@ -6,7 +6,7 @@ const options = {
     info: {
       title: 'B-Smart API Documentation',
       version: '1.0.0',
-      description: 'API documentation for B-Smart application',
+      description: 'API documentation for B-Smart application and mobile app',
       contact: {
         name: 'Developer',
       },
