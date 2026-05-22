@@ -13,7 +13,7 @@ const ctrl = require('../controllers/search.controller');
  * @swagger
  * /api/search:
  *   get:
- *     summary: Search users, posts and reels
+ *     summary: Search users, posts, reels and promote reels
  *     tags: [Search]
  *     security:
  *       - bearerAuth: []
@@ -23,7 +23,7 @@ const ctrl = require('../controllers/search.controller');
  *         required: true
  *         schema:
  *           type: string
- *         description: Search keyword. Matches username, full name, location, user id and post/reel caption.
+ *         description: Search keyword. Matches username, full name, location, user id, post/reel caption and promote reel products.
  *       - in: query
  *         name: limit
  *         schema:
@@ -42,6 +42,7 @@ const ctrl = require('../controllers/search.controller');
  *                 users: 1
  *                 posts: 2
  *                 reels: 1
+ *                 promote_reels: 1
  *               results:
  *                 users:
  *                   - _id: "67e3aa001122334455667711"
@@ -215,12 +216,101 @@ const ctrl = require('../controllers/search.controller');
  *                     deletedAt: null
  *                     createdAt: "2026-03-27T10:05:00.000Z"
  *                     updatedAt: "2026-03-27T10:20:00.000Z"
+ *                 promote_reels:
+ *                   - _id: "67e3aa001122334455667803"
+ *                     promote_reel_id: "67e3aa001122334455667803"
+ *                     item_type: "promote_reel"
+ *                     user_id:
+ *                       _id: "67e3aa001122334455667711"
+ *                       username: "suraj"
+ *                       full_name: "Suraj Kumar"
+ *                       avatar_url: "https://example.com/avatar.jpg"
+ *                     caption: "Check out this product"
+ *                     location: "Pune"
+ *                     media:
+ *                       - fileName: "promote-1.mp4"
+ *                         type: "video"
+ *                         fileUrl: "https://api.bebsmart.in/uploads/promote-1.mp4"
+ *                     products:
+ *                       - product_name: "Wireless Earbuds"
+ *                         product_price: 1299
+ *                         promote_img: "https://api.bebsmart.in/uploads/product-1.jpg"
+ *                     tags: ["tech"]
+ *                     likes_count: 5
+ *                     comments_count: 1
+ *                     isDeleted: false
+ *                     createdAt: "2026-03-27T10:10:00.000Z"
+ *                     updatedAt: "2026-03-27T10:15:00.000Z"
  *       400:
  *         description: q is required
  *       401:
  *         description: Not authorized
  */
 router.get('/', auth, ctrl.searchAll);
+
+/**
+ * @swagger
+ * /api/search/reels:
+ *   get:
+ *     summary: Search only reels (with pagination)
+ *     tags: [Search]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Search keyword. Matches username, full name, location and reel caption.
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Reel search results
+ */
+router.get('/reels', auth, ctrl.searchReels);
+
+/**
+ * @swagger
+ * /api/search/promote-reels:
+ *   get:
+ *     summary: Search only promote reels (with pagination)
+ *     tags: [Search]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Search keyword. Matches username, full name, location, caption and product details.
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Promote reel search results
+ */
+router.get('/promote-reels', auth, ctrl.searchPromoteReels);
 
 /**
  * @swagger

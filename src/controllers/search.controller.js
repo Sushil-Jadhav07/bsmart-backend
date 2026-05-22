@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Post = require('../models/Post');
+const PromoteReel = require('../models/PromoteReel');
 const SearchHistory = require('../models/SearchHistory');
 
 const HISTORY_LIMIT = 20;
@@ -84,6 +85,39 @@ const sanitizePost = (post, baseUrl) => ({
   latest_comments: Array.isArray(post.latest_comments) ? post.latest_comments : [],
 });
 
+const sanitizePromoteReel = (promoteReel, baseUrl) => {
+  const sanitized = {
+    ...promoteReel,
+    promote_reel_id: promoteReel._id,
+    item_type: 'promote_reel',
+    user_id: promoteReel.user_id && typeof promoteReel.user_id === 'object'
+      ? sanitizeUser(promoteReel.user_id)
+      : promoteReel.user_id,
+    media: sanitizeMedia(promoteReel.media, baseUrl),
+    tags: Array.isArray(promoteReel.tags) ? promoteReel.tags : [],
+    people_tags: Array.isArray(promoteReel.people_tags) ? promoteReel.people_tags : [],
+    likes: Array.isArray(promoteReel.likes) ? promoteReel.likes : [],
+    latest_comments: Array.isArray(promoteReel.latest_comments) ? promoteReel.latest_comments : [],
+    products: Array.isArray(promoteReel.products)
+      ? promoteReel.products.map((p) => ({
+          ...p,
+          promote_img: withAbsoluteUploadUrl(p.promote_img, baseUrl),
+        }))
+      : [],
+  };
+
+  // Normalise media type for promote reels (they are always videos)
+  if (Array.isArray(sanitized.media)) {
+    sanitized.media = sanitized.media.map((m) => ({
+      ...m,
+      type: 'video',
+      media_type: 'video',
+    }));
+  }
+
+  return sanitized;
+};
+
 exports.searchAll = async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -123,13 +157,30 @@ exports.searchAll = async (req, res) => {
       ],
     };
 
-    const [posts, reels] = await Promise.all([
+    const promoteReelQuery = {
+      isDeleted: NOT_DELETED_FILTER,
+      $or: [
+        { caption: regex },
+        { location: regex },
+        { 'products.product_name': regex },
+        { 'products.product_description': regex },
+        ...(matchedUserIds.length ? [{ user_id: { $in: matchedUserIds } }] : []),
+        ...(exactId ? [{ user_id: exactId }, { _id: exactId }] : []),
+      ],
+    };
+
+    const [posts, reels, promoteReels] = await Promise.all([
       Post.find({ ...postQueryBase, type: 'post' })
         .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),
       Post.find({ ...postQueryBase, type: 'reel' })
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean(),
+      PromoteReel.find(promoteReelQuery)
         .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -161,15 +212,170 @@ exports.searchAll = async (req, res) => {
         users: matchedUsers.length,
         posts: posts.length,
         reels: reels.length,
+        promote_reels: promoteReels.length,
       },
       results: {
         users: matchedUsers.map(sanitizeUser),
         posts: posts.map((post) => sanitizePost(post, baseUrl)),
         reels: reels.map((reel) => sanitizePost(reel, baseUrl)),
+        promote_reels: promoteReels.map((pr) => sanitizePromoteReel(pr, baseUrl)),
       },
     });
   } catch (error) {
     console.error('[searchAll]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.searchReels = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    if (!q) {
+      return res.status(400).json({ message: 'q is required' });
+    }
+
+    const regex = buildRegex(q);
+    const isObjectId = mongoose.Types.ObjectId.isValid(q);
+    const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
+
+    // Find users first to include their reels in search
+    const matchedUsers = await User.find({
+      isDeleted: NOT_DELETED_FILTER,
+      $or: [
+        { username: regex },
+        { full_name: regex },
+        ...(exactId ? [{ _id: exactId }] : []),
+      ],
+    }).select('_id').lean();
+
+    const matchedUserIds = matchedUsers.map((user) => user._id);
+
+    const query = {
+      isDeleted: NOT_DELETED_FILTER,
+      type: 'reel',
+      $or: [
+        { caption: regex },
+        { location: regex },
+        ...(matchedUserIds.length ? [{ user_id: { $in: matchedUserIds } }] : []),
+        ...(exactId ? [{ user_id: exactId }, { _id: exactId }] : []),
+      ],
+    };
+
+    const [reels, total] = await Promise.all([
+      Post.find(query)
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Post.countDocuments(query),
+    ]);
+
+    const searchUserId = req.userId || req.user?._id;
+    if (searchUserId) {
+      await SearchHistory.findOneAndUpdate(
+        { user_id: searchUserId, normalized_query: q.toLowerCase() },
+        {
+          $set: { query: q, normalized_query: q.toLowerCase(), searched_at: new Date() },
+          $inc: { searches_count: 1 },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    return res.json({
+      success: true,
+      query: q,
+      page,
+      limit,
+      total,
+      results: reels.map((reel) => sanitizePost(reel, baseUrl)),
+    });
+  } catch (error) {
+    console.error('[searchReels]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.searchPromoteReels = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    if (!q) {
+      return res.status(400).json({ message: 'q is required' });
+    }
+
+    const regex = buildRegex(q);
+    const isObjectId = mongoose.Types.ObjectId.isValid(q);
+    const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
+
+    // Find users first
+    const matchedUsers = await User.find({
+      isDeleted: NOT_DELETED_FILTER,
+      $or: [
+        { username: regex },
+        { full_name: regex },
+        ...(exactId ? [{ _id: exactId }] : []),
+      ],
+    }).select('_id').lean();
+
+    const matchedUserIds = matchedUsers.map((user) => user._id);
+
+    const query = {
+      isDeleted: NOT_DELETED_FILTER,
+      $or: [
+        { caption: regex },
+        { location: regex },
+        { 'products.product_name': regex },
+        { 'products.product_description': regex },
+        ...(matchedUserIds.length ? [{ user_id: { $in: matchedUserIds } }] : []),
+        ...(exactId ? [{ user_id: exactId }, { _id: exactId }] : []),
+      ],
+    };
+
+    const [promoteReels, total] = await Promise.all([
+      PromoteReel.find(query)
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      PromoteReel.countDocuments(query),
+    ]);
+
+    const searchUserId = req.userId || req.user?._id;
+    if (searchUserId) {
+      await SearchHistory.findOneAndUpdate(
+        { user_id: searchUserId, normalized_query: q.toLowerCase() },
+        {
+          $set: { query: q, normalized_query: q.toLowerCase(), searched_at: new Date() },
+          $inc: { searches_count: 1 },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    return res.json({
+      success: true,
+      query: q,
+      page,
+      limit,
+      total,
+      results: promoteReels.map((pr) => sanitizePromoteReel(pr, baseUrl)),
+    });
+  } catch (error) {
+    console.error('[searchPromoteReels]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
