@@ -19,6 +19,37 @@ function isVideo(filename) {
 
 const uploadsDir = path.join(__dirname, '../../uploads');
 
+// Helper: get file URL — works for both S3 (file.location) and local disk (file.filename)
+function getFileUrl(req, file) {
+  if (file.location) {
+    // S3 upload — use CloudFront URL if configured, else S3 location
+    const cloudfront = process.env.CLOUDFRONT_BASE_URL;
+    if (cloudfront) {
+      // Replace S3 bucket URL with CloudFront URL
+      const s3Url = file.location;
+      const bucketUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com`;
+      if (s3Url.includes(bucketUrl)) {
+        return s3Url.replace(bucketUrl, cloudfront.replace(/\/+$/, ''));
+      }
+      // If key is available, build CloudFront URL directly
+      if (file.key) {
+        return `${cloudfront.replace(/\/+$/, '')}/${file.key}`;
+      }
+      return s3Url;
+    }
+    return file.location;
+  }
+  // Local disk upload
+  const baseUrl = getPublicBaseUrl(req);
+  return `${baseUrl}/uploads/${file.filename}`;
+}
+
+// Helper: get file name/key
+function getFileName(file) {
+  if (file.key) return file.key;       // S3 key e.g. uploads/users/123/posts/abc.jpg
+  return file.filename;                 // local disk filename
+}
+
 // ─── POST /api/upload ─────────────────────────────────────────────────────────
 /**
  * @swagger
@@ -61,7 +92,23 @@ router.post('/', verifyToken, upload.single('file'), async (req, res) => {
 
     const baseUrl = getPublicBaseUrl(req);
 
+    // Check if it's a video
     if (isVideo(req.file.originalname)) {
+
+      // If file is on S3 (has location), we skip HLS conversion for now
+      // and return the S3 URL directly
+      if (req.file.location) {
+        const fileUrl = getFileUrl(req, req.file);
+        const fileName = getFileName(req.file);
+        return res.json({
+          fileName,
+          fileUrl,
+          media_type: 'video',
+          hls: false,
+        });
+      }
+
+      // Local disk — do HLS conversion
       const baseName = path.basename(req.file.filename, path.extname(req.file.filename));
       const inputPath = req.file.path;
 
@@ -89,10 +136,12 @@ router.post('/', verifyToken, upload.single('file'), async (req, res) => {
       }
     }
 
-    // Image — return direct URL
-    const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    // Image — return URL
+    const fileUrl = getFileUrl(req, req.file);
+    const fileName = getFileName(req.file);
+
     return res.json({
-      fileName: req.file.filename,
+      fileName,
       fileUrl,
       media_type: 'image',
       hls: false,
@@ -128,15 +177,14 @@ router.post('/', verifyToken, upload.single('file'), async (req, res) => {
  */
 router.post('/thumbnail', verifyToken, upload.any(), (req, res) => {
   try {
-    const baseUrl = getPublicBaseUrl(req);
     const files = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
     if (!files || files.length === 0) {
       return res.status(400).json({ message: 'Please upload at least one file' });
     }
     const items = files.map(f => ({
-      fileName: f.filename,
+      fileName: getFileName(f),
       type: 'image',
-      fileUrl: `${baseUrl}/uploads/${f.filename}`,
+      fileUrl: getFileUrl(req, f),
     }));
     res.json({ thumbnails: items, count: items.length });
   } catch (error) {
@@ -173,14 +221,16 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'Please upload a file' });
     }
-    const baseUrl = getPublicBaseUrl(req);
-    const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+
+    const fileUrl = getFileUrl(req, req.file);
+    const fileName = getFileName(req.file);
+
     const user = await User.findByIdAndUpdate(
       req.userId,
       { avatar_url: fileUrl },
       { new: true, select: '_id username full_name avatar_url' }
     );
-    return res.json({ fileName: req.file.filename, fileUrl, user });
+    return res.json({ fileName, fileUrl, user });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -193,18 +243,6 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
  * /api/upload/promote-product:
  *   post:
  *     summary: Upload a product image for a promote reel product card
- *     description: |
- *       Accepts a single image file and returns the full URL to be stored
- *       as `promote_img` in the products array when creating / updating a
- *       promote reel.
- *
- *       **Allowed types:** JPEG, JPG, PNG, WEBP, GIF
- *       **Max size:** 10 MB
- *
- *       Example workflow:
- *       1. Upload each product image → get back `{ promote_img: "https://..." }`
- *       2. Include the URL in the `products[]` array body when calling
- *          `POST /api/promote-reels` or `PATCH /api/promote-reels/:id`
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -220,35 +258,9 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: Product image file (JPEG / PNG / WEBP / GIF, max 10 MB)
  *     responses:
  *       200:
  *         description: Image uploaded successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 promote_img:
- *                   type: string
- *                   example: "https://api.bebsmart.in/uploads/1717000000000-123456789.jpg"
- *                   description: Full URL — use this as `promote_img` in the products array
- *                 fileName:
- *                   type: string
- *                   example: "1717000000000-123456789.jpg"
- *                 media_type:
- *                   type: string
- *                   example: image
- *       400:
- *         description: No file provided or invalid file type
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string }
- *       500:
- *         description: Server error
  */
 
 // Dedicated image-only multer instance for product images (10 MB cap)
@@ -300,13 +312,13 @@ router.post(
         return res.status(400).json({ message: 'Please upload an image file.' });
       }
 
-      const baseUrl    = getPublicBaseUrl(req);
-      const promoteImg = `${baseUrl}/uploads/${req.file.filename}`;
+      const promoteImg = getFileUrl(req, req.file);
+      const fileName   = getFileName(req.file);
 
       return res.json({
-        promote_img: promoteImg,         // ← key name matches the model field
-        fileName:    req.file.filename,
-        media_type:  'image',
+        promote_img: promoteImg,
+        fileName,
+        media_type: 'image',
       });
     } catch (error) {
       console.error('[Upload/promote-product] Error:', error);
