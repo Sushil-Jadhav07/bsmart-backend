@@ -1,80 +1,341 @@
-const PromoteReel = require('../models/PromoteReel');
-const Comment     = require('../models/Comment');
-const User        = require('../models/User');
+const Post         = require('../models/Post');
+const User         = require('../models/User');
+const Comment      = require('../models/Comment');
+const Ad           = require('../models/Ad');
+const AdView       = require('../models/AdView');
+const SavedPost    = require('../models/SavedPost');
+const Follow       = require('../models/Follow');
+const Tweet       = require('../models/tweet.model');
+const TweetLike   = require('../models/tweetLike.model');
+const TweetRepost = require('../models/tweetRepost.model');
+const PromoteReel  = require('../models/PromoteReel');
 const sendNotification = require('../utils/sendNotification');
-const { canViewAuthorContent, getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
+const UserNotificationPreference = require('../models/UserNotificationPreference');
+const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
 
-// ─── Helper: transform a promote reel doc into the API response shape ──────
-const transformPromoteReel = (doc, baseUrl, currentUserId = null) => {
-  const obj = doc.toObject ? doc.toObject() : doc;
+// ─── URL Helper ───────────────────────────────────────────────────────────────
+// Resolves a fileName or fileUrl to an absolute URL.
+// Handles both old local filenames (e.g. "abc.jpg") and new S3 keys (e.g. "uploads/users/xxx/abc.jpg")
+const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
 
-  const toAbsolute = (val) => {
-    if (!val) return val;
-    const s = String(val);
-    return s.startsWith('http') ? s : `${baseUrl}${s.startsWith('/') ? '' : '/'}${s}`;
+  // If fileUrl is already a full URL, return it (prefer CloudFront over old api URL)
+  if (fileUrl && fileUrl.startsWith('http')) {
+    if (cloudfront && fileUrl.includes('api.bebsmart.in/uploads/')) {
+      return fileUrl.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
+    return fileUrl;
+  }
+
+  // If fileName is an S3 key (starts with uploads/)
+  if (fileName) {
+    if (fileName.startsWith('uploads/') || fileName.startsWith('/uploads/')) {
+      const key = fileName.replace(/^\/+/, '');
+      if (cloudfront) return `${cloudfront}/${key}`;
+      return `${baseUrl}/${key}`;
+    }
+    // Old local filename — just append to uploads/
+    if (cloudfront) return `${cloudfront}/uploads/${fileName}`;
+    return `${baseUrl}/uploads/${fileName}`;
+  }
+
+  if (fileUrl) {
+    if (fileUrl.startsWith('/')) return `${baseUrl}${fileUrl}`;
+    return `${baseUrl}/${fileUrl}`;
+  }
+
+  return '';
+};
+
+
+
+// ─── Helper ────────────────────────────────────────────────────────────────
+// Transforms a Mongoose post document into the API response shape.
+// Adds fileUrl, is_liked_by_me, is_saved_by_me to each post.
+const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => {
+  const postObj = post.toObject ? post.toObject() : post;
+  const toAbsolute = (value) => {
+    if (!value) return value;
+    const str = String(value);
+    if (str.startsWith('http')) return str;
+    return `${baseUrl}${str.startsWith('/') ? '' : '/'}${str}`;
   };
 
-  obj.promote_reel_id = obj._id;
-  obj.item_type = 'promote_reel';
+  postObj.post_id = postObj._id;
+  postObj.item_type = postObj.type === 'reel' ? 'reel' : 'post';
 
-  // Resolve media URLs
-  if (Array.isArray(obj.media)) {
-    obj.media = obj.media.map(item => {
-      const fileUrl = item.fileName
-        ? `${baseUrl}/uploads/${item.fileName}`
-        : toAbsolute(item.fileUrl);
-
+  if (postObj.media && Array.isArray(postObj.media)) {
+    postObj.media = postObj.media.map(item => {
+      const rawFileName = item.fileName || '';
+      const rawMediaUrl = item.fileUrl || item.url || '';
+      const inferredIsVideoByName = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)$/i.test(String(rawFileName));
+      const inferredIsVideoByUrl = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)(\?.*)?$/i.test(String(rawMediaUrl));
+      const normalizedType = (item.type === 'video' || item.media_type === 'video' || (postObj.type === 'reel' && (inferredIsVideoByName || inferredIsVideoByUrl)))
+        ? 'video'
+        : (item.type || 'image');
+      const fileUrl = resolveMediaUrl(item.fileName, item.fileUrl, baseUrl);
+      const url = item.url ? toAbsolute(item.url) : fileUrl;
       let thumbnailArray = [];
       if (Array.isArray(item.thumbnails)) {
         thumbnailArray = item.thumbnails.map(t => ({
           ...t,
-          fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : toAbsolute(t.fileUrl)
+          fileUrl: resolveMediaUrl(t.fileName, t.fileUrl, baseUrl),
         }));
       } else if (item.thumbnail && item.thumbnail.fileName) {
         thumbnailArray = [{
           ...item.thumbnail,
-          fileUrl: `${baseUrl}/uploads/${item.thumbnail.fileName}`
+          fileUrl: resolveMediaUrl(item.thumbnail.fileName, item.thumbnail.fileUrl, baseUrl),
         }];
       }
-
-      return {
-        ...item,
-        type: 'video',
-        media_type: 'video',
-        fileUrl,
-        url: fileUrl,
-        thumbnail: thumbnailArray
-      };
+      return { ...item, type: normalizedType, media_type: normalizedType, fileUrl, url, thumbnail: thumbnailArray };
     });
   }
 
-  obj.is_liked_by_me = currentUserId && Array.isArray(obj.likes)
-    ? obj.likes.some(id => id.toString() === currentUserId.toString())
+  postObj.is_liked_by_me = currentUserId && postObj.likes
+    ? postObj.likes.some(id => id.toString() === currentUserId.toString())
     : false;
 
-  // Normalise comment counts
-  const raw = obj.commentsCount ?? obj.comments_count ?? obj.commentCount ?? obj.comment_count ?? 0;
-  const count = Number.isFinite(Number(raw)) ? Number(raw) : 0;
-  obj.commentsCount  = count;
-  obj.comments_count = count;
-  obj.commentCount   = count;
-  obj.comment_count  = count;
+  postObj.is_saved_by_me = savedSet && postObj._id
+    ? savedSet.has(postObj._id.toString())
+    : false;
 
-  return obj;
+  const explicitCommentCount =
+    postObj.commentsCount
+    ?? postObj.comments_count
+    ?? postObj.commentCount
+    ?? postObj.comment_count;
+  const normalizedCommentCount = Number.isFinite(Number(explicitCommentCount))
+    ? Number(explicitCommentCount)
+    : (Array.isArray(postObj.comments) ? postObj.comments.length : 0);
+  postObj.commentsCount = normalizedCommentCount;
+  postObj.comments_count = normalizedCommentCount;
+  postObj.commentCount = normalizedCommentCount;
+  postObj.comment_count = normalizedCommentCount;
+
+  return postObj;
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CRUD
-// ═══════════════════════════════════════════════════════════════════════════
+const transformTweet = async (tweet, currentUserId = null) => {
+  const tweetObj = tweet.toObject ? tweet.toObject() : tweet;
+  const [liked, reposted] = await Promise.all([
+    currentUserId ? TweetLike.exists({ user: currentUserId, tweet: tweetObj._id }) : false,
+    currentUserId ? TweetRepost.exists({ user: currentUserId, tweet: tweetObj._id }) : false,
+  ]);
 
-// ─── Create promote reel ───────────────────────────────────────────────────
-// POST /api/promote-reels
-exports.createPromoteReel = async (req, res) => {
+  const explicitCommentCount =
+    tweetObj.commentsCount
+    ?? tweetObj.comments_count
+    ?? tweetObj.commentCount
+    ?? tweetObj.comment_count
+    ?? tweetObj.repliesCount;
+  const normalizedCommentCount = Number.isFinite(Number(explicitCommentCount))
+    ? Number(explicitCommentCount)
+    : (Array.isArray(tweetObj.comments) ? tweetObj.comments.length : 0);
+
+  return {
+    item_type: 'tweet',
+    ...tweetObj,
+    commentsCount: normalizedCommentCount,
+    comments_count: normalizedCommentCount,
+    commentCount: normalizedCommentCount,
+    comment_count: normalizedCommentCount,
+    author: tweetObj.author ? {
+      ...(tweetObj.author.toObject ? tweetObj.author.toObject() : tweetObj.author),
+      name: tweetObj.author.full_name || '',
+      profilePicture: tweetObj.author.avatar_url || '',
+      isVerified: false,
+    } : null,
+    repostOf: tweetObj.repostOf ? {
+      ...(tweetObj.repostOf.toObject ? tweetObj.repostOf.toObject() : tweetObj.repostOf),
+      author: tweetObj.repostOf.author ? {
+        ...(tweetObj.repostOf.author.toObject ? tweetObj.repostOf.author.toObject() : tweetObj.repostOf.author),
+        name: tweetObj.repostOf.author.full_name || '',
+        profilePicture: tweetObj.repostOf.author.avatar_url || '',
+        isVerified: false,
+      } : null,
+    } : null,
+    isLiked: !!liked,
+    isReposted: !!reposted,
+  };
+};
+
+const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) => {
+  const adSlots = Math.floor(feedItems.length / 5);
+  if (adSlots <= 0) {
+    return feedItems;
+  }
+
+  const adQuery = { status: 'active', isDeleted: false };
+  if (blockedPrivateUserIds.length > 0) {
+    adQuery.user_id = { $nin: blockedPrivateUserIds };
+  }
+
+  // Fetch ads, rewarded views, AND promote reels in parallel
+  const [ads, rewarded, promoteReels] = await Promise.all([
+    Ad.find(adQuery)
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, adSlots))
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
+      .lean(),
+    AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
+    // One promote reel per ad slot so each ad is immediately followed by one
+    PromoteReel.find({ isDeleted: false })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, adSlots))
+      .populate('user_id', 'username full_name avatar_url isPrivate')
+      .lean(),
+  ]);
+
+  if (!ads.length) {
+    return feedItems;
+  }
+
+  const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
+
+  const followedIds = await getFollowedUserIds(req.userId);
+  const followedSet = new Set(followedIds.map((id) => String(id)));
+  const viewerId = String(req.userId);
+
+  const normalizedAds = ads.map((ad) => {
+    const normalizedMedia = Array.isArray(ad.media)
+      ? ad.media.map((m) => {
+        const fileUrl = m.fileUrl
+          ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
+          : (resolveMediaUrl(m.fileName, m.fileUrl, baseUrl));
+        const thumbnails = Array.isArray(m.thumbnails)
+          ? m.thumbnails.map((t) => {
+            const thumbUrl = t.fileUrl
+              ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
+              : (t.fileName ? resolveMediaUrl(t.fileName, t.fileUrl, baseUrl) : '');
+            return { ...t, fileUrl: thumbUrl };
+          })
+          : [];
+        return { ...m, fileUrl, thumbnails };
+      })
+      : [];
+
+    const authorId = String(ad?.user_id?._id || ad?.user_id?.id || '');
+    const isAuthorFollowed = authorId ? followedSet.has(authorId) : false;
+    return {
+      item_type:        'ad',
+      ...ad,
+      commentsCount: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      comments_count: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      commentCount: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      comment_count: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      media:            normalizedMedia,
+      is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
+      is_liked_by_me:   Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
+      is_author_followed_by_me: isAuthorFollowed,
+      can_view_by_me: !ad?.user_id?.isPrivate || authorId === viewerId || isAuthorFollowed,
+    };
+  });
+
+  // ── Normalise promote reels ────────────────────────────────────────────────
+  const normalizedPromoteReels = promoteReels.map((pr) => {
+    const toAbsolute = (val) => {
+      if (!val) return val;
+      const s = String(val);
+      return s.startsWith('http') ? s : `${baseUrl}${s.startsWith('/') ? '' : '/'}${s}`;
+    };
+
+    const normalizedMedia = Array.isArray(pr.media)
+      ? pr.media.map((m) => {
+        const fileUrl = m.fileName
+          ? resolveMediaUrl(m.fileName, m.fileUrl, baseUrl)
+          : toAbsolute(m.fileUrl);
+        const thumbnails = Array.isArray(m.thumbnails)
+          ? m.thumbnails.map(t => ({
+            ...t,
+            fileUrl: resolveMediaUrl(t.fileName, t.fileUrl, baseUrl),
+          }))
+          : (m.thumbnail?.fileName
+            ? [{ ...m.thumbnail, fileUrl: resolveMediaUrl(m.thumbnail.fileName, m.thumbnail.fileUrl, baseUrl) }]
+            : []);
+        return { ...m, type: 'video', media_type: 'video', fileUrl, url: fileUrl, thumbnails };
+      })
+      : [];
+
+    const prAuthorId = String(pr?.user_id?._id || pr?.user_id?.id || '');
+    const isPrAuthorFollowed = prAuthorId ? followedSet.has(prAuthorId) : false;
+    return {
+      item_type:       'promote_reel',
+      ...pr,
+      promote_reel_id: pr._id,
+      media:           normalizedMedia,
+      commentsCount:   Number(pr.comments_count ?? 0),
+      comments_count:  Number(pr.comments_count ?? 0),
+      commentCount:    Number(pr.comments_count ?? 0),
+      comment_count:   Number(pr.comments_count ?? 0),
+      is_liked_by_me:  Array.isArray(pr.likes) && pr.likes.some(id => id.toString() === req.userId.toString()),
+      is_author_followed_by_me: isPrAuthorFollowed,
+      can_view_by_me:  !pr?.user_id?.isPrivate || prAuthorId === viewerId || isPrAuthorFollowed,
+    };
+  });
+
+  // ── Interleave: every 5 posts → ad → promote_reel (if any) ───────────────
+  // Pattern: [post, post, post, post, post, ad, promote_reel, post, post, ...]
+  const mixed = [];
+  let adIndex = 0;
+  for (let i = 0; i < feedItems.length; i++) {
+    mixed.push(feedItems[i]);
+    if ((i + 1) % 5 === 0) {
+      // 1. Push the ad
+      mixed.push(normalizedAds[adIndex % normalizedAds.length]);
+      // 2. Push the promote reel immediately after the ad
+      if (normalizedPromoteReels.length > 0) {
+        mixed.push(normalizedPromoteReels[adIndex % normalizedPromoteReels.length]);
+      }
+      adIndex++;
+    }
+  }
+
+  return mixed;
+};
+
+// ─── Fan-out helper ────────────────────────────────────────────────────────
+// Notifies all users who have turned on notifications for the post author.
+// postType: 'post' | 'reel'
+const notifySubscribers = async (app, authorId, authorUsername, postId, postType) => {
   try {
-    const {
-      caption, location, media, tags, people_tags,
-      hide_likes_count, turn_off_commenting, products
-    } = req.body;
+    const notifType = postType === 'reel' ? 'subscribed_user_reel' : 'subscribed_user_post';
+    const contentLabel = postType === 'reel' ? 'reel' : 'post';
+    const preferenceField = postType === 'reel' ? 'notify_on_reel' : 'notify_on_post';
+
+    // Find everyone who has notifications turned on for this user
+    const prefs = await UserNotificationPreference.find({
+      target_id:   authorId,
+      target_type: 'user',
+      [preferenceField]: true,
+    }).select('subscriber_id').lean();
+
+    if (!prefs.length) return;
+
+    const message = `@${authorUsername} posted a new ${contentLabel}`;
+    const link    = `/posts/${postId}`;
+
+    for (const pref of prefs) {
+      await sendNotification(app, {
+        recipient: pref.subscriber_id,
+        sender:    authorId,
+        type:      notifType,
+        message,
+        link,
+      });
+    }
+  } catch (err) {
+    console.error('[Post] notifySubscribers error:', err.message);
+  }
+};
+
+// ─── Create post ───────────────────────────────────────────────────────────
+// POST /api/posts
+exports.createPost = async (req, res) => {
+  try {
+    const { caption, location, media, tags, people_tags, hide_likes_count, turn_off_commenting, type } = req.body;
 
     if (!media || media.length === 0) {
       return res.status(400).json({ message: 'At least one media item is required' });
@@ -90,18 +351,234 @@ exports.createPromoteReel = async (req, res) => {
       }
     }
 
-    // Normalise media (force type = video, handle aliased keys)
+    const post = await Post.create({
+      user_id: req.userId,
+      caption,
+      location,
+      media,
+      tags,
+      people_tags,
+      hide_likes_count,
+      turn_off_commenting,
+      type,
+    });
+
+    await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
+
+    // Send tag notifications — wrapped in its own try/catch so a notification
+    // failure never breaks the post creation response
+    try {
+      const creator = await User.findById(req.userId).select('username').lean();
+
+      // 1. People-tag notifications
+      if (Array.isArray(people_tags) && people_tags.length > 0) {
+        for (const taggedUserId of people_tags) {
+          if (taggedUserId.toString() !== req.userId.toString()) {
+            await sendNotification(req.app, {
+              recipient: taggedUserId,
+              sender:    req.userId,
+              type:      'post_tag',
+              message:   `${creator.username} tagged you in a post`,
+              link:      `/posts/${post._id}`,
+            });
+          }
+        }
+      }
+
+      // 2. Subscriber notifications (users who turned on notifications for this author)
+      const postType = type === 'reel' ? 'reel' : 'post';
+      await notifySubscribers(req.app, req.userId, creator.username, post._id, postType);
+
+    } catch (notifErr) {
+      console.error('[Post] Notification error:', notifErr.message);
+    }
+
+    const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    res.status(201).json(transformPost(populatedPost, baseUrl));
+  } catch (error) {
+    console.error('[Post] createPost error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── Feed ──────────────────────────────────────────────────────────────────
+// GET /api/posts/feed?page=1&limit=20
+// FIX: Added pagination (.skip + .limit) — previously loaded ALL posts into
+// memory on every request which caused OOM crashes on large datasets.
+exports.getFeed = async (req, res) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20); // cap at 50
+    const skip  = (page - 1) * limit;
+    const tab = ['all', 'following', 'tweets'].includes(req.query.tab) ? req.query.tab : 'all';
+    let followedIds = [];
+    let blockedPrivateUserIds = [];
+
+    if (tab === 'following') {
+      const follows = await Follow.find({ follower_id: req.userId }).select('followed_id').lean();
+      followedIds = follows.map((follow) => follow.followed_id);
+    } else {
+      [followedIds, blockedPrivateUserIds] = await Promise.all([
+        getFollowedUserIds(req.userId),
+        getBlockedPrivateUserIds(req.userId),
+      ]);
+    }
+
+    const postQuery = tab === 'following'
+      ? { user_id: { $in: followedIds } }
+      : (blockedPrivateUserIds.length > 0 ? { user_id: { $nin: blockedPrivateUserIds } } : {});
+    const tweetQuery = {
+      audience: 'everyone',
+      isDeleted: false,
+      parentTweet: null,
+      ...(tab === 'following' ? { author: { $in: followedIds } } : {}),
+    };
+
+    const [posts, saved, tweets] = await Promise.all([
+      tab === 'tweets'
+        ? Promise.resolve([])
+        : Post.find(postQuery)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
+      SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
+      Tweet.find(tweetQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('author', 'username full_name avatar_url')
+        .populate({
+          path: 'repostOf',
+          populate: { path: 'author', select: 'username full_name avatar_url' },
+        }),
+    ]);
+
+    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const savedSet = new Set(saved.map(s => s.post_id.toString()));
+    const transformedPosts = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
+    const transformedTweets = await Promise.all(
+      tweets.map((tweet) => transformTweet(tweet, req.userId))
+    );
+    const followingSet = new Set(followedIds.map((id) => String(id)));
+    const viewerId = String(req.userId);
+    transformedPosts.forEach((postItem) => {
+      const authorId = String(postItem?.user_id?._id || postItem?.user_id?.id || '');
+      postItem.is_author_followed_by_me = authorId ? followingSet.has(authorId) : false;
+      postItem.can_view_by_me = !postItem?.user_id?.isPrivate || authorId === viewerId || postItem.is_author_followed_by_me;
+    });
+    const feedItems = (tab === 'tweets' ? transformedTweets : [...transformedPosts, ...transformedTweets])
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, limit);
+    const data = tab === 'tweets'
+      ? feedItems
+      : await loadFeedAds(req, feedItems, baseUrl, blockedPrivateUserIds);
+
+    res.json({ page, limit, data });
+  } catch (error) {
+    console.error('[Post] getFeed error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── Get single post ───────────────────────────────────────────────────────
+// GET /api/posts/:id
+exports.getPost = async (req, res) => {
+  try {
+    const [post, commentsRaw, isSaved] = await Promise.all([
+      Post.findById(req.params.id)
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
+      Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 }),
+      SavedPost.exists({ user_id: req.userId, post_id: req.params.id }),
+    ]);
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    // Dashboard requirement: allow authenticated users to inspect post details
+    // even when the author account is private.
+
+    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const savedSet = new Set();
+    if (isSaved) savedSet.add(post._id.toString());
+
+    const transformedPost = transformPost(post, baseUrl, req.userId, savedSet);
+    transformedPost.comments = commentsRaw.map(c => {
+      const obj = c.toObject ? c.toObject() : c;
+      obj.comment_id = obj._id;
+      return obj;
+    });
+
+    res.json(transformedPost);
+  } catch (error) {
+    console.error('[Post] getPost error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── Delete post ───────────────────────────────────────────────────────────
+// DELETE /api/posts/:id
+exports.deletePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to delete this post' });
+    }
+
+    await post.deleteOne();
+    await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: -1 } });
+
+    res.json({ message: 'Post deleted successfully' });
+  } catch (error) {
+    console.error('[Post] deletePost error:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── Create reel ───────────────────────────────────────────────────────────
+// POST /api/posts/reels
+exports.createReel = async (req, res) => {
+  try {
+    const { caption, location, media, tags, people_tags, hide_likes_count, turn_off_commenting } = req.body;
+
+    if (!media || media.length === 0) {
+      return res.status(400).json({ message: 'At least one media item is required' });
+    }
+
     const normalizedMedia = media.map(m => {
-      const nm = { ...m, type: 'video' };
-      if (Array.isArray(nm.thumbnail))          { nm.thumbnails = nm.thumbnail; delete nm.thumbnail; }
-      if (nm['finalLength-start'] !== undefined) { nm.finalLength_start = nm['finalLength-start']; }
-      if (nm['finallength-end'] !== undefined)   { nm.finalLength_end   = nm['finallength-end']; }
-      if (nm['thumbail-time'] !== undefined)     { nm.thumbnail_time    = nm['thumbail-time']; }
-      if (nm.totalLenght !== undefined)          { nm.totalLength       = nm.totalLenght; }
+      const nm = { ...m };
+      nm.type = 'video';
+      if (Array.isArray(nm.thumbnail))              { nm.thumbnails = nm.thumbnail; delete nm.thumbnail; }
+      if (nm['finalLength-start'] !== undefined)    { nm.finalLength_start = nm['finalLength-start']; }
+      if (nm['finallength-end'] !== undefined)      { nm.finalLength_end = nm['finallength-end']; }
+      if (nm['thumbail-time'] !== undefined)        { nm.thumbnail_time = nm['thumbail-time']; }
+      if (nm.totalLenght !== undefined)             { nm.totalLength = nm.totalLenght; }
       return nm;
     });
 
-    const doc = await PromoteReel.create({
+    const validCropModes = ['original', '1:1', '4:5', '16:9'];
+    for (const item of media) {
+      if (!item.fileName) {
+        return res.status(400).json({ message: 'Each media item must have a fileName' });
+      }
+      if (item.crop && item.crop.mode && !validCropModes.includes(item.crop.mode)) {
+        return res.status(400).json({ message: `Invalid crop mode: ${item.crop.mode}` });
+      }
+    }
+
+    const post = await Post.create({
       user_id: req.userId,
       caption,
       location,
@@ -110,501 +587,170 @@ exports.createPromoteReel = async (req, res) => {
       people_tags,
       hide_likes_count,
       turn_off_commenting,
-      products: Array.isArray(products) ? products : []
+      type: 'reel',
     });
 
-    const populated = await doc.populate(
-      'user_id',
-      'username full_name avatar_url followers_count following_count gender location'
-    );
+    await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
 
+    // Notify subscribers that this user posted a reel
+    try {
+      const creator = await User.findById(req.userId).select('username').lean();
+      await notifySubscribers(req.app, req.userId, creator.username, post._id, 'reel');
+    } catch (notifErr) {
+      console.error('[Post] Reel subscriber notification error:', notifErr.message);
+    }
+
+    const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.status(201).json(transformPromoteReel(populated, baseUrl, req.userId));
+    res.status(201).json(transformPost(populatedPost, baseUrl));
   } catch (error) {
-    console.error('[PromoteReel] createPromoteReel error:', error);
+    console.error('[Post] createReel error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── List promote reels ────────────────────────────────────────────────────
-// GET /api/promote-reels?page=1&limit=20
-exports.listPromoteReels = async (req, res) => {
+// ─── List reels ────────────────────────────────────────────────────────────
+// GET /api/posts/reels?page=1&limit=20
+// FIX: Added pagination — same OOM issue as getFeed above.
+exports.listReels = async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(50, parseInt(req.query.limit) || 20);
     const skip  = (page - 1) * limit;
 
     const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
-    const query = { isDeleted: false };
+    const reelQuery = { type: 'reel' };
     if (blockedPrivateUserIds.length > 0) {
-      query.user_id = { $nin: blockedPrivateUserIds };
+      reelQuery.user_id = { $nin: blockedPrivateUserIds };
     }
 
-    const docs = await PromoteReel.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate');
+    const [posts, saved] = await Promise.all([
+      Post.find(reelQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
+      SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
+    ]);
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const data    = docs.map(d => transformPromoteReel(d, baseUrl, req.userId));
+    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const savedSet = new Set(saved.map(s => s.post_id.toString()));
+    const transformed = posts.map(p => transformPost(p, baseUrl, req.userId, savedSet));
 
-    res.json({ page, limit, data });
+    res.json({ page, limit, data: transformed });
   } catch (error) {
-    console.error('[PromoteReel] listPromoteReels error:', error);
+    console.error('[Post] listReels error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── Get promote reel by ID ────────────────────────────────────────────────
-// GET /api/promote-reels/:id
-exports.getPromoteReelById = async (req, res) => {
+// ─── Get reel by ID ────────────────────────────────────────────────────────
+// GET /api/posts/reels/:id
+exports.getReelById = async (req, res) => {
   try {
-    const [doc, commentsRaw] = await Promise.all([
-      PromoteReel.findOne({ _id: req.params.id, isDeleted: false })
+    const [post, commentsRaw, isSaved] = await Promise.all([
+      Post.findOne({ _id: req.params.id, type: 'reel' })
         .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
-      Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 })
+      Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 }),
+      SavedPost.exists({ user_id: req.userId, post_id: req.params.id }),
     ]);
 
-    if (!doc) {
-      return res.status(404).json({ message: 'Promote reel not found' });
+    if (!post) {
+      return res.status(404).json({ message: 'Reel not found' });
     }
+    // Dashboard requirement: allow authenticated users to inspect reel details
+    // even when the author account is private.
 
-    const authorId = doc?.user_id?._id || doc?.user_id;
-    const canView  = await canViewAuthorContent(req.userId, authorId);
-    if (!canView) {
-      return res.status(403).json({ message: 'This account is private. Follow to view content.' });
-    }
+    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const savedSet = new Set();
+    if (isSaved) savedSet.add(post._id.toString());
 
-    const baseUrl     = `${req.protocol}://${req.get('host')}`;
-    const transformed = transformPromoteReel(doc, baseUrl, req.userId);
-    transformed.comments = commentsRaw.map(c => {
+    const transformedPost = transformPost(post, baseUrl, req.userId, savedSet);
+    transformedPost.comments = commentsRaw.map(c => {
       const obj = c.toObject ? c.toObject() : c;
       obj.comment_id = obj._id;
       return obj;
     });
 
-    res.json(transformed);
+    res.json(transformedPost);
   } catch (error) {
-    console.error('[PromoteReel] getPromoteReelById error:', error);
+    console.error('[Post] getReelById error:', error);
     if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Promote reel not found' });
+      return res.status(404).json({ message: 'Reel not found' });
     }
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── Update promote reel metadata ─────────────────────────────────────────
-// PATCH /api/promote-reels/:id
-exports.updatePromoteReel = async (req, res) => {
+const buildPostMetadataUpdates = (body = {}) => {
+  const updates = {};
+
+  if (typeof body.caption !== 'undefined') updates.caption = body.caption || '';
+  if (typeof body.location !== 'undefined') updates.location = body.location || '';
+  if (typeof body.tags !== 'undefined') updates.tags = Array.isArray(body.tags) ? body.tags : [];
+  if (typeof body.people_tags !== 'undefined') updates.people_tags = Array.isArray(body.people_tags) ? body.people_tags : [];
+  if (typeof body.hide_likes_count !== 'undefined') updates.hide_likes_count = !!body.hide_likes_count;
+  if (typeof body.turn_off_commenting !== 'undefined') updates.turn_off_commenting = !!body.turn_off_commenting;
+
+  return updates;
+};
+
+exports.updatePostMetadata = async (req, res) => {
   try {
-    const doc = await PromoteReel.findOne({ _id: req.params.id, isDeleted: false });
+    const post = await Post.findOne({ _id: req.params.id, type: 'post' });
 
-    if (!doc) {
-      return res.status(404).json({ message: 'Promote reel not found' });
-    }
-    if (doc.user_id.toString() !== req.userId.toString()) {
-      return res.status(403).json({ message: 'Not authorized to update this promote reel' });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
     }
 
-    const allowed = [
-      'caption', 'location', 'tags', 'people_tags',
-      'hide_likes_count', 'turn_off_commenting', 'products'
-    ];
-    allowed.forEach(field => {
-      if (typeof req.body[field] !== 'undefined') {
-        doc[field] = req.body[field];
-      }
-    });
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update this post' });
+    }
 
-    await doc.save();
+    const updates = buildPostMetadataUpdates(req.body);
+    Object.assign(post, updates);
+    await post.save();
 
-    const populated = await PromoteReel.findById(doc._id)
+    const populatedPost = await Post.findById(post._id)
       .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.json(transformPromoteReel(populated, baseUrl, req.userId));
+    return res.json(transformPost(populatedPost, baseUrl, req.userId));
   } catch (error) {
-    console.error('[PromoteReel] updatePromoteReel error:', error);
+    console.error('[Post] updatePostMetadata error:', error);
     if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Promote reel not found' });
+      return res.status(404).json({ message: 'Post not found' });
     }
-    res.status(500).json({ message: 'Server error', error: error.message });
+    return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── Delete promote reel ───────────────────────────────────────────────────
-// DELETE /api/promote-reels/:id
-exports.deletePromoteReel = async (req, res) => {
+exports.updateReelMetadata = async (req, res) => {
   try {
-    const doc = await PromoteReel.findOne({ _id: req.params.id, isDeleted: false });
+    const post = await Post.findOne({ _id: req.params.id, type: 'reel' });
 
-    if (!doc) {
-      return res.status(404).json({ message: 'Promote reel not found' });
-    }
-    if (doc.user_id.toString() !== req.userId.toString()) {
-      return res.status(403).json({ message: 'Not authorized to delete this promote reel' });
+    if (!post) {
+      return res.status(404).json({ message: 'Reel not found' });
     }
 
-    doc.isDeleted = true;
-    doc.deletedBy = req.userId;
-    doc.deletedAt = new Date();
-    await doc.save();
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update this reel' });
+    }
 
-    res.json({ message: 'Promote reel deleted successfully' });
+    const updates = buildPostMetadataUpdates(req.body);
+    Object.assign(post, updates);
+    await post.save();
+
+    const populatedPost = await Post.findById(post._id)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json(transformPost(populatedPost, baseUrl, req.userId));
   } catch (error) {
-    console.error('[PromoteReel] deletePromoteReel error:', error);
+    console.error('[Post] updateReelMetadata error:', error);
     if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Promote reel not found' });
+      return res.status(404).json({ message: 'Reel not found' });
     }
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LIKE / UNLIKE
-// ═══════════════════════════════════════════════════════════════════════════
-
-// POST /api/promote-reels/:id/like
-exports.likePromoteReel = async (req, res) => {
-  try {
-    const doc = await PromoteReel.findOne({ _id: req.params.id, isDeleted: false });
-    if (!doc) return res.status(404).json({ message: 'Promote reel not found' });
-
-    if (doc.likes.includes(req.userId)) {
-      return res.status(400).json({ message: 'Already liked' });
-    }
-
-    doc.likes.push(req.userId);
-    doc.likes_count = doc.likes.length;
-    await doc.save();
-
-    // Notify owner
-    try {
-      if (doc.user_id.toString() !== req.userId.toString()) {
-        const liker = await User.findById(req.userId).select('username').lean();
-        if (liker) {
-          await sendNotification(req.app, {
-            recipient: doc.user_id,
-            sender:    req.userId,
-            type:      'like',
-            message:   `${liker.username} liked your promote reel`,
-            link:      `/promote-reels/${doc._id}`
-          });
-        }
-      }
-    } catch (notifErr) {
-      console.error('[PromoteReel] like notification error:', notifErr.message);
-    }
-
-    res.json({ liked: true, likes_count: doc.likes_count });
-  } catch (error) {
-    console.error('[PromoteReel] likePromoteReel error:', error);
-    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Promote reel not found' });
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// POST /api/promote-reels/:id/unlike
-exports.unlikePromoteReel = async (req, res) => {
-  try {
-    const doc = await PromoteReel.findOne({ _id: req.params.id, isDeleted: false });
-    if (!doc) return res.status(404).json({ message: 'Promote reel not found' });
-
-    if (!doc.likes.includes(req.userId)) {
-      return res.status(400).json({ message: 'Not liked yet' });
-    }
-
-    doc.likes      = doc.likes.filter(id => id.toString() !== req.userId.toString());
-    doc.likes_count = doc.likes.length;
-    await doc.save();
-
-    res.json({ liked: false, likes_count: doc.likes_count });
-  } catch (error) {
-    console.error('[PromoteReel] unlikePromoteReel error:', error);
-    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Promote reel not found' });
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// GET /api/promote-reels/:id/likes
-exports.getPromoteReelLikes = async (req, res) => {
-  try {
-    const doc = await PromoteReel.findOne({ _id: req.params.id, isDeleted: false })
-      .populate('likes', 'username full_name avatar_url followers_count following_count');
-
-    if (!doc) return res.status(404).json({ message: 'Promote reel not found' });
-
-    res.json({ total: doc.likes_count, users: doc.likes });
-  } catch (error) {
-    console.error('[PromoteReel] getPromoteReelLikes error:', error);
-    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Promote reel not found' });
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// COMMENTS  (reuses the shared Comment model, same as posts/reels)
-// ═══════════════════════════════════════════════════════════════════════════
-
-// POST /api/promote-reels/:promoteReelId/comments
-exports.addComment = async (req, res) => {
-  try {
-    const { promoteReelId } = req.params;
-    const { text, parent_id } = req.body;
-
-    if (!text) return res.status(400).json({ message: 'Comment text is required' });
-
-    const doc = await PromoteReel.findOne({ _id: promoteReelId, isDeleted: false });
-    if (!doc) return res.status(404).json({ message: 'Promote reel not found' });
-
-    let parentCommentId = null;
-
-    if (parent_id) {
-      const parentComment = await Comment.findById(parent_id);
-      if (!parentComment) return res.status(404).json({ message: 'Parent comment not found' });
-      if (parentComment.post_id.toString() !== promoteReelId) {
-        return res.status(400).json({ message: 'Parent comment does not belong to this promote reel' });
-      }
-      if (parentComment.parent_id) {
-        return res.status(400).json({ message: 'Nested replies are not allowed' });
-      }
-      parentCommentId = parent_id;
-    }
-
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    const newComment = await Comment.create({
-      post_id:   promoteReelId,  // re-uses post_id field
-      parent_id: parentCommentId,
-      user: {
-        id:         user._id,
-        username:   user.username,
-        avatar_url: user.avatar_url
-      },
-      text
-    });
-
-    // Notify promote reel owner
-    try {
-      if (!parentCommentId && doc.user_id.toString() !== req.userId.toString()) {
-        await sendNotification(req.app, {
-          recipient: doc.user_id,
-          sender:    req.userId,
-          type:      'comment',
-          message:   `${user.username} commented on your promote reel`,
-          link:      `/promote-reels/${doc._id}`
-        });
-      }
-    } catch (notifErr) {
-      console.error('[PromoteReel] comment notification error:', notifErr.message);
-    }
-
-    // Update counts and latest_comments on the promote reel
-    if (!parentCommentId) {
-      await PromoteReel.findByIdAndUpdate(promoteReelId, {
-        $inc: { comments_count: 1 },
-        $push: {
-          latest_comments: {
-            $each: [{
-              _id:       newComment._id,
-              text:      newComment.text,
-              user:      newComment.user,
-              createdAt: newComment.createdAt,
-              replies:   []
-            }],
-            $sort:  { createdAt: -1 },
-            $slice: 2
-          }
-        }
-      });
-    } else {
-      await PromoteReel.updateOne(
-        { _id: promoteReelId, 'latest_comments._id': parentCommentId },
-        {
-          $push: {
-            'latest_comments.$.replies': {
-              _id:       newComment._id,
-              text:      newComment.text,
-              user:      newComment.user,
-              createdAt: newComment.createdAt
-            }
-          }
-        }
-      );
-      await PromoteReel.findByIdAndUpdate(promoteReelId, { $inc: { comments_count: 1 } });
-    }
-
-    res.status(201).json(newComment);
-  } catch (error) {
-    console.error('[PromoteReel] addComment error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// GET /api/promote-reels/:promoteReelId/comments
-exports.getComments = async (req, res) => {
-  try {
-    const { promoteReelId } = req.params;
-
-    const commentsRaw = await Comment.find({ post_id: promoteReelId, parent_id: null })
-      .sort({ createdAt: -1 });
-
-    const comments = commentsRaw.map(c => {
-      const obj = c.toObject ? c.toObject() : c;
-      obj.comment_id = obj._id;
-      return obj;
-    });
-
-    res.json(comments);
-  } catch (error) {
-    console.error('[PromoteReel] getComments error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// GET /api/promote-reels/comments/:commentId/replies
-exports.getReplies = async (req, res) => {
-  try {
-    const { commentId } = req.params;
-
-    const repliesRaw = await Comment.find({ parent_id: commentId }).sort({ createdAt: 1 });
-    const replies = repliesRaw.map(r => {
-      const obj = r.toObject ? r.toObject() : r;
-      obj.comment_id = obj._id;
-      return obj;
-    });
-
-    res.json(replies);
-  } catch (error) {
-    console.error('[PromoteReel] getReplies error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// DELETE /api/promote-reels/comments/:id
-exports.deleteComment = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const comment = await Comment.findById(id);
-    if (!comment) return res.status(404).json({ message: 'Comment not found' });
-
-    const doc = await PromoteReel.findById(comment.post_id);
-
-    const isCommentAuthor = comment.user.id.toString() === req.userId.toString();
-    const isReelAuthor    = doc && doc.user_id.toString() === req.userId.toString();
-
-    if (!isCommentAuthor && !isReelAuthor) {
-      return res.status(403).json({ message: 'Not authorized to delete this comment' });
-    }
-
-    await comment.deleteOne();
-
-    if (doc) {
-      await PromoteReel.findByIdAndUpdate(comment.post_id, { $inc: { comments_count: -1 } });
-    }
-
-    res.json({ message: 'Comment deleted successfully' });
-  } catch (error) {
-    console.error('[PromoteReel] deleteComment error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// DELETE /api/promote-reels/comments/:commentId/replies/:replyId
-exports.deleteReply = async (req, res) => {
-  try {
-    const { commentId, replyId } = req.params;
-
-    // Verify the parent comment exists
-    const parentComment = await Comment.findById(commentId);
-    if (!parentComment) return res.status(404).json({ message: 'Parent comment not found' });
-
-    // Find the reply (it is stored as a top-level Comment with parent_id = commentId)
-    const reply = await Comment.findOne({ _id: replyId, parent_id: commentId });
-    if (!reply) return res.status(404).json({ message: 'Reply not found' });
-
-    const doc = await PromoteReel.findById(reply.post_id);
-
-    const isReplyAuthor = reply.user.id.toString() === req.userId.toString();
-    const isReelAuthor  = doc && doc.user_id.toString() === req.userId.toString();
-
-    if (!isReplyAuthor && !isReelAuthor) {
-      return res.status(403).json({ message: 'Not authorized to delete this reply' });
-    }
-
-    await reply.deleteOne();
-
-    if (doc) {
-      await PromoteReel.findByIdAndUpdate(reply.post_id, { $inc: { comments_count: -1 } });
-    }
-
-    res.json({ message: 'Reply deleted successfully' });
-  } catch (error) {
-    console.error('[PromoteReel] deleteReply error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// ─── Comment like / unlike ─────────────────────────────────────────────────
-
-// POST /api/promote-reels/comments/:commentId/like
-exports.likeComment = async (req, res) => {
-  try {
-    const comment = await Comment.findById(req.params.commentId);
-    if (!comment) return res.status(404).json({ message: 'Comment not found' });
-
-    if (comment.likes.includes(req.userId)) {
-      return res.status(400).json({ message: 'Already liked' });
-    }
-
-    comment.likes.push(req.userId);
-    comment.likes_count = comment.likes.length;
-    await comment.save();
-
-    try {
-      if (comment.user.id.toString() !== req.userId.toString()) {
-        const liker = await User.findById(req.userId).select('username').lean();
-        if (liker) {
-          await sendNotification(req.app, {
-            recipient: comment.user.id,
-            sender:    req.userId,
-            type:      'comment_like',
-            message:   `${liker.username} liked your comment`,
-            link:      `/promote-reels/${comment.post_id}`
-          });
-        }
-      }
-    } catch (notifErr) {
-      console.error('[PromoteReel] comment like notification error:', notifErr.message);
-    }
-
-    res.json({ liked: true, likes_count: comment.likes_count });
-  } catch (error) {
-    console.error('[PromoteReel] likeComment error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-// POST /api/promote-reels/comments/:commentId/unlike
-exports.unlikeComment = async (req, res) => {
-  try {
-    const comment = await Comment.findById(req.params.commentId);
-    if (!comment) return res.status(404).json({ message: 'Comment not found' });
-
-    if (!comment.likes.includes(req.userId)) {
-      return res.status(400).json({ message: 'Not liked' });
-    }
-
-    comment.likes       = comment.likes.filter(id => id.toString() !== req.userId.toString());
-    comment.likes_count = comment.likes.length;
-    await comment.save();
-
-    res.json({ liked: false, likes_count: comment.likes_count });
-  } catch (error) {
-    console.error('[PromoteReel] unlikeComment error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

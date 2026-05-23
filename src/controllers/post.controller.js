@@ -13,6 +13,44 @@ const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
 const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
 
+// ─── URL Helper ───────────────────────────────────────────────────────────────
+// Resolves a fileName or fileUrl to an absolute URL.
+// Handles both old local filenames (e.g. "abc.jpg") and new S3 keys (e.g. "uploads/users/xxx/abc.jpg")
+const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+
+  // If fileUrl is already a full URL, return it (prefer CloudFront over old api URL)
+  if (fileUrl && fileUrl.startsWith('http')) {
+    if (cloudfront && fileUrl.includes('api.bebsmart.in/uploads/')) {
+      return fileUrl.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
+    return fileUrl;
+  }
+
+  // If fileName is an S3 key (starts with uploads/)
+  if (fileName) {
+    if (fileName.startsWith('uploads/') || fileName.startsWith('/uploads/')) {
+      const key = fileName.replace(/^\/+/, '');
+      if (cloudfront) return `${cloudfront}/${key}`;
+      return `${baseUrl}/${key}`;
+    }
+    // Old local filename — just append to uploads/
+    if (cloudfront) return `${cloudfront}/uploads/${fileName}`;
+    return `${baseUrl}/uploads/${fileName}`;
+  }
+
+  if (fileUrl) {
+    if (fileUrl.startsWith('/')) return `${baseUrl}${fileUrl}`;
+    return `${baseUrl}/${fileUrl}`;
+  }
+
+  return '';
+};
+
+
+
 // ─── Helper ────────────────────────────────────────────────────────────────
 // Transforms a Mongoose post document into the API response shape.
 // Adds fileUrl, is_liked_by_me, is_saved_by_me to each post.
@@ -37,18 +75,18 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
       const normalizedType = (item.type === 'video' || item.media_type === 'video' || (postObj.type === 'reel' && (inferredIsVideoByName || inferredIsVideoByUrl)))
         ? 'video'
         : (item.type || 'image');
-      const fileUrl = item.fileName ? `${baseUrl}/uploads/${item.fileName}` : toAbsolute(item.fileUrl);
+      const fileUrl = resolveMediaUrl(item.fileName, item.fileUrl, baseUrl);
       const url = item.url ? toAbsolute(item.url) : fileUrl;
       let thumbnailArray = [];
       if (Array.isArray(item.thumbnails)) {
         thumbnailArray = item.thumbnails.map(t => ({
           ...t,
-          fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : toAbsolute(t.fileUrl),
+          fileUrl: resolveMediaUrl(t.fileName, t.fileUrl, baseUrl),
         }));
       } else if (item.thumbnail && item.thumbnail.fileName) {
         thumbnailArray = [{
           ...item.thumbnail,
-          fileUrl: `${baseUrl}/uploads/${item.thumbnail.fileName}`,
+          fileUrl: resolveMediaUrl(item.thumbnail.fileName, item.thumbnail.fileUrl, baseUrl),
         }];
       }
       return { ...item, type: normalizedType, media_type: normalizedType, fileUrl, url, thumbnail: thumbnailArray };
@@ -166,12 +204,12 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
       ? ad.media.map((m) => {
         const fileUrl = m.fileUrl
           ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
-          : (m.fileName ? `${baseUrl}/uploads/${m.fileName}` : '');
+          : (resolveMediaUrl(m.fileName, m.fileUrl, baseUrl));
         const thumbnails = Array.isArray(m.thumbnails)
           ? m.thumbnails.map((t) => {
             const thumbUrl = t.fileUrl
               ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
-              : (t.fileName ? `${baseUrl}/uploads/${t.fileName}` : '');
+              : (t.fileName ? resolveMediaUrl(t.fileName, t.fileUrl, baseUrl) : '');
             return { ...t, fileUrl: thumbUrl };
           })
           : [];
@@ -207,15 +245,15 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
     const normalizedMedia = Array.isArray(pr.media)
       ? pr.media.map((m) => {
         const fileUrl = m.fileName
-          ? `${baseUrl}/uploads/${m.fileName}`
+          ? resolveMediaUrl(m.fileName, m.fileUrl, baseUrl)
           : toAbsolute(m.fileUrl);
         const thumbnails = Array.isArray(m.thumbnails)
           ? m.thumbnails.map(t => ({
             ...t,
-            fileUrl: t.fileName ? `${baseUrl}/uploads/${t.fileName}` : toAbsolute(t.fileUrl),
+            fileUrl: resolveMediaUrl(t.fileName, t.fileUrl, baseUrl),
           }))
           : (m.thumbnail?.fileName
-            ? [{ ...m.thumbnail, fileUrl: `${baseUrl}/uploads/${m.thumbnail.fileName}` }]
+            ? [{ ...m.thumbnail, fileUrl: resolveMediaUrl(m.thumbnail.fileName, m.thumbnail.fileUrl, baseUrl) }]
             : []);
         return { ...m, type: 'video', media_type: 'video', fileUrl, url: fileUrl, thumbnails };
       })
