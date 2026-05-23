@@ -1,54 +1,79 @@
 const multer = require('multer');
+const multerS3 = require('multer-s3');
+const { S3Client } = require('@aws-sdk/client-s3');
 const path = require('path');
-const fs = require('fs');
 
-// Ensure uploads directory exists
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const s3 = new S3Client({
+  region: process.env.AWS_REGION || 'ap-south-1',
+});
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
+const BUCKET = process.env.S3_BUCKET_NAME;
+
+const getFolderName = (req, file) => {
+  const userId = req.user?._id || req.user?.id || 'unknown';
+  const mime = file.mimetype;
+
+  if (req.baseUrl.includes('post') || req.path.includes('post')) {
+    return `uploads/users/${userId}/posts`;
+  } else if (req.baseUrl.includes('reel') || req.path.includes('reel')) {
+    return `uploads/users/${userId}/reels`;
+  } else if (req.baseUrl.includes('story') || req.path.includes('story')) {
+    return `uploads/users/${userId}/stories`;
+  } else if (req.baseUrl.includes('ad') || req.path.includes('ad')) {
+    return `uploads/users/${userId}/ads`;
+  } else if (req.baseUrl.includes('profile') || req.path.includes('profile')) {
+    return `uploads/users/${userId}/profile`;
+  } else if (mime.startsWith('video/')) {
+    return `uploads/users/${userId}/videos`;
+  } else if (mime.startsWith('image/')) {
+    return `uploads/users/${userId}/images`;
+  } else {
+    return `uploads/users/${userId}/others`;
+  }
+};
+
+const storage = multerS3({
+  s3: s3,
+  bucket: BUCKET,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: function (req, file, cb) {
+    const folder = getFolderName(req, file);
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(file.originalname);
+    cb(null, `${folder}/${uniqueSuffix}${ext}`);
   }
 });
 
 const fileFilter = (req, file, cb) => {
   const filetypes = /jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|webm|flv|wmv/;
   const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = filetypes.test(file.mimetype) || file.mimetype.startsWith('video/') || file.mimetype.startsWith('image/');
-
+  const mimetype = file.mimetype.startsWith('video/') || file.mimetype.startsWith('image/');
   if (mimetype && extname) {
     return cb(null, true);
   } else {
-    cb(new Error('File type not supported! Allowed: JPEG, PNG, GIF, WEBP, MP4, MOV, AVI, MKV, WEBM'));
+    cb(new Error('File type not supported!'));
   }
 };
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5GB limit for large videos
+  limits: { fileSize: 5 * 1024 * 1024 * 1024 },
   fileFilter: fileFilter
 });
 
-const audioStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
+const audioStorage = multerS3({
+  s3: s3,
+  bucket: BUCKET,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: function (req, file, cb) {
+    const userId = req.user?._id || req.user?.id || 'unknown';
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '.webm');
+    cb(null, `uploads/users/${userId}/audio/${uniqueSuffix}.webm`);
   }
 });
 
 const audioFileFilter = (req, file, cb) => {
-  const allowed = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/x-m4a'];
-  if (allowed.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
+  if (file.mimetype.startsWith('audio/')) {
     cb(null, true);
   } else {
     cb(new Error('Only audio files are allowed'));

@@ -1354,7 +1354,7 @@ exports.uploadChatMedia = async (req, res) => {
       }
 
       return {
-        mediaUrl: `${baseUrl}/uploads/${file.filename}`,
+        mediaUrl: file.location || `${baseUrl}/uploads/${file.filename}`,
         mediaType,
         originalName: file.originalname,
         filename: file.filename,
@@ -1399,7 +1399,7 @@ exports.uploadVoiceMessage = async (req, res) => {
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const audioUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    const audioUrl = req.file.location || `${baseUrl}/uploads/${req.file.filename}`;
     const audioDuration = req.body.duration ? parseFloat(req.body.duration) : null;
 
     const message = await Message.create({
