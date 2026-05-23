@@ -19,25 +19,27 @@ function isVideo(filename) {
 
 const uploadsDir = path.join(__dirname, '../../uploads');
 
-// Helper: get file URL — works for both S3 (file.location) and local disk (file.filename)
+// Helper: get file URL — works for both S3 and local disk
 function getFileUrl(req, file) {
-  if (file.location) {
-    // S3 upload — use CloudFront URL if configured, else S3 location
-    const cloudfront = process.env.CLOUDFRONT_BASE_URL;
-    if (cloudfront) {
-      // Replace S3 bucket URL with CloudFront URL
-      const s3Url = file.location;
-      const bucketUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com`;
-      if (s3Url.includes(bucketUrl)) {
-        return s3Url.replace(bucketUrl, cloudfront.replace(/\/+$/, ''));
-      }
-      // If key is available, build CloudFront URL directly
-      if (file.key) {
-        return `${cloudfront.replace(/\/+$/, '')}/${file.key}`;
-      }
-      return s3Url;
+  if (file.location || file.key) {
+    // S3 upload — use CloudFront URL if configured
+    let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
+    // Ensure https://
+    if (cloudfront && !cloudfront.startsWith('http')) {
+      cloudfront = `https://${cloudfront}`;
     }
-    return file.location;
+    cloudfront = cloudfront.replace(/\/+$/, '');
+
+    if (cloudfront && file.key) {
+      return `${cloudfront}/${file.key}`;
+    }
+    if (cloudfront && file.location) {
+      const bucketUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com`;
+      if (file.location.includes(bucketUrl)) {
+        return file.location.replace(bucketUrl, cloudfront);
+      }
+    }
+    return file.location || '';
   }
   // Local disk upload
   const baseUrl = getPublicBaseUrl(req);
