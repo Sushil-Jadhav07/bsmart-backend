@@ -3,6 +3,8 @@ const User = require('../models/User');
 const AdView = require('../models/AdView');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
+const SavedAd = require('../models/SavedAd');
+const Vendor = require('../models/Vendor');
 const mongoose = require('mongoose');
 const runMongoTransaction = require('../utils/runMongoTransaction');
 const sendNotification = require('../utils/sendNotification');
@@ -90,7 +92,7 @@ exports.adminDeleteAd = async (req, res) => {
   }
 };
 
-// ─── Ad Management (Placeholders for now) ───────────────────────────────────
+// ─── Ad Feed ────────────────────────────────────────────────────────────────
 
 exports.getAdsFeed = async (req, res) => {
   try {
@@ -167,6 +169,8 @@ exports.getAdById = async (req, res) => {
   }
 };
 
+// ─── Wallet Transaction Helper ───────────────────────────────────────────────
+
 const createWalletTransaction = async (payload, session) => {
   try {
     if (session) {
@@ -175,8 +179,6 @@ const createWalletTransaction = async (payload, session) => {
     }
     await WalletTransaction.create(payload);
   } catch (error) {
-    // Some deployments still have stricter unique indexes on (user_id, ad_id, type).
-    // In that case we keep the write idempotent by aggregating into the existing row.
     if (error?.code === 11000 && payload?.user_id && payload?.ad_id && payload?.type) {
       const match = {
         user_id: payload.user_id,
@@ -204,6 +206,8 @@ const createWalletTransaction = async (payload, session) => {
     throw error;
   }
 };
+
+// ─── Like / Dislike Internal Helpers ────────────────────────────────────────
 
 const likeAdInternal = async ({ adId, userId, session }) => {
   const userObjectId = new mongoose.Types.ObjectId(userId);
@@ -277,12 +281,7 @@ const likeAdInternal = async ({ adId, userId, session }) => {
   ad.likes_count = ad.likes.length;
   await ad.save({ session: session || undefined, validateBeforeSave: false });
 
-  return {
-    ad,
-    reward,
-    memberWalletBalance,
-    isOwnAd,
-  };
+  return { ad, reward, memberWalletBalance, isOwnAd };
 };
 
 const dislikeAdInternal = async ({ adId, userId, session }) => {
@@ -353,12 +352,10 @@ const dislikeAdInternal = async ({ adId, userId, session }) => {
 
   await ad.save({ session: session || undefined, validateBeforeSave: false });
 
-  return {
-    ad,
-    reversalAmount,
-    memberWalletBalance,
-  };
+  return { ad, reversalAmount, memberWalletBalance };
 };
+
+// ─── Record Views / Clicks ───────────────────────────────────────────────────
 
 exports.recordAdView = async (req, res) => {
   try {
@@ -381,6 +378,8 @@ exports.recordClick = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// ─── List / Search Ads ───────────────────────────────────────────────────────
 
 exports.listAds = async (req, res) => {
   try {
@@ -413,7 +412,196 @@ exports.searchAds = async (req, res) => {
   }
 };
 
-exports.createAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+// ─── CREATE AD ───────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/ads
+ * Creates a new ad. Requires the user to have a vendor profile.
+ * Deducts total_budget_coins from vendor wallet.
+ */
+exports.createAd = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    // Helper to parse fields that may come as JSON strings (multipart/form-data)
+    const parseField = (val) => {
+      if (typeof val === 'string') {
+        try { return JSON.parse(val); } catch { return val; }
+      }
+      return val;
+    };
+
+    const body = req.body;
+
+    const ad_title         = body.ad_title;
+    const ad_description   = body.ad_description;
+    const caption          = body.caption;
+    const location         = body.location;
+    const ad_type          = body.ad_type;
+    const content_type     = body.content_type;
+    const total_budget_coins = body.total_budget_coins;
+    const category         = body.category;
+    const sub_category     = body.sub_category;
+
+    // These may come as JSON strings in multipart or parsed objects in JSON requests
+    const media            = parseField(body.media);
+    const gallery          = parseField(body.gallery);
+    const cta              = parseField(body.cta);
+    const budget           = parseField(body.budget);
+    const tags             = parseField(body.tags);
+    const keywords         = parseField(body.keywords);
+    const hashtags         = parseField(body.hashtags);
+    const tagged_users     = parseField(body.tagged_users);
+    const target_language  = parseField(body.target_language);
+    const target_location  = parseField(body.target_location);
+    const target_states    = parseField(body.target_states);
+    const targeting        = parseField(body.targeting);
+    const engagement_controls = parseField(body.engagement_controls);
+    const tracking         = parseField(body.tracking);
+    const compliance       = parseField(body.compliance);
+
+    // ── Validations ──────────────────────────────────────────────────────────
+
+    if (!ad_type || !['promote', 'general'].includes(ad_type)) {
+      return res.status(400).json({ message: 'ad_type is required and must be promote or general' });
+    }
+
+    if (!category || !String(category).trim()) {
+      return res.status(400).json({ message: 'category is required' });
+    }
+
+    if (!Array.isArray(media) || media.length === 0) {
+      return res.status(400).json({ message: 'At least one media item is required' });
+    }
+
+    // Each media item must have fileName
+    for (const item of media) {
+      if (!item.fileName) {
+        return res.status(400).json({ message: 'Each media item must have a fileName' });
+      }
+    }
+
+    if (!compliance?.policy_agreed) {
+      return res.status(400).json({ message: 'You must agree to the policy to create an ad' });
+    }
+
+    const budgetCoins = Number(total_budget_coins) || 0;
+    if (budgetCoins < 0) {
+      return res.status(400).json({ message: 'total_budget_coins cannot be negative' });
+    }
+
+    // ── Find vendor profile ──────────────────────────────────────────────────
+
+    const vendor = await Vendor.findOne({ user_id: userId });
+    if (!vendor) {
+      return res.status(403).json({
+        message: 'You must have a vendor profile to create an ad. Please complete your vendor registration.',
+      });
+    }
+
+    // ── Wallet check & deduction ─────────────────────────────────────────────
+
+    if (budgetCoins > 0) {
+      const wallet = await Wallet.findOne({ user_id: userId });
+      if (!wallet || wallet.balance < budgetCoins) {
+        return res.status(400).json({
+          message: `Insufficient wallet balance. Required: ${budgetCoins} coins, Available: ${wallet?.balance || 0} coins`,
+        });
+      }
+
+      // Deduct coins from wallet
+      await Wallet.findOneAndUpdate(
+        { user_id: userId },
+        { $inc: { balance: -budgetCoins } }
+      );
+
+      // Record transaction
+      await createWalletTransaction({
+        user_id: userId,
+        vendor_id: vendor._id,
+        type: 'AD_BUDGET_DEDUCTION',
+        amount: budgetCoins,
+        status: 'SUCCESS',
+        description: `Budget allocated for ad: ${ad_title || 'Untitled Ad'}`,
+      });
+    }
+
+    // ── Build media array ────────────────────────────────────────────────────
+
+    const normalizedMedia = media.map((item) => ({
+      fileName: item.fileName || '',
+      fileUrl: item.fileUrl || item.url || '',
+      media_type: item.media_type || 'image',
+      video_meta: item.video_meta || {},
+      timing_window: item.timing_window || {},
+      crop_settings: item.crop_settings || {},
+      thumbnails: Array.isArray(item.thumbnails)
+        ? item.thumbnails.map((t) => ({
+            fileName: t.fileName || '',
+            fileUrl: t.fileUrl || '',
+            media_type: t.type || t.media_type || 'image',
+          }))
+        : [],
+    }));
+
+    // ── Create Ad ────────────────────────────────────────────────────────────
+
+    const ad = await Ad.create({
+      vendor_id: vendor._id,
+      user_id: userId,
+      ad_title: ad_title || '',
+      ad_description: ad_description || '',
+      caption: caption || '',
+      location: location || '',
+      ad_type,
+      content_type: content_type || 'reel',
+      status: 'pending',
+      media: normalizedMedia,
+      gallery: Array.isArray(gallery) ? gallery : [],
+      cta: cta || {},
+      total_budget_coins: budgetCoins,
+      budget: budget || {},
+      category: String(category).trim(),
+      sub_category: sub_category || '',
+      tags: Array.isArray(tags) ? tags : [],
+      keywords: Array.isArray(keywords) ? keywords : [],
+      hashtags: Array.isArray(hashtags) ? hashtags : [],
+      tagged_users: Array.isArray(tagged_users) ? tagged_users : [],
+      target_language: Array.isArray(target_language) ? target_language : [],
+      target_location: Array.isArray(target_location) ? target_location : [],
+      target_states: Array.isArray(target_states) ? target_states : [],
+      targeting: targeting || {},
+      engagement_controls: engagement_controls || {},
+      tracking: tracking || {},
+      compliance: {
+        policy_agreed: compliance?.policy_agreed || false,
+        approval_status: 'pending',
+      },
+    });
+
+    const populatedAd = await Ad.findById(ad._id)
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url')
+      .lean();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Ad created successfully and is pending review',
+      data: populatedAd,
+      ad: populatedAd,
+    });
+  } catch (error) {
+    console.error('[Ad] createAd error:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e) => e.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── GET USER ADS ────────────────────────────────────────────────────────────
+
 exports.getUserAdsWithComments = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -451,6 +639,9 @@ exports.getUserAdsWithComments = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+// ─── CATEGORIES ──────────────────────────────────────────────────────────────
+
 exports.getAdCategories = async (req, res) => {
   try {
     const fromDb = await Ad.distinct('category', { isDeleted: false });
@@ -466,7 +657,24 @@ exports.getAdCategories = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-exports.addAdCategory = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+
+exports.addAdCategory = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+    // Categories are derived from ads, no separate collection needed
+    // Just return success — the category will appear once an ad uses it
+    return res.json({ success: true, message: 'Category noted', category: String(name).trim() });
+  } catch (error) {
+    console.error('[Ad] addAdCategory error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── LIKE / DISLIKE ──────────────────────────────────────────────────────────
+
 exports.likeAd = async (req, res) => {
   try {
     const { id: adId } = req.params;
@@ -557,7 +765,203 @@ exports.dislikeAd = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-exports.saveAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
-exports.unsaveAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
-exports.deleteAd = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
-exports.updateAdMetadata = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+
+// ─── SAVE / UNSAVE AD ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/ads/:id/save
+ */
+exports.saveAd = async (req, res) => {
+  try {
+    const { id: adId } = req.params;
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findOne({ _id: adId, isDeleted: false });
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    const existing = await SavedAd.findOne({ user_id: userId, ad_id: adId });
+    if (existing) {
+      return res.status(409).json({ message: 'Ad already saved', is_saved: true });
+    }
+
+    await SavedAd.create({ user_id: userId, ad_id: adId });
+
+    return res.json({ success: true, message: 'Ad saved successfully', is_saved: true });
+  } catch (error) {
+    console.error('[Ad] saveAd error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+/**
+ * DELETE /api/ads/:id/save
+ */
+exports.unsaveAd = async (req, res) => {
+  try {
+    const { id: adId } = req.params;
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const deleted = await SavedAd.findOneAndDelete({ user_id: userId, ad_id: adId });
+    if (!deleted) {
+      return res.status(404).json({ message: 'Saved ad not found', is_saved: false });
+    }
+
+    return res.json({ success: true, message: 'Ad removed from saved', is_saved: false });
+  } catch (error) {
+    console.error('[Ad] unsaveAd error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── DELETE AD ───────────────────────────────────────────────────────────────
+
+/**
+ * DELETE /api/ads/:id
+ * Soft deletes an ad. Only the owner can delete.
+ * Refunds remaining budget back to wallet.
+ */
+exports.deleteAd = async (req, res) => {
+  try {
+    const { id: adId } = req.params;
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findOne({ _id: adId, isDeleted: false });
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    if (String(ad.user_id) !== String(userId)) {
+      return res.status(403).json({ message: 'You can only delete your own ads' });
+    }
+
+    // Refund remaining unspent budget
+    const spent = Number(ad.total_coins_spent || 0);
+    const total = Number(ad.total_budget_coins || 0);
+    const refund = Math.max(0, total - spent);
+
+    if (refund > 0) {
+      await Wallet.findOneAndUpdate(
+        { user_id: userId },
+        { $inc: { balance: refund }, $setOnInsert: { currency: 'Coins' } },
+        { upsert: true }
+      );
+
+      await createWalletTransaction({
+        user_id: userId,
+        vendor_id: ad.vendor_id,
+        ad_id: ad._id,
+        type: 'AD_BUDGET_REFUND',
+        amount: refund,
+        status: 'SUCCESS',
+        description: `Refund of unused budget for deleted ad: ${ad.ad_title || 'Untitled Ad'}`,
+      });
+    }
+
+    // Soft delete
+    ad.isDeleted = true;
+    ad.deletedBy = userId;
+    ad.deletedAt = new Date();
+    ad.status = 'paused';
+    await ad.save();
+
+    return res.json({
+      success: true,
+      message: 'Ad deleted successfully',
+      refunded_coins: refund,
+    });
+  } catch (error) {
+    console.error('[Ad] deleteAd error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── UPDATE AD METADATA ──────────────────────────────────────────────────────
+
+/**
+ * PATCH /api/ads/:id
+ * Updates allowed metadata fields. Only the owner can update.
+ * Cannot update media or budget after creation.
+ */
+exports.updateAdMetadata = async (req, res) => {
+  try {
+    const { id: adId } = req.params;
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(adId)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findOne({ _id: adId, isDeleted: false });
+    if (!ad) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    if (String(ad.user_id) !== String(userId)) {
+      return res.status(403).json({ message: 'You can only update your own ads' });
+    }
+
+    // Only allow updating these fields
+    const allowedFields = [
+      'ad_title', 'ad_description', 'caption', 'location',
+      'cta', 'targeting', 'target_language', 'target_location',
+      'target_states', 'engagement_controls', 'tracking',
+      'tags', 'keywords', 'hashtags', 'tagged_users',
+      'category', 'sub_category', 'gallery',
+    ];
+
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No valid fields to update' });
+    }
+
+    // If ad was rejected, allow re-submission by resetting to pending
+    if (ad.status === 'rejected') {
+      updates.status = 'pending';
+      updates['compliance.approval_status'] = 'pending';
+      updates.rejection_reason = '';
+    }
+
+    const updatedAd = await Ad.findByIdAndUpdate(
+      adId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    )
+      .populate('vendor_id', 'business_name logo_url validated')
+      .populate('user_id', 'username full_name avatar_url')
+      .lean();
+
+    return res.json({
+      success: true,
+      message: 'Ad updated successfully',
+      data: updatedAd,
+      ad: updatedAd,
+    });
+  } catch (error) {
+    console.error('[Ad] updateAdMetadata error:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e) => e.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};

@@ -13,7 +13,7 @@ const ctrl = require('../controllers/search.controller');
  * @swagger
  * /api/search:
  *   get:
- *     summary: Search users, posts, reels and promote reels
+ *     summary: Search users, posts, reels, promote reels and ads
  *     tags: [Search]
  *     security:
  *       - bearerAuth: []
@@ -23,7 +23,7 @@ const ctrl = require('../controllers/search.controller');
  *         required: true
  *         schema:
  *           type: string
- *         description: Search keyword. Matches username, full name, location, user id, post/reel caption and promote reel products.
+ *         description: Search keyword. Matches username, full name, location, user id, post/reel caption, promote reel products and ads.
  *       - in: query
  *         name: limit
  *         schema:
@@ -43,6 +43,7 @@ const ctrl = require('../controllers/search.controller');
  *                 posts: 2
  *                 reels: 1
  *                 promote_reels: 1
+ *                 ads: 1
  *               results:
  *                 users:
  *                   - _id: "67e3aa001122334455667711"
@@ -241,6 +242,23 @@ const ctrl = require('../controllers/search.controller');
  *                     isDeleted: false
  *                     createdAt: "2026-03-27T10:10:00.000Z"
  *                     updatedAt: "2026-03-27T10:15:00.000Z"
+ *                 ads:
+ *                   - _id: "67e3aa001122334455667804"
+ *                     item_type: "ad"
+ *                     user_id:
+ *                       _id: "67e3aa001122334455667711"
+ *                       username: "suraj"
+ *                       full_name: "Suraj Kumar"
+ *                       avatar_url: "https://example.com/avatar.jpg"
+ *                     ad_title: "Limited Time Offer"
+ *                     ad_description: "Get 20% off on your first purchase"
+ *                     media:
+ *                       - fileName: "ad-1.jpg"
+ *                         media_type: "image"
+ *                         fileUrl: "https://api.bebsmart.in/uploads/ad-1.jpg"
+ *                     status: "active"
+ *                     createdAt: "2026-03-27T10:15:00.000Z"
+ *                     updatedAt: "2026-03-27T10:20:00.000Z"
  *       400:
  *         description: q is required
  *       401:
@@ -311,6 +329,38 @@ router.get('/reels', auth, ctrl.searchReels);
  *         description: Promote reel search results
  */
 router.get('/promote-reels', auth, ctrl.searchPromoteReels);
+
+/**
+ * @swagger
+ * /api/search/ads:
+ *   get:
+ *     summary: Search only ads (with pagination)
+ *     tags: [Search]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Search keyword. Matches username, full name, location, ad title, description, caption, hashtags, tags and keywords.
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 50
+ *     responses:
+ *       200:
+ *         description: Ad search results
+ */
+router.get('/ads', auth, ctrl.searchAds);
 
 /**
  * @swagger

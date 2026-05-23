@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Post = require('../models/Post');
 const PromoteReel = require('../models/PromoteReel');
+const Ad = require('../models/Ad');
 const SearchHistory = require('../models/SearchHistory');
 
 const HISTORY_LIMIT = 20;
@@ -118,6 +119,19 @@ const sanitizePromoteReel = (promoteReel, baseUrl) => {
   return sanitized;
 };
 
+const sanitizeAd = (ad, baseUrl) => ({
+  ...ad,
+  item_type: 'ad',
+  user_id: ad.user_id && typeof ad.user_id === 'object'
+    ? sanitizeUser(ad.user_id)
+    : ad.user_id,
+  media: sanitizeMedia(ad.media, baseUrl),
+  tags: Array.isArray(ad.tags) ? ad.tags : [],
+  hashtags: Array.isArray(ad.hashtags) ? ad.hashtags : [],
+  keywords: Array.isArray(ad.keywords) ? ad.keywords : [],
+  likes: Array.isArray(ad.likes) ? ad.likes : [],
+});
+
 exports.searchAll = async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -169,7 +183,23 @@ exports.searchAll = async (req, res) => {
       ],
     };
 
-    const [posts, reels, promoteReels] = await Promise.all([
+    const adQuery = {
+      isDeleted: NOT_DELETED_FILTER,
+      status: 'active',
+      $or: [
+        { ad_title: regex },
+        { ad_description: regex },
+        { caption: regex },
+        { location: regex },
+        { hashtags: regex },
+        { tags: regex },
+        { keywords: regex },
+        ...(matchedUserIds.length ? [{ user_id: { $in: matchedUserIds } }] : []),
+        ...(exactId ? [{ user_id: exactId }, { _id: exactId }] : []),
+      ],
+    };
+
+    const [posts, reels, promoteReels, ads] = await Promise.all([
       Post.find({ ...postQueryBase, type: 'post' })
         .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
@@ -181,6 +211,11 @@ exports.searchAll = async (req, res) => {
         .limit(limit)
         .lean(),
       PromoteReel.find(promoteReelQuery)
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean(),
+      Ad.find(adQuery)
         .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -213,12 +248,14 @@ exports.searchAll = async (req, res) => {
         posts: posts.length,
         reels: reels.length,
         promote_reels: promoteReels.length,
+        ads: ads.length,
       },
       results: {
         users: matchedUsers.map(sanitizeUser),
         posts: posts.map((post) => sanitizePost(post, baseUrl)),
         reels: reels.map((reel) => sanitizePost(reel, baseUrl)),
         promote_reels: promoteReels.map((pr) => sanitizePromoteReel(pr, baseUrl)),
+        ads: ads.map((ad) => sanitizeAd(ad, baseUrl)),
       },
     });
   } catch (error) {
@@ -376,6 +413,87 @@ exports.searchPromoteReels = async (req, res) => {
     });
   } catch (error) {
     console.error('[searchPromoteReels]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.searchAds = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const skip = (page - 1) * limit;
+
+    if (!q) {
+      return res.status(400).json({ message: 'q is required' });
+    }
+
+    const regex = buildRegex(q);
+    const isObjectId = mongoose.Types.ObjectId.isValid(q);
+    const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
+
+    // Find users first
+    const matchedUsers = await User.find({
+      isDeleted: NOT_DELETED_FILTER,
+      $or: [
+        { username: regex },
+        { full_name: regex },
+        ...(exactId ? [{ _id: exactId }] : []),
+      ],
+    }).select('_id').lean();
+
+    const matchedUserIds = matchedUsers.map((user) => user._id);
+
+    const query = {
+      isDeleted: NOT_DELETED_FILTER,
+      status: 'active',
+      $or: [
+        { ad_title: regex },
+        { ad_description: regex },
+        { caption: regex },
+        { location: regex },
+        { hashtags: regex },
+        { tags: regex },
+        { keywords: regex },
+        ...(matchedUserIds.length ? [{ user_id: { $in: matchedUserIds } }] : []),
+        ...(exactId ? [{ user_id: exactId }, { _id: exactId }] : []),
+      ],
+    };
+
+    const [ads, total] = await Promise.all([
+      Ad.find(query)
+        .populate('user_id', 'email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Ad.countDocuments(query),
+    ]);
+
+    const searchUserId = req.userId || req.user?._id;
+    if (searchUserId) {
+      await SearchHistory.findOneAndUpdate(
+        { user_id: searchUserId, normalized_query: q.toLowerCase() },
+        {
+          $set: { query: q, normalized_query: q.toLowerCase(), searched_at: new Date() },
+          $inc: { searches_count: 1 },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    return res.json({
+      success: true,
+      query: q,
+      page,
+      limit,
+      total,
+      results: ads.map((ad) => sanitizeAd(ad, baseUrl)),
+    });
+  } catch (error) {
+    console.error('[searchAds]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
