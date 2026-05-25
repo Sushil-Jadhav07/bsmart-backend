@@ -63,6 +63,7 @@ const walletTransactionSchema = new mongoose.Schema(
         'VENDOR_RECHARGE',
         'VENDOR_PACKAGE_PURCHASE',        // ← NEW: vendor buys a package
         'AD_BUDGET_DEDUCTION',
+        'AD_BUDGET_REFUND',
         'AD_LIKE_BUDGET_REFUND',
         'VENDOR_PROFILE_VIEW_DEDUCTION',
         // Member wallet – rewards
