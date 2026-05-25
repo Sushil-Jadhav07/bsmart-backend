@@ -133,6 +133,24 @@ followRequests: [
   { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 ],
 
+  // ─── Push Notification Tokens ─────────────────────────────────────────────
+  // FCM token sent by the Android APK on login / token refresh
+  fcm_token: {
+    type: String,
+    default: null,
+  },
+  // AWS SNS endpoint ARN created when FCM token is registered
+  sns_endpoint_arn: {
+    type: String,
+    default: null,
+  },
+  // Web Push subscription object sent by the browser (VAPID)
+  // Shape: { endpoint: String, keys: { p256dh: String, auth: String } }
+  web_push_subscription: {
+    type: Object,
+    default: null,
+  },
+
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
   toJSON: { virtuals: true },
