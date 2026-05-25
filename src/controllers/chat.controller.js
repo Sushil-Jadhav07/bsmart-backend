@@ -6,6 +6,7 @@ const Follow = require('../models/Follow');
 const Post = require('../models/Post');
 const Ad = require('../models/Ad');
 const Tweet = require('../models/tweet.model');
+const { sendPushNotification } = require('../services/pushNotification.service');
 
 const USER_SELECT = 'username full_name avatar_url';
 
@@ -915,6 +916,33 @@ exports.createMessage = async (req, res) => {
 
     if (io) {
       io.to(String(conversationId)).emit('new-message', populatedMessage.toObject());
+    }
+
+    // Push notification to offline participants
+    const onlineUsers  = req.app.get('onlineUsers') || new Map();
+    const msgSender    = populatedMessage.sender;
+    const senderName   = msgSender && (msgSender.full_name || msgSender.username) ? (msgSender.full_name || msgSender.username) : 'Someone';
+    const senderAvatar = msgSender && msgSender.avatar_url ? msgSender.avatar_url : '';
+    const rawContent   = populatedMessage.content || '';
+    const msgPreview   = rawContent
+      ? (rawContent.length > 60 ? rawContent.slice(0, 60) + '...' : rawContent)
+      : populatedMessage.contentType === 'image' ? 'Sent a photo'
+      : populatedMessage.contentType === 'video' ? 'Sent a video'
+      : populatedMessage.contentType === 'audio' ? 'Sent an audio'
+      : 'Sent an attachment';
+
+    const pushParticipantIds = (conversation.participants || []).map(String);
+    for (const pid of pushParticipantIds) {
+      if (pid === String(req.userId)) continue;
+      if (onlineUsers.has(pid))       continue;
+      sendPushNotification(pid, {
+        title:        senderName,
+        body:         msgPreview,
+        link:         '/chat/' + conversationId,
+        type:         'chat',
+        senderName,
+        senderAvatar,
+      }).catch(() => {});
     }
 
     res.json(populatedMessage);
