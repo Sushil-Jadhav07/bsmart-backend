@@ -171,6 +171,35 @@ router.get('/dashboard/:userId', auth, getVendorDashboardSummary);
  */
 router.get('/profile/:userId/public', getPublicVendorProfile);
 
+/**
+ * @swagger
+ * /api/vendors/profile/me:
+ *   patch:
+ *     summary: Update the authenticated vendor profile
+ *     description: Updates the logged-in vendor's profile. Admins should use `/api/vendors/profile/{userId}` for another vendor.
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/VendorProfileUpdateRequest'
+ *     responses:
+ *       200:
+ *         description: Profile updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VendorProfileMutationResponse'
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Not authorized to update this profile
+ *       404:
+ *         description: Vendor profile not found
+ */
 router.patch('/profile/me', auth, (req, res, next) => {
   req.params.userId = req.userId;
   return updateVendorProfile(req, res, next);
@@ -178,7 +207,111 @@ router.patch('/profile/me', auth, (req, res, next) => {
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     VendorProfileUpdateRequest:
+ *       type: object
+ *       properties:
+ *         company_details:
+ *           type: object
+ *           properties:
+ *             company_name: { type: string }
+ *             registered_name: { type: string }
+ *             industry: { type: string }
+ *             registration_number: { type: string }
+ *             tax_id: { type: string }
+ *             year_established: { type: string }
+ *             company_type: { type: string }
+ *         business_details:
+ *           type: object
+ *           properties:
+ *             industry_category: { type: string }
+ *             business_nature: { type: string }
+ *             service_coverage: { type: string }
+ *             country: { type: string }
+ *         online_presence:
+ *           type: object
+ *           properties:
+ *             website_url: { type: string }
+ *             company_email: { type: string }
+ *             phone_number: { type: string }
+ *             address:
+ *               type: object
+ *               properties:
+ *                 address_line1: { type: string }
+ *                 address_line2: { type: string }
+ *                 city: { type: string }
+ *                 pincode: { type: string }
+ *                 state: { type: string }
+ *                 country: { type: string }
+ *         social_media_links:
+ *           type: object
+ *           properties:
+ *             instagram: { type: string }
+ *             facebook: { type: string }
+ *             linkedin: { type: string }
+ *             twitter: { type: string }
+ *         company_description:
+ *           type: string
+ *     VendorProfileMutationResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         message:
+ *           type: string
+ *         logo_url:
+ *           type: string
+ *         data:
+ *           type: object
+ *           properties:
+ *             _id: { type: string }
+ *             user_id: { type: string }
+ *             business_name: { type: string }
+ *             logo_url: { type: string }
+ *             validated: { type: boolean }
+ *             verification_status:
+ *               type: string
+ *               enum: [draft, submitted, pending_verification, approved, rejected]
+ *             status:
+ *               type: string
+ *               enum: [draft, submitted, pending_verification, approved, rejected]
+ *             submitted: { type: boolean }
+ *             submitted_at: { type: string, format: date-time, nullable: true }
+ *             submitted_for_verification_at: { type: string, format: date-time, nullable: true }
+ *             profile_completion_percentage: { type: number }
+ *             rejection_reason: { type: string, nullable: true }
  * /api/vendors/profile/{userId}:
+ *   patch:
+ *     summary: Update vendor profile details by userId
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/VendorProfileUpdateRequest'
+ *     responses:
+ *       200:
+ *         description: Profile updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VendorProfileMutationResponse'
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Not authorized to update this profile
+ *       404:
+ *         description: Vendor profile not found
  *   post:
  *     summary: Update vendor profile details by userId
  *     tags: [Vendors]
@@ -231,14 +364,95 @@ router.patch('/profile/me', auth, (req, res, next) => {
  *     responses:
  *       200:
  *         description: Profile updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VendorProfileMutationResponse'
  */
 router.post('/profile/:userId', auth, updateVendorProfile);
 router.patch('/profile/:userId', auth, updateVendorProfile);
 
+/**
+ * @swagger
+ * /api/vendors/profile/me/logo:
+ *   post:
+ *     summary: Upload logo for the authenticated vendor
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [logo]
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VendorProfileMutationResponse'
+ *       400:
+ *         description: Missing logo file
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Vendor not found
+ */
 router.post('/profile/me/logo', auth, upload.single('logo'), (req, res, next) => {
   req.params.userId = req.userId;
   return uploadVendorLogo(req, res, next);
 });
+
+/**
+ * @swagger
+ * /api/vendors/profile/{userId}/logo:
+ *   post:
+ *     summary: Upload logo for a vendor by userId
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [logo]
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VendorProfileMutationResponse'
+ *       400:
+ *         description: Missing logo file
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Vendor not found
+ */
 router.post('/profile/:userId/logo', auth, upload.single('logo'), uploadVendorLogo);
 
 /**
@@ -475,6 +689,39 @@ router.delete('/:userId/contacts/:contactId', auth, deleteVendorContact);
  *         description: Admin only
  */
 router.post('/profile/:userId/admin-process', requireAdmin, adminProcessVendorVerification);
+
+/**
+ * @swagger
+ * /api/vendors/profile/{userId}/submit:
+ *   post:
+ *     summary: Submit a vendor profile for verification
+ *     description: Vendors can submit their own profile. Admins can submit any vendor profile by userId. Profile completion must be at least 70%.
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor User ID
+ *     responses:
+ *       200:
+ *         description: Profile submitted for verification
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/VendorProfileMutationResponse'
+ *       400:
+ *         description: Profile completion below required threshold
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Vendor profile not found
+ */
 router.post('/profile/:userId/submit', auth, submitVendorVerificationByUserId);
 
 /**
@@ -524,6 +771,55 @@ router.post('/profile/:userId/submit', auth, submitVendorVerificationByUserId);
  *         description: Vendor profile not found
  */
 router.patch('/profile/:id/approval', requireAdmin, updateVendorApprovalStatus);
+
+/**
+ * @swagger
+ * /api/vendors/{id}/validation:
+ *   patch:
+ *     summary: Admin update vendor validation flag
+ *     description: Updates `validated` and mirrors it to `verification_status`.
+ *     tags: [Vendors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor document ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [admin_user_id, validated]
+ *             properties:
+ *               admin_user_id:
+ *                 type: string
+ *                 description: Authenticated admin user ID
+ *               validated:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Vendor validation updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string }
+ *                 validated: { type: boolean }
+ *       400:
+ *         description: Invalid request body
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Admin only or admin mismatch
+ *       404:
+ *         description: Vendor not found
+ */
 router.patch('/:id/validation', requireAdmin, updateVendorValidation);
 
 /**
