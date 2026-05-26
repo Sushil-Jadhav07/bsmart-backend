@@ -2,6 +2,10 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const normalizeRole = (value) => String(value || '').trim().toLowerCase();
+const isAdminRole = (value) => {
+  const role = normalizeRole(value).replace(/[\s-]+/g, '_');
+  return ['admin', 'admin_manager', 'superadmin', 'super_admin'].includes(role);
+};
 
 const requireAdmin = async (req, res, next) => {
   try {
@@ -14,7 +18,7 @@ const requireAdmin = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
-    if (normalizeRole(user.role) !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return res.status(403).json({ message: 'Forbidden - Admin only' });
     }
     req.user = user;
