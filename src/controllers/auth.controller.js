@@ -83,6 +83,33 @@ const getBanMessage = (user) => {
   return 'This account is inactive.';
 };
 
+const unblockIfTemporaryBanExpired = async (user) => {
+  if (!user || user.is_active !== false || user.ban_type !== 'temporary' || !user.ban_until) return;
+  const until = new Date(user.ban_until);
+  if (!Number.isNaN(until.getTime()) && until <= new Date()) {
+    user.is_active = true;
+    user.ban_type = 'none';
+    user.ban_until = null;
+    user.ban_reason = '';
+    user.banned_by = null;
+    user.banned_at = null;
+    await user.save();
+  }
+};
+
+const denyIfBanned = async (res, user) => {
+  await unblockIfTemporaryBanExpired(user);
+  if (user?.is_active === false) {
+    return res.status(403).json({
+      code: 'ACCOUNT_BANNED',
+      ban_type: user.ban_type || 'none',
+      ban_until: user.ban_until || null,
+      message: getBanMessage(user),
+    });
+  }
+  return null;
+};
+
 exports.register = async (req, res) => {
   try {
     const {
@@ -286,6 +313,9 @@ exports.googleLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
 
+    const bannedGoogle = await denyIfBanned(res, user);
+    if (bannedGoogle) return;
+
     if (!user) {
       const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
       const salt = await bcrypt.genSalt(10);
@@ -367,28 +397,8 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    if (user.is_active === false) {
-      if (user.ban_type === 'temporary' && user.ban_until) {
-        const until = new Date(user.ban_until);
-        if (!Number.isNaN(until.getTime()) && until <= new Date()) {
-          user.is_active = true;
-          user.ban_type = 'none';
-          user.ban_until = null;
-          user.ban_reason = '';
-          user.banned_by = null;
-          user.banned_at = null;
-          await user.save();
-        }
-      }
-      if (user.is_active === false) {
-        return res.status(403).json({
-          code: 'ACCOUNT_BANNED',
-          ban_type: user.ban_type || 'none',
-          ban_until: user.ban_until || null,
-          message: getBanMessage(user),
-        });
-      }
-    }
+    const bannedLogin = await denyIfBanned(res, user);
+    if (bannedLogin) return;
 
     if (user.twoFA?.enabled) {
       const normalizedEmail = user.email.toLowerCase();
@@ -529,6 +539,9 @@ exports.getMe = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    const bannedMe = await denyIfBanned(res, user);
+    if (bannedMe) return;
 
     const wallet = await Wallet.findOne({ user_id: user._id });
 
