@@ -39,7 +39,7 @@ exports.adminUpdateAdStatus = async (req, res) => {
       return res.status(400).json({ message: 'Invalid ad ID' });
     }
 
-    const ad = await Ad.findById(id);
+    const ad = await Ad.findById(id).lean();
     if (!ad) {
       return res.status(404).json({ message: 'Ad not found' });
     }
@@ -48,22 +48,31 @@ exports.adminUpdateAdStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'status must be active, paused, or rejected' });
     }
 
+    const updates = {};
     if (normalizedStatus) {
-      ad.status = normalizedStatus;
-      if (!ad.compliance || typeof ad.compliance !== 'object') {
-        ad.compliance = {};
-      }
+      updates.status = normalizedStatus;
       if (normalizedStatus === 'rejected') {
-        ad.rejection_reason = rejection_reason || 'No reason provided';
-        ad.compliance.approval_status = 'rejected';
+        updates.rejection_reason = rejection_reason || 'No reason provided';
+        updates['compliance.approval_status'] = 'rejected';
       } else if (normalizedStatus === 'active') {
-        ad.compliance.approval_status = 'approved';
-        ad.rejection_reason = '';
+        updates.rejection_reason = '';
+        updates['compliance.approval_status'] = 'approved';
+      } else if (normalizedStatus === 'paused') {
+        // Keep approval status intact when paused; only pause delivery.
       }
     }
 
-    await ad.save();
-    res.json({ success: true, message: `Ad status updated to ${ad.status}`, data: ad, ad });
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ success: false, message: 'No valid fields to update' });
+    }
+
+    const updatedAd = await Ad.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    res.json({ success: true, message: `Ad status updated to ${updatedAd.status}`, data: updatedAd, ad: updatedAd });
   } catch (error) {
     console.error('[Admin] adminUpdateAdStatus error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
