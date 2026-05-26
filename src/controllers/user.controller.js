@@ -264,7 +264,7 @@ exports.listUsersProfiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const users = await User.find({})
-      .select('_id username full_name avatar_url phone role gender location followers_count following_count isPrivate ad_interests createdAt updatedAt')  // ← isPrivate added to select
+      .select('_id username full_name email avatar_url phone role gender location followers_count following_count isPrivate ad_interests createdAt updatedAt')  // include email for admin dashboard user list
       .sort({ createdAt: -1 })
       .lean();
     const ids = users.map(u => u._id);
