@@ -5,3 +5,9 @@ node_modules/
 uploads/
 *.bak
 .env
+.git-rewrite/
+
+# Firebase service account keys
+*bsmart-*-firebase-adminsdk-*.json
+firebase-adminsdk*.json
+serviceAccountKey.json

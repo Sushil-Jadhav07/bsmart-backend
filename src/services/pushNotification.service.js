@@ -42,7 +42,18 @@ const registerFcmToken = async (userId, fcmToken) => {
     const user = await User.findById(userId);
     if (!user) return;
 
-    // Skip if token hasn't changed and endpoint already exists
+    // Persist the raw Firebase token first. Firebase Admin uses this directly;
+    // SNS endpoint creation remains a separate legacy push path.
+    if (user.fcm_token !== fcmToken) {
+      await User.findByIdAndUpdate(userId, { fcm_token: fcmToken });
+    }
+
+    if (!process.env.SNS_PLATFORM_APP_ARN_ANDROID) {
+      console.log(`[Push] FCM token saved for user ${userId}; SNS app ARN not configured`);
+      return;
+    }
+
+    // Skip SNS refresh if token hasn't changed and endpoint already exists
     if (user.fcm_token === fcmToken && user.sns_endpoint_arn) return;
 
     // If an old endpoint exists for a different token, delete it first
