@@ -33,6 +33,7 @@ exports.adminUpdateAdStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, rejection_reason } = req.body;
+    const normalizedStatus = String(status || '').trim().toLowerCase();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid ad ID' });
@@ -43,16 +44,19 @@ exports.adminUpdateAdStatus = async (req, res) => {
       return res.status(404).json({ message: 'Ad not found' });
     }
 
-    if (status && !['active', 'paused', 'rejected'].includes(status)) {
+    if (normalizedStatus && !['active', 'paused', 'rejected'].includes(normalizedStatus)) {
       return res.status(400).json({ success: false, message: 'status must be active, paused, or rejected' });
     }
 
-    if (status) {
-      ad.status = status;
-      if (status === 'rejected') {
+    if (normalizedStatus) {
+      ad.status = normalizedStatus;
+      if (!ad.compliance || typeof ad.compliance !== 'object') {
+        ad.compliance = {};
+      }
+      if (normalizedStatus === 'rejected') {
         ad.rejection_reason = rejection_reason || 'No reason provided';
         ad.compliance.approval_status = 'rejected';
-      } else if (status === 'active') {
+      } else if (normalizedStatus === 'active') {
         ad.compliance.approval_status = 'approved';
         ad.rejection_reason = '';
       }
