@@ -9,11 +9,22 @@ const mongoose = require('mongoose');
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
   const postObj = post.toObject ? post.toObject() : post;
+  const toUploadsUrl = (value) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    const clean = raw
+      .replace(/^\/+/, '')
+      .replace(/^uploads\//i, '')
+      .replace(/^\/+/, '');
+    return `${baseUrl}/uploads/${clean}`;
+  };
 
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => ({
       ...item,
-      fileUrl: `${baseUrl}/uploads/${item.fileName}`
+      fileUrl: toUploadsUrl(item.fileUrl || item.url || item.fileName)
     }));
   }
 
