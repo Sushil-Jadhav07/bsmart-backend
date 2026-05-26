@@ -264,7 +264,7 @@ exports.listUsersProfiles = async (req, res) => {
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const users = await User.find({})
-      .select('_id username full_name email avatar_url phone role gender location followers_count following_count isPrivate ad_interests createdAt updatedAt')  // include email for admin dashboard user list
+      .select('_id username full_name email avatar_url phone role gender location followers_count following_count isPrivate ad_interests is_active ban_type ban_until createdAt updatedAt')  // include email for admin dashboard user list
       .sort({ createdAt: -1 })
       .lean();
     const ids = users.map(u => u._id);
@@ -371,7 +371,7 @@ exports.updateUser = async (req, res) => {
 exports.updateUserStatus = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { is_active, admin_user_id } = req.body;
+    const { is_active, admin_user_id, ban_type } = req.body;
     if (!req.user || req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to update status' });
     }
@@ -391,9 +391,39 @@ exports.updateUserStatus = async (req, res) => {
     if (user.role === 'admin' && is_active === false) {
       return res.status(400).json({ message: 'Admin must remain active' });
     }
-    user.is_active = is_active;
+    if (is_active === true) {
+      user.is_active = true;
+      user.ban_type = 'none';
+      user.ban_until = null;
+      user.ban_reason = '';
+      user.banned_by = null;
+      user.banned_at = null;
+    } else {
+      const requestedBanType = String(ban_type || 'temporary').toLowerCase();
+      if (!['temporary', 'permanent'].includes(requestedBanType)) {
+        return res.status(400).json({ message: 'ban_type must be temporary or permanent when banning a user' });
+      }
+      user.is_active = false;
+      user.ban_type = requestedBanType;
+      user.ban_until = requestedBanType === 'temporary'
+        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        : null;
+      user.ban_reason = requestedBanType === 'temporary'
+        ? 'Banned for 30 days by admin'
+        : 'Permanently banned by admin';
+      user.banned_by = req.user._id;
+      user.banned_at = new Date();
+    }
     await user.save();
-    res.json({ id: user._id, is_active: user.is_active });
+    res.json({
+      id: user._id,
+      is_active: user.is_active,
+      ban_type: user.ban_type,
+      ban_until: user.ban_until,
+      ban_reason: user.ban_reason,
+      banned_by: user.banned_by,
+      banned_at: user.banned_at,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -554,13 +584,36 @@ exports.adminPatchUser = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Admin access required' });
     }
 
-    const allowed = ['is_active', 'role', 'email', 'username', 'full_name', 'phone'];
+    const allowed = ['is_active', 'role', 'email', 'username', 'full_name', 'phone', 'ban_type', 'ban_until', 'ban_reason', 'banned_by', 'banned_at'];
     const updates = {};
     allowed.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
         updates[field] = req.body[field];
       }
     });
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'is_active')) {
+      if (updates.is_active === true) {
+        updates.ban_type = 'none';
+        updates.ban_until = null;
+        updates.ban_reason = '';
+        updates.banned_by = null;
+        updates.banned_at = null;
+      } else if (updates.is_active === false) {
+        const requestedBanType = String(req.body?.ban_type || 'temporary').toLowerCase();
+        if (!['temporary', 'permanent'].includes(requestedBanType)) {
+          return res.status(400).json({ success: false, message: 'ban_type must be temporary or permanent when banning a user' });
+        }
+        updates.ban_type = requestedBanType;
+        updates.ban_until = requestedBanType === 'temporary'
+          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          : null;
+        updates.ban_reason = req.body?.ban_reason
+          || (requestedBanType === 'temporary' ? 'Banned for 30 days by admin' : 'Permanently banned by admin');
+        updates.banned_by = req.user._id;
+        updates.banned_at = new Date();
+      }
+    }
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,

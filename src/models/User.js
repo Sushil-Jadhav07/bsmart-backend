@@ -55,6 +55,28 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  ban_type: {
+    type: String,
+    enum: ['none', 'temporary', 'permanent'],
+    default: 'none',
+  },
+  ban_until: {
+    type: Date,
+    default: null,
+  },
+  ban_reason: {
+    type: String,
+    default: '',
+  },
+  banned_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  banned_at: {
+    type: Date,
+    default: null,
+  },
   role: {
     type: String,
     enum: ['member', 'vendor', 'admin', 'sales'],

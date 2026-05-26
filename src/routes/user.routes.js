@@ -36,6 +36,7 @@ const optionalAuth = async (req, res, next) => {
  * /api/users:
  *   get:
  *     summary: Get list of user profiles with posts, comments, likes, and views
+ *     description: Returns profile rows under `user` plus aggregated `summary`. The `user.email` field is included in each row.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []

@@ -200,6 +200,11 @@ router.delete('/vendors/:id', auth, requireAdmin, deleteVendorByAdmin);
  * /api/admin/ads/{id}:
  *   patch:
  *     summary: Admin updates ad status (approve/reject/pause)
+ *     description: |
+ *       Updates moderation status for an ad.
+ *       Allowed statuses: `active`, `paused`, `rejected`.
+ *       If status is `rejected`, you can pass `rejection_reason`.
+ *       Admin access is required (roles supported by middleware include `admin`, `admin_manager`, `superadmin`, `super_admin`).
  *     tags: [Admin, Ads]
  *     security:
  *       - bearerAuth: []
@@ -223,6 +228,10 @@ router.delete('/vendors/:id', auth, requireAdmin, deleteVendorByAdmin);
  *                 enum: [active, paused, rejected]
  *               rejection_reason:
  *                 type: string
+ *                 description: Optional reason shown when status is rejected
+ *             example:
+ *               status: rejected
+ *               rejection_reason: "Policy violation"
  *     responses:
  *       200:
  *         description: Ad status updated
@@ -232,9 +241,15 @@ router.delete('/vendors/:id', auth, requireAdmin, deleteVendorByAdmin);
  *               type: object
  *               properties:
  *                 success: { type: boolean }
- *                 message: { type: string }
+ *                 message: { type: string, example: "Ad status updated to paused" }
  *                 data:
  *                   type: object
+ *                 ad:
+ *                   type: object
+ *       400:
+ *         description: Validation error (invalid ad id or invalid status)
+ *       401:
+ *         description: Missing/invalid token
  *       403:
  *         description: Forbidden - Admin only
  *       404:

@@ -68,6 +68,21 @@ const fireAndForget = (label, promise) => {
   promise.catch((err) => console.error(`[Email] ${label} failed:`, err.message));
 };
 
+const getBanMessage = (user) => {
+  const now = new Date();
+  if (user?.ban_type === 'permanent') {
+    return 'This account has been banned forever.';
+  }
+  if (user?.ban_type === 'temporary' && user?.ban_until) {
+    const until = new Date(user.ban_until);
+    if (Number.isNaN(until.getTime())) return 'This account has been temporarily banned.';
+    if (until > now) {
+      return `This account has been banned and will resume after ${until.toUTCString()}.`;
+    }
+  }
+  return 'This account is inactive.';
+};
+
 exports.register = async (req, res) => {
   try {
     const {
@@ -352,8 +367,27 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    if (user.role === 'member' && user.is_active === false) {
-      return res.status(403).json({ message: 'Account is inactive' });
+    if (user.is_active === false) {
+      if (user.ban_type === 'temporary' && user.ban_until) {
+        const until = new Date(user.ban_until);
+        if (!Number.isNaN(until.getTime()) && until <= new Date()) {
+          user.is_active = true;
+          user.ban_type = 'none';
+          user.ban_until = null;
+          user.ban_reason = '';
+          user.banned_by = null;
+          user.banned_at = null;
+          await user.save();
+        }
+      }
+      if (user.is_active === false) {
+        return res.status(403).json({
+          code: 'ACCOUNT_BANNED',
+          ban_type: user.ban_type || 'none',
+          ban_until: user.ban_until || null,
+          message: getBanMessage(user),
+        });
+      }
     }
 
     if (user.twoFA?.enabled) {
