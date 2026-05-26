@@ -8,6 +8,7 @@ const {
   getVendorByUserId,
   listAllVendors,
   updateVendorProfile,
+  uploadVendorLogo,
   uploadVendorCoverImage,
   deleteVendorCoverImage,
   removeUserAvatar,
@@ -18,6 +19,8 @@ const {
   getAllVendorsForAdmin,
   deleteVendorByUserId,
   updateVendorApprovalStatus,
+  submitVendorVerificationByUserId,
+  updateVendorValidation,
   addVendorContact,
   getVendorContacts,
   updateVendorContact,
@@ -168,6 +171,11 @@ router.get('/dashboard/:userId', auth, getVendorDashboardSummary);
  */
 router.get('/profile/:userId/public', getPublicVendorProfile);
 
+router.patch('/profile/me', auth, (req, res, next) => {
+  req.params.userId = req.userId;
+  return updateVendorProfile(req, res, next);
+});
+
 /**
  * @swagger
  * /api/vendors/profile/{userId}:
@@ -225,6 +233,13 @@ router.get('/profile/:userId/public', getPublicVendorProfile);
  *         description: Profile updated
  */
 router.post('/profile/:userId', auth, updateVendorProfile);
+router.patch('/profile/:userId', auth, updateVendorProfile);
+
+router.post('/profile/me/logo', auth, upload.single('logo'), (req, res, next) => {
+  req.params.userId = req.userId;
+  return uploadVendorLogo(req, res, next);
+});
+router.post('/profile/:userId/logo', auth, upload.single('logo'), uploadVendorLogo);
 
 /**
  * @swagger
@@ -460,6 +475,7 @@ router.delete('/:userId/contacts/:contactId', auth, deleteVendorContact);
  *         description: Admin only
  */
 router.post('/profile/:userId/admin-process', requireAdmin, adminProcessVendorVerification);
+router.post('/profile/:userId/submit', auth, submitVendorVerificationByUserId);
 
 /**
  * @swagger
@@ -508,6 +524,7 @@ router.post('/profile/:userId/admin-process', requireAdmin, adminProcessVendorVe
  *         description: Vendor profile not found
  */
 router.patch('/profile/:id/approval', requireAdmin, updateVendorApprovalStatus);
+router.patch('/:id/validation', requireAdmin, updateVendorValidation);
 
 /**
  * @swagger

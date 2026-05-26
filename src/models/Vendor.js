@@ -55,6 +55,17 @@ const vendorSchema = new mongoose.Schema({
 
   // Metadata
   validated: { type: Boolean, default: false },
+  verification_status: {
+    type: String,
+    enum: ['draft', 'submitted', 'pending_verification', 'approved', 'rejected'],
+    default: 'draft'
+  },
+  submitted_for_verification_at: { type: Date },
+  approved_at: { type: Date },
+  approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  rejected_at: { type: Date },
+  rejection_reason: { type: String },
+  notes: { type: String },
   profile_completion_percentage: { type: Number, default: 30, min: 0, max: 100 },
   credits: { type: Number, default: 0 },
   credits_expires_at: { type: Date },

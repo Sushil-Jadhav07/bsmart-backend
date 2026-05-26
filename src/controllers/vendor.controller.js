@@ -112,6 +112,15 @@ const calculateProfilePercentage = (vendor) => {
   return Math.min(percentage, 100);
 };
 
+const withVendorState = (vendor) => {
+  const payload = vendor?.toObject ? vendor.toObject() : { ...(vendor || {}) };
+  const status = payload.verification_status || (payload.validated ? 'approved' : 'draft');
+  payload.status = status;
+  payload.submitted = ['submitted', 'pending_verification', 'approved', 'rejected'].includes(status);
+  payload.submitted_at = payload.submitted_for_verification_at || null;
+  return payload;
+};
+
 exports.updateVendorProfile = async (req, res) => {
   try {
     const { userId } = req.params; // Use userId from path parameter
@@ -168,7 +177,8 @@ exports.updateVendorProfile = async (req, res) => {
 
     res.json({
       message: 'Profile updated successfully',
-      vendor
+      data: withVendorState(vendor),
+      vendor: withVendorState(vendor)
     });
   } catch (error) {
     console.error('Update vendor profile error:', error);
@@ -421,6 +431,40 @@ exports.getVendorProfile = async (req, res) => {
   }
 };
 
+exports.uploadVendorLogo = async (req, res) => {
+  try {
+    const userId = req.params.userId || req.userId;
+
+    if (req.user.role !== 'admin' && req.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Please upload a logo file' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId });
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const logoUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    vendor.logo_url = logoUrl;
+    await vendor.save();
+
+    return res.json({
+      message: 'Logo uploaded successfully',
+      logo_url: logoUrl,
+      data: withVendorState(vendor),
+      vendor: withVendorState(vendor),
+    });
+  } catch (error) {
+    console.error('Upload vendor logo error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getVendorDashboardSummary = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -588,7 +632,7 @@ exports.getPublicVendorProfile = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    const payload = vendor.toObject();
+    const payload = withVendorState(vendor);
     
     // Remove sensitive/internal fields for public view
     delete payload.profile_completion_percentage;
@@ -624,7 +668,7 @@ exports.submitVendorVerificationByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    if (req.user._id.toString() !== userId) {
+    if (req.user.role !== 'admin' && req.user._id.toString() !== userId) {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
@@ -634,7 +678,7 @@ exports.submitVendorVerificationByUserId = async (req, res) => {
     }
 
     // Check completion threshold (e.g., 70%)
-    vendor.profile_completion_percentage = calculateProfileCompletion(vendor);
+    vendor.profile_completion_percentage = calculateProfilePercentage(vendor);
     if (vendor.profile_completion_percentage < 70) {
       return res.status(400).json({ 
         message: 'Profile completion must be at least 70% to submit for verification',
@@ -648,7 +692,9 @@ exports.submitVendorVerificationByUserId = async (req, res) => {
 
     return res.json({
       message: 'Profile submitted for verification',
-      vendor_details: vendor
+      success: true,
+      data: withVendorState(vendor),
+      vendor_details: withVendorState(vendor)
     });
 
   } catch (error) {
@@ -743,7 +789,7 @@ exports.adminProcessVendorVerification = async (req, res) => {
       message: `Vendor profile ${resolvedAction === 'approve' ? 'approved' : 'rejected'} successfully`,
       vendor_details: vendor,
       success: true,
-      data: vendor
+      data: withVendorState(vendor)
     });
 
   } catch (error) {
@@ -779,7 +825,7 @@ exports.updateVendorApprovalStatus = async (req, res) => {
     }
 
     await vendor.save();
-    return res.json({ success: true, data: vendor });
+    return res.json({ success: true, data: withVendorState(vendor) });
   } catch (error) {
     console.error('[Vendor] updateVendorApprovalStatus error:', error);
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
@@ -794,7 +840,7 @@ exports.listAllVendors = async (req, res) => {
     
     // Flatten avatar_url for each vendor for convenience
     const payload = vendors.map(v => {
-      const vendorObj = v.toObject();
+      const vendorObj = withVendorState(v);
       if (vendorObj.user_id && vendorObj.user_id.avatar_url) {
         vendorObj.avatar_url = vendorObj.user_id.avatar_url;
       }
@@ -844,7 +890,7 @@ exports.getAllVendorsForAdmin = async (req, res) => {
     
     // Flatten avatar_url for each vendor for convenience
     const payload = vendors.map(v => {
-      const vendorObj = v.toObject();
+      const vendorObj = withVendorState(v);
       if (vendorObj.user_id && vendorObj.user_id.avatar_url) {
         vendorObj.avatar_url = vendorObj.user_id.avatar_url;
       }
