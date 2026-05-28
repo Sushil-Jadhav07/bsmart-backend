@@ -4,6 +4,9 @@ const Comment = require('../models/Comment');
 const Story = require('../models/Story');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
+const PromoteReel = require('../models/PromoteReel');
+const Tweet = require('../models/tweet.model');
+const Ad = require('../models/Ad');
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -109,5 +112,155 @@ exports.deleteVendorByAdmin = async (req, res) => {
     return res.json({ message: 'Vendor deleted successfully' });
   } catch (error) {
     return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Admin — get all users (user data only, no posts)
+// @route   GET /api/admin/users
+// @access  Admin only
+exports.adminGetAllUsers = async (req, res) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = (page - 1) * limit;
+
+    const filter = { isDeleted: { $ne: true } };
+
+    if (req.query.role) {
+      filter.role = req.query.role;
+    }
+
+    if (req.query.search) {
+      const s = req.query.search.trim();
+      filter.$or = [
+        { username:  { $regex: s, $options: 'i' } },
+        { full_name: { $regex: s, $options: 'i' } },
+        { email:     { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    // Normalise fields so the response is always predictable
+    const data = users.map((u) => ({
+      ...u,
+      gender:   (u.gender   != null) ? String(u.gender)   : '',
+      location: (u.location != null) ? String(u.location) : '',
+      isPrivate:    u.isPrivate    ?? false,
+      ad_interests: Array.isArray(u.ad_interests) ? u.ad_interests : [],
+    }));
+
+    return res.json({
+      success: true,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      data,
+    });
+  } catch (error) {
+    console.error('[Admin] adminGetAllUsers error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Admin — get a user's content (posts, reels, tweets, promote reels; ads if vendor)
+// @route   GET /api/admin/users/:id/content
+// @access  Admin only
+exports.adminGetUserContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidId(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    const user = await User.findById(id).select('-password').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const toFileUrl = (fileName) => {
+      if (!fileName) return null;
+      const s = String(fileName).trim();
+      if (!s) return null;
+      if (/^https?:\/\//i.test(s)) return s;
+      return `${baseUrl}/uploads/${s.replace(/^\/+/, '').replace(/^uploads\//, '')}`;
+    };
+
+    const withUrls = (item) => {
+      const obj = item.toObject ? item.toObject() : { ...item };
+      if (Array.isArray(obj.media)) {
+        obj.media = obj.media.map((m) => ({ ...m, fileUrl: toFileUrl(m.fileName || m.url) }));
+      }
+      return obj;
+    };
+
+    // Fetch posts, reels, promote reels, tweets in parallel
+    const [postsRaw, reelsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
+      Post.find({ user_id: id, type: 'post', isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 }).limit(limit)
+        .populate('user_id', 'username full_name avatar_url'),
+      Post.find({ user_id: id, type: 'reel', isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 }).limit(limit)
+        .populate('user_id', 'username full_name avatar_url'),
+      PromoteReel.find({ user_id: id, isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 }).limit(limit)
+        .populate('user_id', 'username full_name avatar_url'),
+      Tweet.find({ author: id, isDeleted: false, parentTweet: null })
+        .sort({ createdAt: -1 }).limit(limit)
+        .populate('author', 'username full_name avatar_url'),
+    ]);
+
+    const posts        = postsRaw.map(withUrls);
+    const reels        = reelsRaw.map(withUrls);
+    const promoteReels = promoteReelsRaw.map(withUrls);
+    const tweets       = tweetsRaw.map(withUrls);
+
+    const response = {
+      success: true,
+      user_id: id,
+      role: user.role,
+      counts: {
+        posts:         posts.length,
+        reels:         reels.length,
+        promote_reels: promoteReels.length,
+        tweets:        tweets.length,
+      },
+      data: { posts, reels, promote_reels: promoteReels, tweets },
+    };
+
+    // If the user is a vendor, also return their ads
+    if (user.role === 'vendor') {
+      const adsRaw = await Ad.find({ user_id: id, isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 }).limit(limit)
+        .populate('user_id', 'username full_name avatar_url')
+        .lean();
+
+      const ads = adsRaw.map((ad) => {
+        if (Array.isArray(ad.media)) {
+          ad.media = ad.media.map((m) => ({ ...m, fileUrl: toFileUrl(m.fileName) }));
+        }
+        return ad;
+      });
+
+      response.counts.ads = ads.length;
+      response.data.ads   = ads;
+    }
+
+    return res.json(response);
+  } catch (error) {
+    console.error('[Admin] adminGetUserContent error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };

@@ -219,7 +219,36 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 }));
 
 // Swagger docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
+  swaggerOptions: {
+    filter: true,        // enables the search/filter bar at the top
+    deepLinking: true,   // makes browser back/forward work per operation
+  },
+  customCss: `
+    .swagger-ui .filter-container {
+      padding: 10px 20px;
+      background: #f7f7f7;
+      border-bottom: 1px solid #e0e0e0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .swagger-ui .filter-container .operation-filter-input {
+      width: 100%;
+      max-width: 600px;
+      padding: 8px 14px;
+      font-size: 14px;
+      border: 1px solid #b5b5b5;
+      border-radius: 6px;
+      outline: none;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.1);
+    }
+    .swagger-ui .filter-container .operation-filter-input:focus {
+      border-color: #4a90e2;
+      box-shadow: 0 0 0 2px rgba(74,144,226,.2);
+    }
+  `,
+}));
 // ──────────────────────────────────────────────────────────────────────────
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────

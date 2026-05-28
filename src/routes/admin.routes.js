@@ -9,7 +9,9 @@ const {
   deleteReelByAdmin,
   deleteStoryByAdmin,
   deleteUserByAdmin,
-  deleteVendorByAdmin
+  deleteVendorByAdmin,
+  adminGetAllUsers,
+  adminGetUserContent,
 } = require('../controllers/admin.controller');
 const { adminUpdateAdStatus, adminDeleteAd } = require('../controllers/ad.controller');
 
@@ -288,5 +290,235 @@ router.patch('/ads/:id', auth, requireAdmin, adminUpdateAdStatus);
  *         description: Ad not found
  */
 router.delete('/ads/:id', auth, requireAdmin, adminDeleteAd);
+
+/**
+ * @swagger
+ * /api/admin/users:
+ *   get:
+ *     summary: Admin - get all users (user data only)
+ *     description: Returns a paginated list of all user records with no posts or enriched data. Supports optional filters by role and a search query that matches against username, full_name, and email.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number (1-based)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Items per page (max 100)
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - member
+ *             - vendor
+ *             - admin
+ *             - sales
+ *         description: Filter by user role
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive search on username, full_name, or email
+ *     responses:
+ *       200:
+ *         description: Paginated list of users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 total:
+ *                   type: integer
+ *                   example: 120
+ *                 page:
+ *                   type: integer
+ *                   example: 1
+ *                 limit:
+ *                   type: integer
+ *                   example: 20
+ *                 pages:
+ *                   type: integer
+ *                   example: 6
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: "60f1b2c3d4e5f67890123456"
+ *                       username:
+ *                         type: string
+ *                         example: "john_doe"
+ *                       full_name:
+ *                         type: string
+ *                         example: "John Doe"
+ *                       email:
+ *                         type: string
+ *                         example: "john@example.com"
+ *                       phone:
+ *                         type: string
+ *                         example: "+911234567890"
+ *                       role:
+ *                         type: string
+ *                         example: "member"
+ *                       is_active:
+ *                         type: boolean
+ *                         example: true
+ *                       avatar_url:
+ *                         type: string
+ *                         example: ""
+ *                       bio:
+ *                         type: string
+ *                         example: "Software developer"
+ *                       age:
+ *                         type: integer
+ *                         example: 25
+ *                       gender:
+ *                         type: string
+ *                         example: "male"
+ *                       location:
+ *                         type: string
+ *                         example: "Mumbai, India"
+ *                       isPrivate:
+ *                         type: boolean
+ *                         example: false
+ *                       followers_count:
+ *                         type: integer
+ *                         example: 42
+ *                       following_count:
+ *                         type: integer
+ *                         example: 18
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get('/users', auth, requireAdmin, adminGetAllUsers);
+
+/**
+ * @swagger
+ * /api/admin/users/{id}/content:
+ *   get:
+ *     summary: Admin - get a user's posts, reels, tweets, promote reels (and ads if vendor)
+ *     description: Returns all content created by the specified user grouped by type. Posts, reels, promote_reels and tweets are always present. The ads array is included only when the user role is vendor. All media items include a resolved fileUrl field.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID (MongoDB ObjectId)
+ *         example: "60f1b2c3d4e5f67890123456"
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *         description: Maximum number of items to return per content type
+ *     responses:
+ *       200:
+ *         description: User content grouped by type
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 user_id:
+ *                   type: string
+ *                   example: "60f1b2c3d4e5f67890123456"
+ *                 role:
+ *                   type: string
+ *                   example: "vendor"
+ *                 counts:
+ *                   type: object
+ *                   properties:
+ *                     posts:
+ *                       type: integer
+ *                       example: 5
+ *                     reels:
+ *                       type: integer
+ *                       example: 3
+ *                     promote_reels:
+ *                       type: integer
+ *                       example: 2
+ *                     tweets:
+ *                       type: integer
+ *                       example: 8
+ *                     ads:
+ *                       type: integer
+ *                       description: Present only when role is vendor
+ *                       example: 4
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     posts:
+ *                       type: array
+ *                       description: Regular image/video posts
+ *                       items:
+ *                         type: object
+ *                     reels:
+ *                       type: array
+ *                       description: Short video reels
+ *                       items:
+ *                         type: object
+ *                     promote_reels:
+ *                       type: array
+ *                       description: Promoted reels with product tags
+ *                       items:
+ *                         type: object
+ *                     tweets:
+ *                       type: array
+ *                       description: Top-level tweets (replies excluded)
+ *                       items:
+ *                         type: object
+ *                     ads:
+ *                       type: array
+ *                       description: Vendor ads - only present when role is vendor
+ *                       items:
+ *                         type: object
+ *       400:
+ *         description: Invalid user ID format
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *       403:
+ *         description: Forbidden - admin access required
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/users/:id/content', auth, requireAdmin, adminGetUserContent);
 
 module.exports = router;
