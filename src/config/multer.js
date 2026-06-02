@@ -2,6 +2,7 @@ const multer = require('multer');
 const multerS3 = require('multer-s3');
 const { S3Client } = require('@aws-sdk/client-s3');
 const path = require('path');
+const { getPublicBaseUrl } = require('../utils/publicUrl');
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION || 'ap-south-1',
@@ -39,20 +40,20 @@ const storage = multerS3({
   key: function (req, file, cb) {
     const folder = getFolderName(req, file);
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(file.originalname || '');
     cb(null, `${folder}/${uniqueSuffix}${ext}`);
   }
 });
 
 const fileFilter = (req, file, cb) => {
   const filetypes = /jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|webm|flv|wmv/;
-  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+  const extname = filetypes.test(path.extname(file.originalname || '').toLowerCase());
   const mimetype = file.mimetype.startsWith('video/') || file.mimetype.startsWith('image/');
-  if (mimetype && extname) {
+  // Accept if MIME type is valid AND (extension matches OR no filename was provided)
+  if (mimetype && (extname || !file.originalname)) {
     return cb(null, true);
-  } else {
-    cb(new Error('File type not supported!'));
   }
+  cb(new Error('File type not supported!'));
 };
 
 const upload = multer({
@@ -86,4 +87,22 @@ const uploadAudio = multer({
   fileFilter: audioFileFilter,
 });
 
-module.exports = { upload, uploadAudio };
+function getFileUrl(req, file) {
+  if (file.key || file.location) {
+    let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
+    if (cloudfront && !cloudfront.startsWith('http')) cloudfront = `https://${cloudfront}`;
+    cloudfront = cloudfront.replace(/\/+$/, '');
+    if (cloudfront && file.key) return `${cloudfront}/${file.key}`;
+    if (file.location) return file.location;
+    // location absent (private bucket) — build URL from key
+    return `https://${BUCKET}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${file.key}`;
+  }
+  const baseUrl = getPublicBaseUrl(req);
+  return `${baseUrl}/uploads/${file.filename}`;
+}
+
+function getFileName(file) {
+  return file.key || file.filename;
+}
+
+module.exports = { upload, uploadAudio, getFileUrl, getFileName };

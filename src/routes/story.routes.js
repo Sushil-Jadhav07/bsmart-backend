@@ -1,12 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const fs = require('fs');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
 const { upload } = require('../config/multer');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
+
+// ─── Upload helpers (mirrors /api/upload) ─────────────────────────────────────
+function getFileUrl(req, file) {
+  if (file.key || file.location) {
+    let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
+    if (cloudfront && !cloudfront.startsWith('http')) cloudfront = `https://${cloudfront}`;
+    cloudfront = cloudfront.replace(/\/+$/, '');
+    if (cloudfront && file.key) return `${cloudfront}/${file.key}`;
+    if (file.location) return file.location;
+    return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${file.key}`;
+  }
+  const baseUrl = getPublicBaseUrl(req);
+  return `${baseUrl}/uploads/${file.filename}`;
+}
+
+function getFileName(file) {
+  if (file.key) return file.key;
+  return file.filename;
+}
 
 // ─── Stories feed rate limiter (dynamic — values set via query params) ───────
 // Pass `limit` in the request query to control the rate limit.
@@ -308,27 +326,27 @@ router.get('/:storyId/views', verifyToken, getStoryViews);
  *                       type: boolean
  *             examples:
  *               image_upload:
- *                 summary: Image uploaded
+ *                 summary: Image uploaded (S3/CloudFront)
  *                 value:
- *                   fileName: "1714000000000-123456789.jpg"
- *                   fileUrl: "https://api.bebsmart.in/uploads/1714000000000-123456789.jpg"
+ *                   fileName: "uploads/users/64a1b2c3/stories/1714000000000-123456789.jpg"
+ *                   fileUrl: "https://cdn.example.com/uploads/users/64a1b2c3/stories/1714000000000-123456789.jpg"
  *                   media_type: "image"
  *                   hls: false
  *                   media:
- *                     url: "https://api.bebsmart.in/uploads/1714000000000-123456789.jpg"
+ *                     url: "https://cdn.example.com/uploads/users/64a1b2c3/stories/1714000000000-123456789.jpg"
  *                     type: "image"
  *                     hls: false
  *               video_upload:
- *                 summary: Video uploaded and converted to HLS
+ *                 summary: Video uploaded to S3 (returned as-is)
  *                 value:
- *                   fileName: "1714000000000-123456789/index.m3u8"
- *                   fileUrl: "https://api.bebsmart.in/uploads/1714000000000-123456789/index.m3u8"
+ *                   fileName: "uploads/users/64a1b2c3/stories/1714000000000-123456789.mp4"
+ *                   fileUrl: "https://cdn.example.com/uploads/users/64a1b2c3/stories/1714000000000-123456789.mp4"
  *                   media_type: "reel"
- *                   hls: true
+ *                   hls: false
  *                   media:
- *                     url: "https://api.bebsmart.in/uploads/1714000000000-123456789/index.m3u8"
+ *                     url: "https://cdn.example.com/uploads/users/64a1b2c3/stories/1714000000000-123456789.mp4"
  *                     type: "reel"
- *                     hls: true
+ *                     hls: false
  *       400:
  *         description: No file uploaded or unsupported file type
  *       401:
@@ -336,81 +354,28 @@ router.get('/:storyId/views', verifyToken, getStoryViews);
  *       500:
  *         description: Server error or HLS conversion failed
  */
-router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
+router.post('/upload', verifyToken, upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Please upload a file' });
     }
 
-    const baseUrl  = getPublicBaseUrl(req);
     const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv']);
-    const uploadsDir = path.join(__dirname, '../../uploads');
+    const isVideoFile = VIDEO_EXTS.has(path.extname(req.file.originalname || '').toLowerCase());
 
-    const isVideoFile = VIDEO_EXTS.has(
-      path.extname(req.file.originalname || req.file.filename).toLowerCase()
-    );
+    const fileUrl  = getFileUrl(req, req.file);
+    const fileName = getFileName(req.file);
 
-    // ─── VIDEO → HLS conversion (same as /api/upload) ─────────────────────
-    if (isVideoFile) {
-      const baseName  = path.basename(req.file.filename, path.extname(req.file.filename));
-      const inputPath = req.file.path;
-
-      try {
-        const convertToHls = require('../utils/convertToHls');
-        await convertToHls(inputPath, uploadsDir, baseName);
-
-        // Remove the raw uploaded file after HLS conversion
-        fs.unlink(inputPath, (err) => {
-          if (err) console.warn('[Story Upload] Could not delete original video:', err.message);
-        });
-
-        const hlsUrl = `${baseUrl}/uploads/${baseName}/index.m3u8`;
-        return res.json({
-          fileName:   `${baseName}/index.m3u8`,
-          fileUrl:    hlsUrl,
-          media_type: 'reel',
-          hls:        true,
-          media: {
-            url:  hlsUrl,
-            type: 'reel',
-            hls:  true
-          }
-        });
-      } catch (hlsErr) {
-        console.error('[Story Upload] HLS conversion failed:', hlsErr.message);
-        // HLS failed — fall back to serving the raw video (no delete)
-        const rawUrl = `${baseUrl}/uploads/${req.file.filename}`;
-        return res.json({
-          fileName:   req.file.filename,
-          fileUrl:    rawUrl,
-          media_type: 'reel',
-          hls:        false,
-          media: {
-            url:  rawUrl,
-            type: 'reel',
-            hls:  false
-          }
-        });
-      }
-    }
-
-    // ─── IMAGE ─────────────────────────────────────────────────────────────
-    const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
-    res.json({
-      fileName:   req.file.filename,
+    return res.json({
+      fileName,
       fileUrl,
-      media_type: 'image',
+      media_type: isVideoFile ? 'reel' : 'image',
       hls:        false,
-      media: {
-        url:  fileUrl,
-        type: 'image',
-        hls:  false
-      }
+      media:      { url: fileUrl, type: isVideoFile ? 'reel' : 'image', hls: false },
     });
-
-  } catch (error) {
-    console.error('[Story Upload] Error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+  } catch (err) {
+    console.error('[Story Upload]', err);
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 

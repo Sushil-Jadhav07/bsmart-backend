@@ -21,25 +21,14 @@ const uploadsDir = path.join(__dirname, '../../uploads');
 
 // Helper: get file URL — works for both S3 and local disk
 function getFileUrl(req, file) {
-  if (file.location || file.key) {
-    // S3 upload — use CloudFront URL if configured
+  if (file.key || file.location) {
     let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
-    // Ensure https://
-    if (cloudfront && !cloudfront.startsWith('http')) {
-      cloudfront = `https://${cloudfront}`;
-    }
+    if (cloudfront && !cloudfront.startsWith('http')) cloudfront = `https://${cloudfront}`;
     cloudfront = cloudfront.replace(/\/+$/, '');
-
-    if (cloudfront && file.key) {
-      return `${cloudfront}/${file.key}`;
-    }
-    if (cloudfront && file.location) {
-      const bucketUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com`;
-      if (file.location.includes(bucketUrl)) {
-        return file.location.replace(bucketUrl, cloudfront);
-      }
-    }
-    return file.location || '';
+    if (cloudfront && file.key) return `${cloudfront}/${file.key}`;
+    if (file.location) return file.location;
+    // location absent (private bucket) — build URL from key
+    return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${file.key}`;
   }
   // Local disk upload
   const baseUrl = getPublicBaseUrl(req);
