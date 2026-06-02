@@ -319,11 +319,13 @@ router.post(
 );
 
 // ─── Dedicated upload endpoints ──────────────────────────────────────────────
-const uploadAds     = makeUploader('ads');
-const uploadStory   = makeUploader('story');
-const uploadPost    = makeUploader('post');
-const uploadReel    = makeUploader('reel');
-const uploadPromote = makeUploader('promote');
+const uploadAds        = makeUploader('ads');
+const uploadStory      = makeUploader('story');
+const uploadPost       = makeUploader('post');
+const uploadReel       = makeUploader('reel');
+const uploadPromote    = makeUploader('promote');
+const uploadTweet      = makeUploader('tweet');
+const uploadAdsGallery = makeUploader('ads-gallery');
 
 // Shared handler factory — builds a consistent response for any upload type
 function mediaHandler(videoType, imageType) {
@@ -468,5 +470,53 @@ router.post('/reel', verifyToken, uploadReel.single('file'), mediaHandler('reel'
  *         description: File uploaded — stores at uploads/users/{id}/promote/
  */
 router.post('/promote', verifyToken, uploadPromote.single('file'), mediaHandler('video', 'image'));
+
+/**
+ * @swagger
+ * /api/upload/tweet:
+ *   post:
+ *     summary: Upload an image for a tweet
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/tweet/
+ */
+router.post('/tweet', verifyToken, uploadTweet.single('file'), mediaHandler('image', 'image'));
+
+/**
+ * @swagger
+ * /api/upload/ads-gallery:
+ *   post:
+ *     summary: Upload an image for an ads gallery
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/ads-gallery/
+ */
+router.post('/ads-gallery', verifyToken, uploadAdsGallery.single('file'), mediaHandler('image', 'image'));
 
 module.exports = router;
