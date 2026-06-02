@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const verifyToken = require('../middleware/auth');
-const { upload } = require('../config/multer');
+const { upload, makeUploader } = require('../config/multer');
 const User = require('../models/User');
 const convertToHls = require('../utils/convertToHls');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
@@ -317,5 +317,156 @@ router.post(
     }
   }
 );
+
+// ─── Dedicated upload endpoints ──────────────────────────────────────────────
+const uploadAds     = makeUploader('ads');
+const uploadStory   = makeUploader('story');
+const uploadPost    = makeUploader('post');
+const uploadReel    = makeUploader('reel');
+const uploadPromote = makeUploader('promote');
+
+// Shared handler factory — builds a consistent response for any upload type
+function mediaHandler(videoType, imageType) {
+  return (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'Please upload a file' });
+      }
+      const type    = isVideo(req.file.originalname) ? videoType : imageType;
+      const fileUrl = getFileUrl(req, req.file);
+      const fileName = getFileName(req.file);
+      return res.json({
+        fileName,
+        fileUrl,
+        media_type: type,
+        hls:        false,
+        media:      { url: fileUrl, type, hls: false },
+      });
+    } catch (err) {
+      console.error('[Upload]', err);
+      res.status(500).json({ message: 'Server error', error: err.message });
+    }
+  };
+}
+
+/**
+ * @swagger
+ * /api/upload/ads:
+ *   post:
+ *     summary: Upload an image or video for an ad
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/ads/
+ */
+router.post('/ads', verifyToken, uploadAds.single('file'), mediaHandler('video', 'image'));
+
+/**
+ * @swagger
+ * /api/upload/story:
+ *   post:
+ *     summary: Upload an image or video for a story
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/story/
+ */
+router.post('/story', verifyToken, uploadStory.single('file'), mediaHandler('reel', 'image'));
+
+/**
+ * @swagger
+ * /api/upload/post:
+ *   post:
+ *     summary: Upload an image or video for a post
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/post/
+ */
+router.post('/post', verifyToken, uploadPost.single('file'), mediaHandler('video', 'image'));
+
+/**
+ * @swagger
+ * /api/upload/reel:
+ *   post:
+ *     summary: Upload a video for a reel
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/reel/
+ */
+router.post('/reel', verifyToken, uploadReel.single('file'), mediaHandler('reel', 'image'));
+
+/**
+ * @swagger
+ * /api/upload/promote:
+ *   post:
+ *     summary: Upload an image or video for a promoted reel
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: File uploaded — stores at uploads/users/{id}/promote/
+ */
+router.post('/promote', verifyToken, uploadPromote.single('file'), mediaHandler('video', 'image'));
 
 module.exports = router;

@@ -105,4 +105,20 @@ function getFileName(file) {
   return file.key || file.filename;
 }
 
-module.exports = { upload, uploadAudio, getFileUrl, getFileName };
+// Factory: creates a dedicated multer-s3 uploader for a specific folder
+function makeUploader(subfolder) {
+  const s3Storage = multerS3({
+    s3,
+    bucket: BUCKET,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    key(req, file, cb) {
+      const userId = req.user?._id || req.user?.id || 'unknown';
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname || '');
+      cb(null, `uploads/users/${userId}/${subfolder}/${uniqueSuffix}${ext}`);
+    },
+  });
+  return multer({ storage: s3Storage, limits: { fileSize: 5 * 1024 * 1024 * 1024 }, fileFilter });
+}
+
+module.exports = { upload, uploadAudio, getFileUrl, getFileName, makeUploader };
