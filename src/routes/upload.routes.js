@@ -1,15 +1,16 @@
-const express = require('express');
-const router = express.Router();
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer');
+const express    = require('express');
+const router     = express.Router();
+const path       = require('path');
+const fs         = require('fs');
+const multer     = require('multer');
 const verifyToken = require('../middleware/auth');
 const { upload, makeUploader } = require('../config/multer');
-const User = require('../models/User');
-const convertToHls = require('../utils/convertToHls');
+const User       = require('../models/User');
+const convertToHls = require('../utils/convertToHls');                        // local-disk HLS (kept for local dev)
+const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload'); // NEW — S3 → HLS → S3
 const { getPublicBaseUrl } = require('../utils/publicUrl');
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv']);
 
@@ -19,26 +20,133 @@ function isVideo(filename) {
 
 const uploadsDir = path.join(__dirname, '../../uploads');
 
-// Helper: get file URL — works for both S3 and local disk
+// Build a CloudFront (or S3) URL from a file uploaded by multer-s3
 function getFileUrl(req, file) {
   if (file.key || file.location) {
     let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
     if (cloudfront && !cloudfront.startsWith('http')) cloudfront = `https://${cloudfront}`;
     cloudfront = cloudfront.replace(/\/+$/, '');
+    // Always prefer CloudFront when the key is available
     if (cloudfront && file.key) return `${cloudfront}/${file.key}`;
     if (file.location) return file.location;
-    // location absent (private bucket) — build URL from key
     return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${file.key}`;
   }
-  // Local disk upload
   const baseUrl = getPublicBaseUrl(req);
   return `${baseUrl}/uploads/${file.filename}`;
 }
 
-// Helper: get file name/key
 function getFileName(file) {
-  if (file.key) return file.key;       // S3 key e.g. uploads/users/123/posts/abc.jpg
-  return file.filename;                 // local disk filename
+  if (file.key) return file.key;
+  return file.filename;
+}
+
+// ─── Shared video-upload handler ──────────────────────────────────────────────
+//
+// This is the single function that ALL video-accepting endpoints now call.
+// It handles three cases:
+//   1. File is on S3  → download, transcode to HLS, re-upload HLS to S3
+//   2. File is on disk → transcode to HLS locally (local dev / no S3)
+//   3. File is an image → return URL directly, no transcoding
+//
+async function handleVideoUpload(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Please upload a file' });
+    }
+
+    // ── IMAGE path — nothing to transcode ─────────────────────────────────
+    if (!isVideo(req.file.originalname)) {
+      return res.json({
+        fileName:   getFileName(req.file),
+        fileUrl:    getFileUrl(req, req.file),
+        media_type: 'image',
+        hls:        false,
+        media: {
+          url:  getFileUrl(req, req.file),
+          type: 'image',
+          hls:  false,
+        },
+      });
+    }
+
+    // ── VIDEO on S3 — download → ffmpeg → re-upload HLS ──────────────────
+    if (req.file.key) {
+      const rawKey = req.file.key;
+      // HLS folder sits next to the raw file, without the extension
+      // e.g. "uploads/users/123/reels/1234567890-abc"
+      const hlsFolder = rawKey.replace(/\.[^/.]+$/, '');
+
+      try {
+        const { m3u8Key, m3u8Url } = await convertToHlsAndUpload(rawKey, hlsFolder);
+
+        return res.json({
+          fileName:   m3u8Key,
+          fileUrl:    m3u8Url,
+          media_type: 'video',
+          hls:        true,
+          media: {
+            url:  m3u8Url,
+            type: 'video',
+            hls:  true,
+          },
+        });
+      } catch (hlsErr) {
+        console.error('[Upload] S3 HLS conversion failed:', hlsErr.message);
+        // Fallback — return the raw S3 URL so the upload doesn't completely fail.
+        // The video will still play (without adaptive streaming) until fixed.
+        const fallbackUrl = getFileUrl(req, req.file);
+        return res.status(207).json({
+          message:    'HLS conversion failed — raw video URL returned as fallback',
+          fileName:   rawKey,
+          fileUrl:    fallbackUrl,
+          media_type: 'video',
+          hls:        false,
+          error:      hlsErr.message,
+          media: {
+            url:  fallbackUrl,
+            type: 'video',
+            hls:  false,
+          },
+        });
+      }
+    }
+
+    // ── VIDEO on local disk — run ffmpeg locally (dev environment) ────────
+    const baseName  = path.basename(req.file.filename, path.extname(req.file.filename));
+    const inputPath = req.file.path;
+    const baseUrl   = getPublicBaseUrl(req);
+
+    try {
+      await convertToHls(inputPath, uploadsDir, baseName);
+
+      fs.unlink(inputPath, err => {
+        if (err) console.warn('[Upload] Could not delete original video:', err.message);
+      });
+
+      const hlsUrl = `${baseUrl}/uploads/${baseName}/index.m3u8`;
+      return res.json({
+        fileName:   `${baseName}/index.m3u8`,
+        fileUrl:    hlsUrl,
+        media_type: 'video',
+        hls:        true,
+        media: {
+          url:  hlsUrl,
+          type: 'video',
+          hls:  true,
+        },
+      });
+    } catch (ffmpegErr) {
+      console.error('[Upload] Local HLS conversion failed:', ffmpegErr.message);
+      return res.status(500).json({
+        message: 'Video conversion to HLS failed',
+        error:   ffmpegErr.message,
+      });
+    }
+
+  } catch (error) {
+    console.error('[Upload] Error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 }
 
 // ─── POST /api/upload ─────────────────────────────────────────────────────────
@@ -75,73 +183,7 @@ function getFileName(file) {
  *                 media_type: { type: string, enum: [image, video] }
  *                 hls: { type: boolean }
  */
-router.post('/', verifyToken, upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'Please upload a file' });
-    }
-
-    const baseUrl = getPublicBaseUrl(req);
-
-    // Check if it's a video
-    if (isVideo(req.file.originalname)) {
-
-      // If file is on S3 (has location), we skip HLS conversion for now
-      // and return the S3 URL directly
-      if (req.file.location) {
-        const fileUrl = getFileUrl(req, req.file);
-        const fileName = getFileName(req.file);
-        return res.json({
-          fileName,
-          fileUrl,
-          media_type: 'video',
-          hls: false,
-        });
-      }
-
-      // Local disk — do HLS conversion
-      const baseName = path.basename(req.file.filename, path.extname(req.file.filename));
-      const inputPath = req.file.path;
-
-      try {
-        await convertToHls(inputPath, uploadsDir, baseName);
-
-        // Delete the raw uploaded video after successful HLS conversion
-        fs.unlink(inputPath, (err) => {
-          if (err) console.warn('[Upload] Could not delete original video:', err.message);
-        });
-
-        const hlsUrl = `${baseUrl}/uploads/${baseName}/index.m3u8`;
-        return res.json({
-          fileName: `${baseName}/index.m3u8`,
-          fileUrl: hlsUrl,
-          media_type: 'video',
-          hls: true,
-        });
-      } catch (ffmpegErr) {
-        console.error('[Upload] HLS conversion failed:', ffmpegErr.message);
-        return res.status(500).json({
-          message: 'Video conversion to HLS failed',
-          error: ffmpegErr.message,
-        });
-      }
-    }
-
-    // Image — return URL
-    const fileUrl = getFileUrl(req, req.file);
-    const fileName = getFileName(req.file);
-
-    return res.json({
-      fileName,
-      fileUrl,
-      media_type: 'image',
-      hls: false,
-    });
-  } catch (error) {
-    console.error('[Upload] Error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
+router.post('/', verifyToken, upload.single('file'), handleVideoUpload);
 
 // ─── POST /api/upload/thumbnail ───────────────────────────────────────────────
 /**
@@ -174,8 +216,8 @@ router.post('/thumbnail', verifyToken, upload.any(), (req, res) => {
     }
     const items = files.map(f => ({
       fileName: getFileName(f),
-      type: 'image',
-      fileUrl: getFileUrl(req, f),
+      type:     'image',
+      fileUrl:  getFileUrl(req, f),
     }));
     res.json({ thumbnails: items, count: items.length });
   } catch (error) {
@@ -213,7 +255,7 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'Please upload a file' });
     }
 
-    const fileUrl = getFileUrl(req, req.file);
+    const fileUrl  = getFileUrl(req, req.file);
     const fileName = getFileName(req.file);
 
     const user = await User.findByIdAndUpdate(
@@ -254,7 +296,6 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
  *         description: Image uploaded successfully
  */
 
-// Dedicated image-only multer instance for product images (10 MB cap)
 const productImageStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
   filename:    (_req, file, cb) => {
@@ -276,7 +317,7 @@ const productImageFilter = (_req, file, cb) => {
 
 const uploadProductImage = multer({
   storage:    productImageStorage,
-  limits:     { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits:     { fileSize: 10 * 1024 * 1024 },
   fileFilter: productImageFilter,
 });
 
@@ -291,9 +332,7 @@ router.post(
         }
         return res.status(400).json({ message: err.message });
       }
-      if (err) {
-        return res.status(400).json({ message: err.message });
-      }
+      if (err) return res.status(400).json({ message: err.message });
       next();
     });
   },
@@ -302,15 +341,9 @@ router.post(
       if (!req.file) {
         return res.status(400).json({ message: 'Please upload an image file.' });
       }
-
       const promoteImg = getFileUrl(req, req.file);
       const fileName   = getFileName(req.file);
-
-      return res.json({
-        promote_img: promoteImg,
-        fileName,
-        media_type: 'image',
-      });
+      return res.json({ promote_img: promoteImg, fileName, media_type: 'image' });
     } catch (error) {
       console.error('[Upload/promote-product] Error:', error);
       res.status(500).json({ message: 'Server error', error: error.message });
@@ -318,7 +351,10 @@ router.post(
   }
 );
 
-// ─── Dedicated upload endpoints ──────────────────────────────────────────────
+// ─── Dedicated upload endpoints ───────────────────────────────────────────────
+// Each one uses makeUploader() for S3 storage, then passes through
+// handleVideoUpload so videos get HLS conversion automatically.
+
 const uploadAds        = makeUploader('ads');
 const uploadStory      = makeUploader('story');
 const uploadPost       = makeUploader('post');
@@ -327,35 +363,11 @@ const uploadPromote    = makeUploader('promote');
 const uploadTweet      = makeUploader('tweet');
 const uploadAdsGallery = makeUploader('ads-gallery');
 
-// Shared handler factory — builds a consistent response for any upload type
-function mediaHandler(videoType, imageType) {
-  return (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: 'Please upload a file' });
-      }
-      const type    = isVideo(req.file.originalname) ? videoType : imageType;
-      const fileUrl = getFileUrl(req, req.file);
-      const fileName = getFileName(req.file);
-      return res.json({
-        fileName,
-        fileUrl,
-        media_type: type,
-        hls:        false,
-        media:      { url: fileUrl, type, hls: false },
-      });
-    } catch (err) {
-      console.error('[Upload]', err);
-      res.status(500).json({ message: 'Server error', error: err.message });
-    }
-  };
-}
-
 /**
  * @swagger
  * /api/upload/ads:
  *   post:
- *     summary: Upload an image or video for an ad
+ *     summary: Upload an image or video for an ad. Videos are converted to HLS.
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -366,20 +378,18 @@ function mediaHandler(videoType, imageType) {
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/ads/
+ *         description: File uploaded. Videos return HLS m3u8 URL.
  */
-router.post('/ads', verifyToken, uploadAds.single('file'), mediaHandler('video', 'image'));
+router.post('/ads', verifyToken, uploadAds.single('file'), handleVideoUpload);
 
 /**
  * @swagger
  * /api/upload/story:
  *   post:
- *     summary: Upload an image or video for a story
+ *     summary: Upload an image or video for a story. Videos are converted to HLS.
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -390,20 +400,18 @@ router.post('/ads', verifyToken, uploadAds.single('file'), mediaHandler('video',
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/story/
+ *         description: File uploaded. Videos return HLS m3u8 URL.
  */
-router.post('/story', verifyToken, uploadStory.single('file'), mediaHandler('reel', 'image'));
+router.post('/story', verifyToken, uploadStory.single('file'), handleVideoUpload);
 
 /**
  * @swagger
  * /api/upload/post:
  *   post:
- *     summary: Upload an image or video for a post
+ *     summary: Upload an image or video for a post. Videos are converted to HLS.
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -414,20 +422,18 @@ router.post('/story', verifyToken, uploadStory.single('file'), mediaHandler('ree
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/post/
+ *         description: File uploaded. Videos return HLS m3u8 URL.
  */
-router.post('/post', verifyToken, uploadPost.single('file'), mediaHandler('video', 'image'));
+router.post('/post', verifyToken, uploadPost.single('file'), handleVideoUpload);
 
 /**
  * @swagger
  * /api/upload/reel:
  *   post:
- *     summary: Upload a video for a reel
+ *     summary: Upload a video for a reel. Converted to HLS automatically.
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -438,20 +444,18 @@ router.post('/post', verifyToken, uploadPost.single('file'), mediaHandler('video
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/reel/
+ *         description: Video uploaded and converted to HLS. Returns m3u8 URL.
  */
-router.post('/reel', verifyToken, uploadReel.single('file'), mediaHandler('reel', 'image'));
+router.post('/reel', verifyToken, uploadReel.single('file'), handleVideoUpload);
 
 /**
  * @swagger
  * /api/upload/promote:
  *   post:
- *     summary: Upload an image or video for a promoted reel
+ *     summary: Upload an image or video for a promoted reel. Videos are converted to HLS.
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -462,20 +466,18 @@ router.post('/reel', verifyToken, uploadReel.single('file'), mediaHandler('reel'
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/promote/
+ *         description: File uploaded. Videos return HLS m3u8 URL.
  */
-router.post('/promote', verifyToken, uploadPromote.single('file'), mediaHandler('video', 'image'));
+router.post('/promote', verifyToken, uploadPromote.single('file'), handleVideoUpload);
 
 /**
  * @swagger
  * /api/upload/tweet:
  *   post:
- *     summary: Upload an image for a tweet
+ *     summary: Upload an image for a tweet (images only — no video transcoding).
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -486,20 +488,18 @@ router.post('/promote', verifyToken, uploadPromote.single('file'), mediaHandler(
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/tweet/
+ *         description: Image uploaded successfully.
  */
-router.post('/tweet', verifyToken, uploadTweet.single('file'), mediaHandler('image', 'image'));
+router.post('/tweet', verifyToken, uploadTweet.single('file'), handleVideoUpload);
 
 /**
  * @swagger
  * /api/upload/ads-gallery:
  *   post:
- *     summary: Upload an image for an ads gallery
+ *     summary: Upload an image for an ads gallery.
  *     tags: [Upload]
  *     security:
  *       - bearerAuth: []
@@ -510,13 +510,11 @@ router.post('/tweet', verifyToken, uploadTweet.single('file'), mediaHandler('ima
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               file: { type: string, format: binary }
  *     responses:
  *       200:
- *         description: File uploaded — stores at uploads/users/{id}/ads-gallery/
+ *         description: Image uploaded successfully.
  */
-router.post('/ads-gallery', verifyToken, uploadAdsGallery.single('file'), mediaHandler('image', 'image'));
+router.post('/ads-gallery', verifyToken, uploadAdsGallery.single('file'), handleVideoUpload);
 
 module.exports = router;

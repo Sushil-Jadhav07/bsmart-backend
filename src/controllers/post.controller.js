@@ -5,23 +5,21 @@ const Ad           = require('../models/Ad');
 const AdView       = require('../models/AdView');
 const SavedPost    = require('../models/SavedPost');
 const Follow       = require('../models/Follow');
-const Tweet       = require('../models/tweet.model');
-const TweetLike   = require('../models/tweetLike.model');
-const TweetRepost = require('../models/tweetRepost.model');
+const Tweet        = require('../models/tweet.model');
+const TweetLike    = require('../models/tweetLike.model');
+const TweetRepost  = require('../models/tweetRepost.model');
 const PromoteReel  = require('../models/PromoteReel');
 const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
 const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
+const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
 // ─── URL Helper ───────────────────────────────────────────────────────────────
-// Resolves a fileName or fileUrl to an absolute URL.
-// Handles both old local filenames (e.g. "abc.jpg") and new S3 keys (e.g. "uploads/users/xxx/abc.jpg")
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
   const cloudfront = process.env.CLOUDFRONT_BASE_URL
     ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
     : null;
 
-  // If fileUrl is already a full URL, return it (prefer CloudFront over old api URL)
   if (fileUrl && fileUrl.startsWith('http')) {
     if (cloudfront && fileUrl.includes('api.bebsmart.in/uploads/')) {
       return fileUrl.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
@@ -29,14 +27,12 @@ const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
     return fileUrl;
   }
 
-  // If fileName is an S3 key (starts with uploads/)
   if (fileName) {
     if (fileName.startsWith('uploads/') || fileName.startsWith('/uploads/')) {
       const key = fileName.replace(/^\/+/, '');
       if (cloudfront) return `${cloudfront}/${key}`;
       return `${baseUrl}/${key}`;
     }
-    // Old local filename — just append to uploads/
     if (cloudfront) return `${cloudfront}/uploads/${fileName}`;
     return `${baseUrl}/uploads/${fileName}`;
   }
@@ -49,11 +45,7 @@ const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
   return '';
 };
 
-
-
-// ─── Helper ────────────────────────────────────────────────────────────────
-// Transforms a Mongoose post document into the API response shape.
-// Adds fileUrl, is_liked_by_me, is_saved_by_me to each post.
+// ─── transformPost ────────────────────────────────────────────────────────────
 const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => {
   const postObj = post.toObject ? post.toObject() : post;
   const toAbsolute = (value) => {
@@ -63,20 +55,20 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
     return `${baseUrl}${str.startsWith('/') ? '' : '/'}${str}`;
   };
 
-  postObj.post_id = postObj._id;
+  postObj.post_id   = postObj._id;
   postObj.item_type = postObj.type === 'reel' ? 'reel' : 'post';
 
   if (postObj.media && Array.isArray(postObj.media)) {
     postObj.media = postObj.media.map(item => {
-      const rawFileName = item.fileName || '';
-      const rawMediaUrl = item.fileUrl || item.url || '';
+      const rawFileName        = item.fileName || '';
+      const rawMediaUrl        = item.fileUrl  || item.url || '';
       const inferredIsVideoByName = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)$/i.test(String(rawFileName));
-      const inferredIsVideoByUrl = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)(\?.*)?$/i.test(String(rawMediaUrl));
+      const inferredIsVideoByUrl  = /\.(mp4|mov|webm|ogg|mkv|m4v|m3u8)(\?.*)?$/i.test(String(rawMediaUrl));
       const normalizedType = (item.type === 'video' || item.media_type === 'video' || (postObj.type === 'reel' && (inferredIsVideoByName || inferredIsVideoByUrl)))
         ? 'video'
         : (item.type || 'image');
       const fileUrl = resolveMediaUrl(item.fileName, item.fileUrl, baseUrl);
-      const url = item.url ? toAbsolute(item.url) : fileUrl;
+      const url     = item.url ? toAbsolute(item.url) : fileUrl;
       let thumbnailArray = [];
       if (Array.isArray(item.thumbnails)) {
         thumbnailArray = item.thumbnails.map(t => ({
@@ -89,7 +81,16 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
           fileUrl: resolveMediaUrl(item.thumbnail.fileName, item.thumbnail.fileUrl, baseUrl),
         }];
       }
-      return { ...item, type: normalizedType, media_type: normalizedType, fileUrl, url, thumbnail: thumbnailArray };
+      return {
+        ...item,
+        type:       normalizedType,
+        media_type: normalizedType,
+        fileUrl,
+        url,
+        thumbnail:  thumbnailArray,
+        hls:        item.hls        ?? false,
+        processing: item.processing ?? false,
+      };
     });
   }
 
@@ -102,17 +103,17 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
     : false;
 
   const explicitCommentCount =
-    postObj.commentsCount
-    ?? postObj.comments_count
-    ?? postObj.commentCount
-    ?? postObj.comment_count;
+    postObj.commentsCount  ??
+    postObj.comments_count ??
+    postObj.commentCount   ??
+    postObj.comment_count;
   const normalizedCommentCount = Number.isFinite(Number(explicitCommentCount))
     ? Number(explicitCommentCount)
     : (Array.isArray(postObj.comments) ? postObj.comments.length : 0);
-  postObj.commentsCount = normalizedCommentCount;
-  postObj.comments_count = normalizedCommentCount;
-  postObj.commentCount = normalizedCommentCount;
-  postObj.comment_count = normalizedCommentCount;
+  postObj.commentsCount   = normalizedCommentCount;
+  postObj.comments_count  = normalizedCommentCount;
+  postObj.commentCount    = normalizedCommentCount;
+  postObj.comment_count   = normalizedCommentCount;
 
   return postObj;
 };
@@ -125,11 +126,11 @@ const transformTweet = async (tweet, currentUserId = null) => {
   ]);
 
   const explicitCommentCount =
-    tweetObj.commentsCount
-    ?? tweetObj.comments_count
-    ?? tweetObj.commentCount
-    ?? tweetObj.comment_count
-    ?? tweetObj.repliesCount;
+    tweetObj.commentsCount  ??
+    tweetObj.comments_count ??
+    tweetObj.commentCount   ??
+    tweetObj.comment_count  ??
+    tweetObj.repliesCount;
   const normalizedCommentCount = Number.isFinite(Number(explicitCommentCount))
     ? Number(explicitCommentCount)
     : (Array.isArray(tweetObj.comments) ? tweetObj.comments.length : 0);
@@ -137,42 +138,39 @@ const transformTweet = async (tweet, currentUserId = null) => {
   return {
     item_type: 'tweet',
     ...tweetObj,
-    commentsCount: normalizedCommentCount,
+    commentsCount:  normalizedCommentCount,
     comments_count: normalizedCommentCount,
-    commentCount: normalizedCommentCount,
-    comment_count: normalizedCommentCount,
+    commentCount:   normalizedCommentCount,
+    comment_count:  normalizedCommentCount,
     author: tweetObj.author ? {
       ...(tweetObj.author.toObject ? tweetObj.author.toObject() : tweetObj.author),
-      name: tweetObj.author.full_name || '',
+      name:           tweetObj.author.full_name || '',
       profilePicture: tweetObj.author.avatar_url || '',
-      isVerified: false,
+      isVerified:     false,
     } : null,
     repostOf: tweetObj.repostOf ? {
       ...(tweetObj.repostOf.toObject ? tweetObj.repostOf.toObject() : tweetObj.repostOf),
       author: tweetObj.repostOf.author ? {
         ...(tweetObj.repostOf.author.toObject ? tweetObj.repostOf.author.toObject() : tweetObj.repostOf.author),
-        name: tweetObj.repostOf.author.full_name || '',
+        name:           tweetObj.repostOf.author.full_name || '',
         profilePicture: tweetObj.repostOf.author.avatar_url || '',
-        isVerified: false,
+        isVerified:     false,
       } : null,
     } : null,
-    isLiked: !!liked,
-    isReposted: !!reposted,
+    isLiked:     !!liked,
+    isReposted:  !!reposted,
   };
 };
 
 const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) => {
   const adSlots = Math.floor(feedItems.length / 5);
-  if (adSlots <= 0) {
-    return feedItems;
-  }
+  if (adSlots <= 0) return feedItems;
 
   const adQuery = { status: 'active', isDeleted: false };
   if (blockedPrivateUserIds.length > 0) {
     adQuery.user_id = { $nin: blockedPrivateUserIds };
   }
 
-  // Fetch ads, rewarded views, AND promote reels in parallel
   const [ads, rewarded, promoteReels] = await Promise.all([
     Ad.find(adQuery)
       .sort({ createdAt: -1 })
@@ -181,7 +179,6 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
       .populate('user_id', 'username full_name avatar_url gender location isPrivate')
       .lean(),
     AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
-    // One promote reel per ad slot so each ad is immediately followed by one
     PromoteReel.find({ isDeleted: false })
       .sort({ createdAt: -1 })
       .limit(Math.max(1, adSlots))
@@ -189,15 +186,12 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
       .lean(),
   ]);
 
-  if (!ads.length) {
-    return feedItems;
-  }
+  if (!ads.length) return feedItems;
 
-  const rewardedSet = new Set(rewarded.map(r => r.ad_id.toString()));
-
-  const followedIds = await getFollowedUserIds(req.userId);
-  const followedSet = new Set(followedIds.map((id) => String(id)));
-  const viewerId = String(req.userId);
+  const rewardedSet  = new Set(rewarded.map(r => r.ad_id.toString()));
+  const followedIds  = await getFollowedUserIds(req.userId);
+  const followedSet  = new Set(followedIds.map((id) => String(id)));
+  const viewerId     = String(req.userId);
 
   const normalizedAds = ads.map((ad) => {
     const normalizedMedia = Array.isArray(ad.media)
@@ -217,24 +211,23 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
       })
       : [];
 
-    const authorId = String(ad?.user_id?._id || ad?.user_id?.id || '');
-    const isAuthorFollowed = authorId ? followedSet.has(authorId) : false;
+    const authorId          = String(ad?.user_id?._id || ad?.user_id?.id || '');
+    const isAuthorFollowed  = authorId ? followedSet.has(authorId) : false;
     return {
-      item_type:        'ad',
+      item_type:               'ad',
       ...ad,
-      commentsCount: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
-      comments_count: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
-      commentCount: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
-      comment_count: Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
-      media:            normalizedMedia,
-      is_rewarded_by_me: rewardedSet.has(ad._id.toString()),
-      is_liked_by_me:   Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
+      commentsCount:           Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      comments_count:          Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      commentCount:            Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      comment_count:           Number(ad.commentsCount ?? ad.comments_count ?? ad.commentCount ?? ad.comment_count ?? 0),
+      media:                   normalizedMedia,
+      is_rewarded_by_me:       rewardedSet.has(ad._id.toString()),
+      is_liked_by_me:          Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
       is_author_followed_by_me: isAuthorFollowed,
-      can_view_by_me: !ad?.user_id?.isPrivate || authorId === viewerId || isAuthorFollowed,
+      can_view_by_me:          !ad?.user_id?.isPrivate || authorId === viewerId || isAuthorFollowed,
     };
   });
 
-  // ── Normalise promote reels ────────────────────────────────────────────────
   const normalizedPromoteReels = promoteReels.map((pr) => {
     const toAbsolute = (val) => {
       if (!val) return val;
@@ -259,33 +252,29 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
       })
       : [];
 
-    const prAuthorId = String(pr?.user_id?._id || pr?.user_id?.id || '');
-    const isPrAuthorFollowed = prAuthorId ? followedSet.has(prAuthorId) : false;
+    const prAuthorId          = String(pr?.user_id?._id || pr?.user_id?.id || '');
+    const isPrAuthorFollowed  = prAuthorId ? followedSet.has(prAuthorId) : false;
     return {
-      item_type:       'promote_reel',
+      item_type:               'promote_reel',
       ...pr,
-      promote_reel_id: pr._id,
-      media:           normalizedMedia,
-      commentsCount:   Number(pr.comments_count ?? 0),
-      comments_count:  Number(pr.comments_count ?? 0),
-      commentCount:    Number(pr.comments_count ?? 0),
-      comment_count:   Number(pr.comments_count ?? 0),
-      is_liked_by_me:  Array.isArray(pr.likes) && pr.likes.some(id => id.toString() === req.userId.toString()),
+      promote_reel_id:         pr._id,
+      media:                   normalizedMedia,
+      commentsCount:           Number(pr.comments_count ?? 0),
+      comments_count:          Number(pr.comments_count ?? 0),
+      commentCount:            Number(pr.comments_count ?? 0),
+      comment_count:           Number(pr.comments_count ?? 0),
+      is_liked_by_me:          Array.isArray(pr.likes) && pr.likes.some(id => id.toString() === req.userId.toString()),
       is_author_followed_by_me: isPrAuthorFollowed,
-      can_view_by_me:  !pr?.user_id?.isPrivate || prAuthorId === viewerId || isPrAuthorFollowed,
+      can_view_by_me:          !pr?.user_id?.isPrivate || prAuthorId === viewerId || isPrAuthorFollowed,
     };
   });
 
-  // ── Interleave: every 5 posts → ad → promote_reel (if any) ───────────────
-  // Pattern: [post, post, post, post, post, ad, promote_reel, post, post, ...]
   const mixed = [];
   let adIndex = 0;
   for (let i = 0; i < feedItems.length; i++) {
     mixed.push(feedItems[i]);
     if ((i + 1) % 5 === 0) {
-      // 1. Push the ad
       mixed.push(normalizedAds[adIndex % normalizedAds.length]);
-      // 2. Push the promote reel immediately after the ad
       if (normalizedPromoteReels.length > 0) {
         mixed.push(normalizedPromoteReels[adIndex % normalizedPromoteReels.length]);
       }
@@ -296,16 +285,13 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
   return mixed;
 };
 
-// ─── Fan-out helper ────────────────────────────────────────────────────────
-// Notifies all users who have turned on notifications for the post author.
-// postType: 'post' | 'reel'
+// ─── notifySubscribers ────────────────────────────────────────────────────────
 const notifySubscribers = async (app, authorId, authorUsername, postId, postType) => {
   try {
-    const notifType = postType === 'reel' ? 'subscribed_user_reel' : 'subscribed_user_post';
-    const contentLabel = postType === 'reel' ? 'reel' : 'post';
+    const notifType      = postType === 'reel' ? 'subscribed_user_reel' : 'subscribed_user_post';
+    const contentLabel   = postType === 'reel' ? 'reel' : 'post';
     const preferenceField = postType === 'reel' ? 'notify_on_reel' : 'notify_on_post';
 
-    // Find everyone who has notifications turned on for this user
     const prefs = await UserNotificationPreference.find({
       target_id:   authorId,
       target_type: 'user',
@@ -331,8 +317,60 @@ const notifySubscribers = async (app, authorId, authorUsername, postId, postType
   }
 };
 
-// ─── Create post ───────────────────────────────────────────────────────────
-// POST /api/posts
+// ─── Background HLS helper ────────────────────────────────────────────────────
+// Runs AFTER the HTTP response has been sent.
+// 1. Downloads raw .mp4 from S3, converts to HLS, re-uploads to S3
+// 2. Updates MongoDB with the new .m3u8 URL
+// 3. Emits socket event `reel_ready` so React/Flutter can swap the spinner
+async function runHlsInBackground(app, postId, userId, rawS3Key) {
+  try {
+    console.log(`[HLS] Background job started for post ${postId}, key: ${rawS3Key}`);
+
+    const hlsFolder        = rawS3Key.replace(/\.[^/.]+$/, '');
+    const { m3u8Key, m3u8Url } = await convertToHlsAndUpload(rawS3Key, hlsFolder);
+
+    await Post.findOneAndUpdate(
+      { _id: postId },
+      {
+        $set: {
+          'media.0.fileUrl':    m3u8Url,
+          'media.0.fileName':   m3u8Key,
+          'media.0.hls':        true,
+          'media.0.processing': false,
+        },
+      }
+    );
+
+    console.log(`[HLS] Post ${postId} updated → ${m3u8Url}`);
+
+    const io          = app.get('io');
+    const onlineUsers = app.get('onlineUsers');
+    if (io && onlineUsers) {
+      const socketIds = onlineUsers.get(String(userId));
+      if (socketIds) {
+        for (const sid of socketIds) {
+          io.to(sid).emit('reel_ready', {
+            postId:     String(postId),
+            m3u8Url,
+            hls:        true,
+            processing: false,
+          });
+        }
+        console.log(`[HLS] reel_ready emitted to user ${userId}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[HLS] Background conversion failed for post ${postId}:`, err.message);
+    try {
+      await Post.findOneAndUpdate(
+        { _id: postId },
+        { $set: { 'media.0.processing': false } }
+      );
+    } catch {}
+  }
+}
+
+// ─── createPost ───────────────────────────────────────────────────────────────
 exports.createPost = async (req, res) => {
   try {
     const { caption, location, media, tags, people_tags, hide_likes_count, turn_off_commenting, type } = req.body;
@@ -365,12 +403,9 @@ exports.createPost = async (req, res) => {
 
     await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
 
-    // Send tag notifications — wrapped in its own try/catch so a notification
-    // failure never breaks the post creation response
     try {
       const creator = await User.findById(req.userId).select('username').lean();
 
-      // 1. People-tag notifications
       if (Array.isArray(people_tags) && people_tags.length > 0) {
         for (const taggedUserId of people_tags) {
           if (taggedUserId.toString() !== req.userId.toString()) {
@@ -385,10 +420,8 @@ exports.createPost = async (req, res) => {
         }
       }
 
-      // 2. Subscriber notifications (users who turned on notifications for this author)
       const postType = type === 'reel' ? 'reel' : 'post';
       await notifySubscribers(req.app, req.userId, creator.username, post._id, postType);
-
     } catch (notifErr) {
       console.error('[Post] Notification error:', notifErr.message);
     }
@@ -402,22 +435,19 @@ exports.createPost = async (req, res) => {
   }
 };
 
-// ─── Feed ──────────────────────────────────────────────────────────────────
-// GET /api/posts/feed?page=1&limit=20
-// FIX: Added pagination (.skip + .limit) — previously loaded ALL posts into
-// memory on every request which caused OOM crashes on large datasets.
+// ─── getFeed ──────────────────────────────────────────────────────────────────
 exports.getFeed = async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(50, parseInt(req.query.limit) || 20); // cap at 50
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
     const skip  = (page - 1) * limit;
-    const tab = ['all', 'following', 'tweets'].includes(req.query.tab) ? req.query.tab : 'all';
+    const tab   = ['all', 'following', 'tweets'].includes(req.query.tab) ? req.query.tab : 'all';
     let followedIds = [];
     let blockedPrivateUserIds = [];
 
     if (tab === 'following') {
       const follows = await Follow.find({ follower_id: req.userId }).select('followed_id').lean();
-      followedIds = follows.map((follow) => follow.followed_id);
+      followedIds   = follows.map((follow) => follow.followed_id);
     } else {
       [followedIds, blockedPrivateUserIds] = await Promise.all([
         getFollowedUserIds(req.userId),
@@ -425,12 +455,12 @@ exports.getFeed = async (req, res) => {
       ]);
     }
 
-    const postQuery = tab === 'following'
+    const postQuery  = tab === 'following'
       ? { user_id: { $in: followedIds } }
       : (blockedPrivateUserIds.length > 0 ? { user_id: { $nin: blockedPrivateUserIds } } : {});
     const tweetQuery = {
-      audience: 'everyone',
-      isDeleted: false,
+      audience:    'everyone',
+      isDeleted:   false,
       parentTweet: null,
       ...(tab === 'following' ? { author: { $in: followedIds } } : {}),
     };
@@ -450,24 +480,24 @@ exports.getFeed = async (req, res) => {
         .limit(limit)
         .populate('author', 'username full_name avatar_url')
         .populate({
-          path: 'repostOf',
+          path:    'repostOf',
           populate: { path: 'author', select: 'username full_name avatar_url' },
         }),
     ]);
 
-    const baseUrl  = `${req.protocol}://${req.get('host')}`;
-    const savedSet = new Set(saved.map(s => s.post_id.toString()));
-    const transformedPosts = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
-    const transformedTweets = await Promise.all(
-      tweets.map((tweet) => transformTweet(tweet, req.userId))
-    );
-    const followingSet = new Set(followedIds.map((id) => String(id)));
-    const viewerId = String(req.userId);
+    const baseUrl           = `${req.protocol}://${req.get('host')}`;
+    const savedSet          = new Set(saved.map(s => s.post_id.toString()));
+    const transformedPosts  = posts.map(post => transformPost(post, baseUrl, req.userId, savedSet));
+    const transformedTweets = await Promise.all(tweets.map((tweet) => transformTweet(tweet, req.userId)));
+    const followingSet      = new Set(followedIds.map((id) => String(id)));
+    const viewerId          = String(req.userId);
+
     transformedPosts.forEach((postItem) => {
       const authorId = String(postItem?.user_id?._id || postItem?.user_id?.id || '');
       postItem.is_author_followed_by_me = authorId ? followingSet.has(authorId) : false;
-      postItem.can_view_by_me = !postItem?.user_id?.isPrivate || authorId === viewerId || postItem.is_author_followed_by_me;
+      postItem.can_view_by_me           = !postItem?.user_id?.isPrivate || authorId === viewerId || postItem.is_author_followed_by_me;
     });
+
     const feedItems = (tab === 'tweets' ? transformedTweets : [...transformedPosts, ...transformedTweets])
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, limit);
@@ -482,8 +512,7 @@ exports.getFeed = async (req, res) => {
   }
 };
 
-// ─── Get single post ───────────────────────────────────────────────────────
-// GET /api/posts/:id
+// ─── getPost ──────────────────────────────────────────────────────────────────
 exports.getPost = async (req, res) => {
   try {
     const [post, commentsRaw, isSaved] = await Promise.all([
@@ -493,11 +522,7 @@ exports.getPost = async (req, res) => {
       SavedPost.exists({ user_id: req.userId, post_id: req.params.id }),
     ]);
 
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-    // Dashboard requirement: allow authenticated users to inspect post details
-    // even when the author account is private.
+    if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
     const savedSet = new Set();
@@ -513,42 +538,30 @@ exports.getPost = async (req, res) => {
     res.json(transformedPost);
   } catch (error) {
     console.error('[Post] getPost error:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Post not found' });
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── Delete post ───────────────────────────────────────────────────────────
-// DELETE /api/posts/:id
+// ─── deletePost ───────────────────────────────────────────────────────────────
 exports.deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
+    if (!post) return res.status(404).json({ message: 'Post not found' });
     if (post.user_id.toString() !== req.userId.toString()) {
       return res.status(403).json({ message: 'Not authorized to delete this post' });
     }
-
     await post.deleteOne();
     await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: -1 } });
-
     res.json({ message: 'Post deleted successfully' });
   } catch (error) {
     console.error('[Post] deletePost error:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Post not found' });
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── Create reel ───────────────────────────────────────────────────────────
-// POST /api/posts/reels
+// ─── createReel ───────────────────────────────────────────────────────────────
 exports.createReel = async (req, res) => {
   try {
     const { caption, location, media, tags, people_tags, hide_likes_count, turn_off_commenting } = req.body;
@@ -560,11 +573,11 @@ exports.createReel = async (req, res) => {
     const normalizedMedia = media.map(m => {
       const nm = { ...m };
       nm.type = 'video';
-      if (Array.isArray(nm.thumbnail))              { nm.thumbnails = nm.thumbnail; delete nm.thumbnail; }
-      if (nm['finalLength-start'] !== undefined)    { nm.finalLength_start = nm['finalLength-start']; }
-      if (nm['finallength-end'] !== undefined)      { nm.finalLength_end = nm['finallength-end']; }
-      if (nm['thumbail-time'] !== undefined)        { nm.thumbnail_time = nm['thumbail-time']; }
-      if (nm.totalLenght !== undefined)             { nm.totalLength = nm.totalLenght; }
+      if (Array.isArray(nm.thumbnail))           { nm.thumbnails = nm.thumbnail; delete nm.thumbnail; }
+      if (nm['finalLength-start'] !== undefined) { nm.finalLength_start = nm['finalLength-start']; }
+      if (nm['finallength-end']   !== undefined) { nm.finalLength_end   = nm['finallength-end']; }
+      if (nm['thumbail-time']     !== undefined) { nm.thumbnail_time    = nm['thumbail-time']; }
+      if (nm.totalLenght          !== undefined) { nm.totalLength       = nm.totalLenght; }
       return nm;
     });
 
@@ -579,10 +592,10 @@ exports.createReel = async (req, res) => {
     }
 
     const post = await Post.create({
-      user_id: req.userId,
+      user_id:            req.userId,
       caption,
       location,
-      media: normalizedMedia,
+      media:              normalizedMedia,
       tags,
       people_tags,
       hide_likes_count,
@@ -592,7 +605,6 @@ exports.createReel = async (req, res) => {
 
     await User.findByIdAndUpdate(req.userId, { $inc: { posts_count: 1 } });
 
-    // Notify subscribers that this user posted a reel
     try {
       const creator = await User.findById(req.userId).select('username').lean();
       await notifySubscribers(req.app, req.userId, creator.username, post._id, 'reel');
@@ -601,17 +613,26 @@ exports.createReel = async (req, res) => {
     }
 
     const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl       = `${req.protocol}://${req.get('host')}`;
+
+    // Respond immediately — client gets post with processing: true
     res.status(201).json(transformPost(populatedPost, baseUrl));
+
+    // After responding, fire background HLS if needed
+    const firstMedia = normalizedMedia[0];
+    if (firstMedia && firstMedia.processing === true && firstMedia.fileName) {
+      setImmediate(() => {
+        runHlsInBackground(req.app, post._id, req.userId, firstMedia.fileName);
+      });
+    }
+
   } catch (error) {
     console.error('[Post] createReel error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// ─── List reels ────────────────────────────────────────────────────────────
-// GET /api/posts/reels?page=1&limit=20
-// FIX: Added pagination — same OOM issue as getFeed above.
+// ─── listReels ────────────────────────────────────────────────────────────────
 exports.listReels = async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
@@ -644,8 +665,7 @@ exports.listReels = async (req, res) => {
   }
 };
 
-// ─── Get reel by ID ────────────────────────────────────────────────────────
-// GET /api/posts/reels/:id
+// ─── getReelById ──────────────────────────────────────────────────────────────
 exports.getReelById = async (req, res) => {
   try {
     const [post, commentsRaw, isSaved] = await Promise.all([
@@ -655,11 +675,7 @@ exports.getReelById = async (req, res) => {
       SavedPost.exists({ user_id: req.userId, post_id: req.params.id }),
     ]);
 
-    if (!post) {
-      return res.status(404).json({ message: 'Reel not found' });
-    }
-    // Dashboard requirement: allow authenticated users to inspect reel details
-    // even when the author account is private.
+    if (!post) return res.status(404).json({ message: 'Reel not found' });
 
     const baseUrl  = `${req.protocol}://${req.get('host')}`;
     const savedSet = new Set();
@@ -675,52 +691,39 @@ exports.getReelById = async (req, res) => {
     res.json(transformedPost);
   } catch (error) {
     console.error('[Post] getReelById error:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Reel not found' });
-    }
+    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Reel not found' });
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
+// ─── metadata helpers ─────────────────────────────────────────────────────────
 const buildPostMetadataUpdates = (body = {}) => {
   const updates = {};
-
-  if (typeof body.caption !== 'undefined') updates.caption = body.caption || '';
-  if (typeof body.location !== 'undefined') updates.location = body.location || '';
-  if (typeof body.tags !== 'undefined') updates.tags = Array.isArray(body.tags) ? body.tags : [];
-  if (typeof body.people_tags !== 'undefined') updates.people_tags = Array.isArray(body.people_tags) ? body.people_tags : [];
-  if (typeof body.hide_likes_count !== 'undefined') updates.hide_likes_count = !!body.hide_likes_count;
+  if (typeof body.caption             !== 'undefined') updates.caption             = body.caption  || '';
+  if (typeof body.location            !== 'undefined') updates.location            = body.location || '';
+  if (typeof body.tags                !== 'undefined') updates.tags                = Array.isArray(body.tags) ? body.tags : [];
+  if (typeof body.people_tags         !== 'undefined') updates.people_tags         = Array.isArray(body.people_tags) ? body.people_tags : [];
+  if (typeof body.hide_likes_count    !== 'undefined') updates.hide_likes_count    = !!body.hide_likes_count;
   if (typeof body.turn_off_commenting !== 'undefined') updates.turn_off_commenting = !!body.turn_off_commenting;
-
   return updates;
 };
 
 exports.updatePostMetadata = async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, type: 'post' });
-
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
+    if (!post) return res.status(404).json({ message: 'Post not found' });
     if (post.user_id.toString() !== req.userId.toString()) {
       return res.status(403).json({ message: 'Not authorized to update this post' });
     }
-
-    const updates = buildPostMetadataUpdates(req.body);
-    Object.assign(post, updates);
+    Object.assign(post, buildPostMetadataUpdates(req.body));
     await post.save();
-
     const populatedPost = await Post.findById(post._id)
       .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
-
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     return res.json(transformPost(populatedPost, baseUrl, req.userId));
   } catch (error) {
     console.error('[Post] updatePostMetadata error:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Post not found' });
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -728,29 +731,19 @@ exports.updatePostMetadata = async (req, res) => {
 exports.updateReelMetadata = async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, type: 'reel' });
-
-    if (!post) {
-      return res.status(404).json({ message: 'Reel not found' });
-    }
-
+    if (!post) return res.status(404).json({ message: 'Reel not found' });
     if (post.user_id.toString() !== req.userId.toString()) {
       return res.status(403).json({ message: 'Not authorized to update this reel' });
     }
-
-    const updates = buildPostMetadataUpdates(req.body);
-    Object.assign(post, updates);
+    Object.assign(post, buildPostMetadataUpdates(req.body));
     await post.save();
-
     const populatedPost = await Post.findById(post._id)
       .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
-
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     return res.json(transformPost(populatedPost, baseUrl, req.userId));
   } catch (error) {
     console.error('[Post] updateReelMetadata error:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Reel not found' });
-    }
+    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Reel not found' });
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
