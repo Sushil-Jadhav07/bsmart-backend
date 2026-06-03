@@ -40,7 +40,10 @@ const adMediaSchema = new mongoose.Schema({
     fileName: { type: String },
     media_type: { type: String, default: 'image' },
     fileUrl: { type: String, default: '' }
-  }]
+  }],
+  // HLS conversion flags
+  hls:        { type: Boolean, default: false },
+  processing: { type: Boolean, default: false },
 }, { _id: false });
 
 // ── CTA sub-schema ─────────────────────────────────────────────────────────────

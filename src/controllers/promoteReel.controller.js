@@ -3,6 +3,48 @@ const Comment     = require('../models/Comment');
 const User        = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 const { canViewAuthorContent, getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
+const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
+
+// ─── Background HLS for PromoteReel ──────────────────────────────────────────
+async function runPromoteHlsInBackground(app, docId, rawS3Key) {
+  try {
+    console.log(`[HLS-Promote] Background job started for promote reel ${docId}`);
+    const hlsFolder = rawS3Key.replace(/\.[^/.]+$/, '');
+    const { m3u8Key, m3u8Url } = await convertToHlsAndUpload(rawS3Key, hlsFolder);
+
+    await PromoteReel.findOneAndUpdate(
+      { _id: docId },
+      {
+        $set: {
+          'media.0.fileUrl':    m3u8Url,
+          'media.0.fileName':   m3u8Key,
+          'media.0.hls':        true,
+          'media.0.processing': false,
+        },
+      }
+    );
+    console.log(`[HLS-Promote] PromoteReel ${docId} updated → ${m3u8Url}`);
+
+    const io          = app.get('io');
+    const onlineUsers = app.get('onlineUsers');
+    if (io && onlineUsers) {
+      const doc = await PromoteReel.findById(docId).select('user_id').lean();
+      if (doc) {
+        const socketIds = onlineUsers.get(String(doc.user_id));
+        if (socketIds) {
+          for (const sid of socketIds) {
+            io.to(sid).emit('promote_reel_ready', { postId: String(docId), m3u8Url, hls: true, processing: false });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[HLS-Promote] Failed for ${docId}:`, err.message);
+    try {
+      await PromoteReel.findOneAndUpdate({ _id: docId }, { $set: { 'media.0.processing': false } });
+    } catch {}
+  }
+}
 
 // ─── URL Helper ───────────────────────────────────────────────────────────────
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
@@ -126,6 +168,9 @@ exports.createPromoteReel = async (req, res) => {
       if (nm['finallength-end'] !== undefined)   { nm.finalLength_end   = nm['finallength-end']; }
       if (nm['thumbail-time'] !== undefined)     { nm.thumbnail_time    = nm['thumbail-time']; }
       if (nm.totalLenght !== undefined)          { nm.totalLength       = nm.totalLenght; }
+      // FIX: carry hls + processing flags from upload API
+      nm.hls        = m.hls        ?? false;
+      nm.processing = m.processing ?? false;
       return nm;
     });
 
@@ -148,6 +193,13 @@ exports.createPromoteReel = async (req, res) => {
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.status(201).json(transformPromoteReel(populated, baseUrl, req.userId));
+
+    // After responding — fire background HLS if needed
+    const firstMedia = normalizedMedia[0];
+    if (firstMedia && firstMedia.processing === true && firstMedia.fileName) {
+      setImmediate(() => runPromoteHlsInBackground(req.app, doc._id, firstMedia.fileName));
+    }
+
   } catch (error) {
     console.error('[PromoteReel] createPromoteReel error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

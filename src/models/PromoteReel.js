@@ -22,7 +22,11 @@ const mediaSchema = new mongoose.Schema({
   timing: { start: { type: Number }, end: { type: Number } },
   'thumbail-time': { type: Number }, 'finalLength-start': { type: Number }, 'finallength-end': { type: Number },
   thumbnail: { fileName: { type: String }, type: { type: String, default: 'image' } },
-  thumbnails: [{ fileName: { type: String }, type: { type: String, default: 'image' } }]
+  thumbnails: [{ fileName: { type: String }, type: { type: String, default: 'image' } }],
+  // HLS conversion flags
+  hls:        { type: Boolean, default: false },
+  processing: { type: Boolean, default: false },
+  fileUrl:    { type: String, default: '' },
 }, { _id: false });
 
 // ─── Product Sub-Schema ─────────────────────────────────────────────────────

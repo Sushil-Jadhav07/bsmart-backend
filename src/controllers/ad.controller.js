@@ -9,6 +9,53 @@ const mongoose = require('mongoose');
 const runMongoTransaction = require('../utils/runMongoTransaction');
 const sendNotification = require('../utils/sendNotification');
 const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
+const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
+
+// ─── Background HLS for Ads ───────────────────────────────────────────────────
+async function runAdHlsInBackground(app, adId, mediaIndex, rawS3Key) {
+  try {
+    console.log(`[HLS-Ad] Background job started for ad ${adId}, key: ${rawS3Key}`);
+    const hlsFolder = rawS3Key.replace(/\.[^/.]+$/, '');
+    const { m3u8Key, m3u8Url } = await convertToHlsAndUpload(rawS3Key, hlsFolder);
+
+    const updatePath = `media.${mediaIndex}`;
+    await Ad.findOneAndUpdate(
+      { _id: adId },
+      {
+        $set: {
+          [`${updatePath}.fileUrl`]:    m3u8Url,
+          [`${updatePath}.fileName`]:   m3u8Key,
+          [`${updatePath}.hls`]:        true,
+          [`${updatePath}.processing`]: false,
+        },
+      }
+    );
+    console.log(`[HLS-Ad] Ad ${adId} media[${mediaIndex}] updated → ${m3u8Url}`);
+
+    const io          = app.get('io');
+    const onlineUsers = app.get('onlineUsers');
+    if (io && onlineUsers) {
+      // Notify all sockets for this vendor/user — they can refresh the ad feed
+      const ad = await Ad.findById(adId).select('user_id').lean();
+      if (ad) {
+        const socketIds = onlineUsers.get(String(ad.user_id));
+        if (socketIds) {
+          for (const sid of socketIds) {
+            io.to(sid).emit('ad_ready', { adId: String(adId), mediaIndex, m3u8Url, hls: true, processing: false });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[HLS-Ad] Background conversion failed for ad ${adId}:`, err.message);
+    try {
+      await Ad.findOneAndUpdate(
+        { _id: adId },
+        { $set: { [`media.${mediaIndex}.processing`]: false } }
+      );
+    } catch {}
+  }
+}
 
 const DEFAULT_AD_CATEGORIES = [
   'Accessories',
@@ -542,16 +589,19 @@ exports.createAd = async (req, res) => {
     // ── Build media array ────────────────────────────────────────────────────
 
     const normalizedMedia = media.map((item) => ({
-      fileName: item.fileName || '',
-      fileUrl: item.fileUrl || item.url || '',
+      fileName:   item.fileName || '',
+      fileUrl:    item.fileUrl || item.url || '',
       media_type: item.media_type || 'image',
       video_meta: item.video_meta || {},
-      timing_window: item.timing_window || {},
-      crop_settings: item.crop_settings || {},
+      timing_window:  item.timing_window  || {},
+      crop_settings:  item.crop_settings  || {},
+      // FIX: carry hls + processing flags from upload API response
+      hls:        item.hls        ?? false,
+      processing: item.processing ?? false,
       thumbnails: Array.isArray(item.thumbnails)
         ? item.thumbnails.map((t) => ({
-            fileName: t.fileName || '',
-            fileUrl: t.fileUrl || '',
+            fileName:   t.fileName   || '',
+            fileUrl:    t.fileUrl    || '',
             media_type: t.type || t.media_type || 'image',
           }))
         : [],
@@ -597,12 +647,20 @@ exports.createAd = async (req, res) => {
       .populate('user_id', 'username full_name avatar_url')
       .lean();
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: 'Ad created successfully and is pending review',
       data: populatedAd,
       ad: populatedAd,
     });
+
+    // After responding — fire background HLS for any video media items
+    normalizedMedia.forEach((item, idx) => {
+      if (item.media_type === 'video' && item.processing === true && item.fileName) {
+        setImmediate(() => runAdHlsInBackground(req.app, ad._id, idx, item.fileName));
+      }
+    });
+
   } catch (error) {
     console.error('[Ad] createAd error:', error);
     if (error.name === 'ValidationError') {
