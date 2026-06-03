@@ -48,24 +48,33 @@ async function runPromoteHlsInBackground(app, docId, rawS3Key) {
 
 // ─── URL Helper ───────────────────────────────────────────────────────────────
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
-    : null;
+  let cf = process.env.CLOUDFRONT_BASE_URL || '';
+  if (cf && !cf.startsWith('http')) cf = `https://${cf}`;
+  cf = cf.replace(/\/+$/, '');
+
+  // FIX: if fileUrl is already a correct http URL use it (fixing http→https if needed)
   if (fileUrl && fileUrl.startsWith('http')) {
-    if (cloudfront && fileUrl.includes('api.bebsmart.in/uploads/')) {
-      return fileUrl.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    // fix old EC2 URLs that slipped through
+    let url = fileUrl.replace(/^http:\/\/api\.bebsmart\.in/i, 'https://api.bebsmart.in');
+    // if CloudFront is configured, swap any S3/EC2 origin to CloudFront
+    if (cf) {
+      url = url
+        .replace(/https?:\/\/api\.bebsmart\.in\/uploads\//i, `${cf}/uploads/`)
+        .replace(/https?:\/\/[^/]+\.s3\.[^/]+\.amazonaws\.com\//i, `${cf}/`);
     }
-    return fileUrl;
+    return url;
   }
+
+  // FIX: fileName is an S3 key like "uploads/users/123/promote/.../index.m3u8"
+  // Never prefix with /uploads/ again — that causes uploads/uploads/ double prefix
   if (fileName) {
-    if (fileName.startsWith('uploads/') || fileName.startsWith('/uploads/')) {
-      const key = fileName.replace(/^\/+/, '');
-      if (cloudfront) return `${cloudfront}/${key}`;
-      return `${baseUrl}/${key}`;
-    }
-    if (cloudfront) return `${cloudfront}/uploads/${fileName}`;
-    return `${baseUrl}/uploads/${fileName}`;
+    const key = fileName.replace(/^\/+/, ''); // strip leading slash
+    if (cf) return `${cf}/${key}`;
+    // no CloudFront — build S3 or EC2 URL
+    if (key.startsWith('uploads/')) return `${baseUrl}/${key}`;
+    return `${baseUrl}/uploads/${key}`;
   }
+
   if (fileUrl) {
     if (fileUrl.startsWith('/')) return `${baseUrl}${fileUrl}`;
     return `${baseUrl}/${fileUrl}`;
@@ -90,9 +99,10 @@ const transformPromoteReel = (doc, baseUrl, currentUserId = null) => {
   // Resolve media URLs
   if (Array.isArray(obj.media)) {
     obj.media = obj.media.map(item => {
-      const fileUrl = item.fileName
-        ? `${baseUrl}/uploads/${item.fileName}`
-        : resolveMediaUrl(item.fileName, item.fileUrl, baseUrl);
+      // FIX: always use resolveMediaUrl — never manually build baseUrl/uploads/fileName
+      // The old code did `${baseUrl}/uploads/${item.fileName}` which causes
+      // uploads/uploads/ double prefix when fileName already starts with "uploads/"
+      const fileUrl = resolveMediaUrl(item.fileName, item.fileUrl, baseUrl);
 
       let thumbnailArray = [];
       if (Array.isArray(item.thumbnails)) {
@@ -103,7 +113,7 @@ const transformPromoteReel = (doc, baseUrl, currentUserId = null) => {
       } else if (item.thumbnail && item.thumbnail.fileName) {
         thumbnailArray = [{
           ...item.thumbnail,
-          fileUrl: `${baseUrl}/uploads/${item.thumbnail.fileName}`
+          fileUrl: resolveMediaUrl(item.thumbnail.fileName, item.thumbnail.fileUrl, baseUrl)
         }];
       }
 

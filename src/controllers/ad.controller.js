@@ -11,6 +11,51 @@ const sendNotification = require('../utils/sendNotification');
 const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
+// ─── URL resolver — always returns CloudFront URL ─────────────────────────────
+function resolveAdMediaUrl(fileName, fileUrl) {
+  let cf = process.env.CLOUDFRONT_BASE_URL || '';
+  if (cf && !cf.startsWith('http')) cf = `https://${cf}`;
+  cf = cf.replace(/\/+$/, '');
+
+  // fileUrl is already a full URL — fix http→https and swap to CloudFront
+  if (fileUrl && fileUrl.startsWith('http')) {
+    let url = fileUrl.replace(/^http:\/\/api\.bebsmart\.in/i, 'https://api.bebsmart.in');
+    if (cf) {
+      url = url
+        .replace(/https?:\/\/api\.bebsmart\.in\/uploads\//i, `${cf}/uploads/`)
+        .replace(/https?:\/\/[^/]+\.s3\.[^/]+\.amazonaws\.com\//i, `${cf}/`);
+    }
+    return url;
+  }
+
+  // fileName is an S3 key e.g. "uploads/users/123/ads/abc.mp4"
+  if (fileName) {
+    const key = fileName.replace(/^\/+/, '');
+    if (cf) return `${cf}/${key}`;
+    const bucket = process.env.S3_BUCKET_NAME || '';
+    const region = process.env.AWS_REGION || 'ap-south-1';
+    if (bucket) return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+    return `/${key}`;
+  }
+
+  return fileUrl || '';
+}
+
+// Resolve all media items in an ad — called before saving AND when returning to client
+function resolveAdMedia(mediaArray) {
+  if (!Array.isArray(mediaArray)) return mediaArray;
+  return mediaArray.map(item => ({
+    ...item,
+    fileUrl: resolveAdMediaUrl(item.fileName, item.fileUrl || item.url || ''),
+    thumbnails: Array.isArray(item.thumbnails)
+      ? item.thumbnails.map(t => ({
+          ...t,
+          fileUrl: resolveAdMediaUrl(t.fileName, t.fileUrl || ''),
+        }))
+      : [],
+  }));
+}
+
 // ─── Background HLS for Ads ───────────────────────────────────────────────────
 async function runAdHlsInBackground(app, adId, mediaIndex, rawS3Key) {
   try {
@@ -183,6 +228,8 @@ exports.getAdsFeed = async (req, res) => {
       const isLikedByMe = hasUserInList(ad?.likes, req.userId);
       return {
         ...ad,
+        // FIX: resolve all media URLs to CloudFront before returning to client
+        media: resolveAdMedia(ad.media),
         likes_count: Number(ad?.likes_count || (Array.isArray(ad?.likes) ? ad.likes.length : 0)),
         is_liked_by_me: isLikedByMe,
         is_author_followed_by_me: isAuthorFollowed,
@@ -220,6 +267,8 @@ exports.getAdById = async (req, res) => {
 
     res.json({
       ...ad,
+      // FIX: resolve all media URLs to CloudFront before returning to client
+      media: resolveAdMedia(ad.media),
       likes_count: Number(ad?.likes_count || (Array.isArray(ad?.likes) ? ad.likes.length : 0)),
       is_liked_by_me: hasUserInList(ad?.likes, req.userId),
     });
@@ -590,18 +639,18 @@ exports.createAd = async (req, res) => {
 
     const normalizedMedia = media.map((item) => ({
       fileName:   item.fileName || '',
-      fileUrl:    item.fileUrl || item.url || '',
+      // FIX: always resolve to CloudFront URL before saving to MongoDB
+      fileUrl:    resolveAdMediaUrl(item.fileName, item.fileUrl || item.url || ''),
       media_type: item.media_type || 'image',
       video_meta: item.video_meta || {},
       timing_window:  item.timing_window  || {},
       crop_settings:  item.crop_settings  || {},
-      // FIX: carry hls + processing flags from upload API response
       hls:        item.hls        ?? false,
       processing: item.processing ?? false,
       thumbnails: Array.isArray(item.thumbnails)
         ? item.thumbnails.map((t) => ({
             fileName:   t.fileName   || '',
-            fileUrl:    t.fileUrl    || '',
+            fileUrl:    resolveAdMediaUrl(t.fileName, t.fileUrl || ''),
             media_type: t.type || t.media_type || 'image',
           }))
         : [],
