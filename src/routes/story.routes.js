@@ -3,7 +3,7 @@ const router = express.Router();
 const path = require('path');
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
+const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoryItemViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
 const { upload } = require('../config/multer');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
 
@@ -270,6 +270,32 @@ router.post('/items/:itemId/like', verifyToken, toggleStoryItemLike);
  *         description: Story not found
  */
 router.get('/:storyId/views', verifyToken, getStoryViews);
+
+/**
+ * @swagger
+ * /api/stories/items/{itemId}/views:
+ *   get:
+ *     summary: Get viewers list for a specific story item (owner only)
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Viewers list for the story item
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Story item not found
+ */
+router.get('/items/:itemId/views', verifyToken, getStoryItemViews);
 
 /**
  * @swagger

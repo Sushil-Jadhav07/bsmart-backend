@@ -273,21 +273,109 @@ exports.getStoryViews = async (req, res) => {
     if (story.user_id.toString() !== userId.toString()) {
       return res.status(403).json({ message: 'Not authorized' });
     }
+
+    // Get all views with populated viewer and story item (to get order maybe)
     const views = await StoryView.find({ story_id: storyId })
       .sort({ viewedAt: -1 })
-      .populate('viewer_id', 'username avatar_url followers_count following_count');
-    const unique = {};
-    const result = [];
-    for (const v of views) {
-      const vid = v.viewer_id?._id?.toString() || (v.viewer_id?.toString());
-      if (!unique[vid]) {
-        unique[vid] = true;
-        result.push({ viewer: v.viewer_id, viewedAt: v.viewedAt });
+      .populate('viewer_id', 'username avatar_url followers_count following_count')
+      .populate('story_item_id', 'order');
+
+    // Group views by story_item_id
+    const viewsByItem = {};
+    const totalUniqueViewers = new Set();
+
+    for (const view of views) {
+      const itemId = view.story_item_id?._id?.toString() || view.story_item_id?.toString();
+      const viewerId = view.viewer_id?._id?.toString() || view.viewer_id?.toString();
+
+      if (!viewsByItem[itemId]) {
+        viewsByItem[itemId] = {
+          story_item_id: itemId,
+          order: view.story_item_id?.order || 0,
+          views: [],
+          unique_viewers: new Set(),
+          total_views: 0
+        };
       }
+
+      const viewData = {
+        user_id: viewerId,
+        username: view.viewer_id?.username,
+        avatar_url: view.viewer_id?.avatar_url,
+        viewedAt: view.viewedAt,
+        // Format viewedAt as hour-wise for easier reading (optional)
+        viewedAtHour: view.viewedAt?.toLocaleString() // Or custom format if needed
+      };
+
+      viewsByItem[itemId].views.push(viewData);
+      viewsByItem[itemId].unique_viewers.add(viewerId);
+      viewsByItem[itemId].total_views += 1;
+      totalUniqueViewers.add(viewerId);
     }
-    const total_views = views.length;
-    const unique_viewers = Object.keys(unique).length;
-    res.json({ viewers: result, total_views, unique_viewers });
+
+    // Convert to array and clean up
+    const itemsViews = Object.values(viewsByItem).map(item => ({
+      ...item,
+      unique_viewers: item.unique_viewers.size
+    })).sort((a, b) => a.order - b.order);
+
+    res.json({
+      items_views: itemsViews,
+      total_views: views.length,
+      unique_viewers: totalUniqueViewers.size
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// New endpoint: Get views for a single story item
+exports.getStoryItemViews = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { itemId } = req.params;
+
+    // Validate itemId
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ message: 'Invalid itemId' });
+    }
+
+    const item = await StoryItem.findById(itemId);
+    if (!item) return res.status(404).json({ message: 'Story item not found' });
+
+    const story = await Story.findById(item.story_id);
+    if (!story) return res.status(404).json({ message: 'Story not found' });
+
+    // Check ownership
+    if (story.user_id.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    // Get views for this item
+    const views = await StoryView.find({ story_item_id: itemId })
+      .sort({ viewedAt: -1 })
+      .populate('viewer_id', 'username avatar_url followers_count following_count');
+
+    const uniqueViewers = new Set();
+    const viewsList = views.map(view => {
+      const viewerId = view.viewer_id?._id?.toString() || view.viewer_id?.toString();
+      uniqueViewers.add(viewerId);
+      return {
+        user_id: viewerId,
+        username: view.viewer_id?.username,
+        avatar_url: view.viewer_id?.avatar_url,
+        viewedAt: view.viewedAt,
+        viewedAtHour: view.viewedAt?.toLocaleString()
+      };
+    });
+
+    res.json({
+      story_item_id: itemId,
+      views: viewsList,
+      total_views: views.length,
+      unique_viewers: uniqueViewers.size
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
