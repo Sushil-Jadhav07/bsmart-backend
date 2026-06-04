@@ -3,6 +3,7 @@ const StoryItem = require('../models/StoryItem');
 const StoryView = require('../models/StoryView');
 const StoryLike = require('../models/StoryLike');
 const User = require('../models/User');
+const Follow = require('../models/Follow');
 const sendNotification = require('../utils/sendNotification');
 const mongoose = require('mongoose');
 
@@ -128,7 +129,20 @@ exports.getStoriesFeed = async (req, res) => {
   try {
     const userId = req.userId;
     const now = nowUtc();
-    const stories = await Story.find({ expiresAt: { $gt: now }, isArchived: false, items_count: { $gt: 0 } })
+    
+    // Get all users the current user is following
+    const followingRels = await Follow.find({ follower_id: userId }).select('followed_id').lean();
+    const followingIds = followingRels.map(rel => rel.followed_id);
+    
+    // Include the user's own stories as well
+    const userIdsToShow = [...followingIds, userId];
+    
+    const stories = await Story.find({ 
+      user_id: { $in: userIdsToShow },
+      expiresAt: { $gt: now }, 
+      isArchived: false, 
+      items_count: { $gt: 0 } 
+    })
       .sort({ createdAt: -1 })
       .populate('user_id', 'username avatar_url followers_count following_count gender location');
 

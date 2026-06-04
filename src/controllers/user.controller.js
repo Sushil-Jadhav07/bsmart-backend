@@ -150,6 +150,77 @@ exports.getUserById = async (req, res) => {
   }
 };
 
+// @desc    Get user profile by username
+// @route   GET /api/users/username/:username
+// @access  Public
+exports.getUserByUsername = async (req, res) => {
+  try {
+    const username = req.params.username;
+
+    // 1. Fetch User by username
+    const user = await User.findOne({ username }).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: user._id }).select('validated _id').lean();
+    const validated = vendor ? !!vendor.validated : false;
+    const obj = user.toObject ? user.toObject() : user;
+
+    // Force gender and location to always be present as strings for ALL roles
+    obj.gender   = (obj.gender   !== undefined && obj.gender   !== null) ? String(obj.gender)   : '';
+    obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+
+    obj.isPrivate = obj.isPrivate ?? false;
+
+    // ad_interests — always return an array
+    obj.ad_interests = Array.isArray(obj.ad_interests) ? obj.ad_interests : [];
+
+    obj.validated = validated;
+    if (vendor) {
+      obj.vendor_id = vendor._id;
+    }
+
+    if (req.user?.role === 'admin') {
+      const [summaryAgg] = await Post.aggregate([
+        {
+          $match: {
+            user_id: user._id,
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            posts_count: { $sum: { $cond: [{ $eq: ['$type', 'post'] }, 1, 0] } },
+            reels_count: { $sum: { $cond: [{ $eq: ['$type', 'reel'] }, 1, 0] } },
+            likes_count_total: { $sum: { $ifNull: ['$likes_count', 0] } },
+            comments_count_total: { $sum: { $ifNull: ['$comments_count', 0] } },
+            views_count_total: { $sum: { $ifNull: ['$views_count', 0] } },
+            unique_views_count_total: { $sum: { $ifNull: ['$unique_views_count', 0] } },
+          },
+        },
+      ]);
+
+      obj.summary = {
+        posts_count: summaryAgg?.posts_count || 0,
+        reels_count: summaryAgg?.reels_count || 0,
+        likes_count_total: summaryAgg?.likes_count_total || 0,
+        comments_count_total: summaryAgg?.comments_count_total || 0,
+        views_count_total: summaryAgg?.views_count_total || 0,
+        unique_views_count_total: summaryAgg?.unique_views_count_total || 0,
+      };
+    }
+
+    res.json(obj);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getUserPostsDetails = async (req, res) => {
   try {
     const userId = req.params.id;
