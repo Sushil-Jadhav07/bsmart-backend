@@ -55,10 +55,28 @@ const { getAdStats } = require('../controllers/adstats.controller');
  *       properties:
  *         fileName:
  *           type: string
- *           example: "string"
+ *           description: S3 key or HLS m3u8 path returned by the upload endpoint
+ *           example: "uploads/users/abc123/ads/1780649097224-189344871/index.m3u8"
+ *         fileUrl:
+ *           type: string
+ *           description: Full CloudFront/CDN URL for the media file
+ *           example: "https://d1mqgru84n0min.cloudfront.net/uploads/users/abc123/ads/1780649097224-189344871/index.m3u8"
+ *         url:
+ *           type: string
+ *           description: Alias for fileUrl (accepted by the backend)
+ *           example: "https://d1mqgru84n0min.cloudfront.net/uploads/users/abc123/ads/1780649097224-189344871/index.m3u8"
  *         media_type:
  *           type: string
- *           example: "image"
+ *           enum: [image, video]
+ *           example: "video"
+ *         hls:
+ *           type: boolean
+ *           description: true when the video has been converted to HLS (.m3u8) by the upload endpoint
+ *           example: true
+ *         processing:
+ *           type: boolean
+ *           description: Set to true only when the upload endpoint returned a raw video (conversion in progress). Leave false when hls is true.
+ *           example: false
  *         video_meta:
  *           type: object
  *           properties:
@@ -880,36 +898,82 @@ router.get('/', auth, listAds);
  *                 $ref: '#/components/schemas/AdScheduling'
  *
  *           example:
- *             ad_title: "Summer Sale — Up to 50% Off!"
- *             ad_description: "Shop our biggest sale of the year on all fashion items."
- *             caption: "Don't miss out!"
- *             location: "Mumbai, India"
+ *             ad_title: "ads sound test"
+ *             ad_description: "Description"
+ *             caption: "Test Sound"
+ *             location: "mumbai"
  *             ad_type: promote
- *             content_type: advertise
+ *             content_type: reel
  *             status: pending
- *             total_budget_coins: 5000
+ *             media:
+ *               - fileName: "uploads/users/69aa81ff5e823afb083f0d5b/ads/1780649097224-189344871/index.m3u8"
+ *                 fileUrl: "https://d1mqgru84n0min.cloudfront.net/uploads/users/69aa81ff5e823afb083f0d5b/ads/1780649097224-189344871/index.m3u8"
+ *                 url: "https://d1mqgru84n0min.cloudfront.net/uploads/users/69aa81ff5e823afb083f0d5b/ads/1780649097224-189344871/index.m3u8"
+ *                 media_type: video
+ *                 hls: true
+ *                 processing: false
+ *                 video_meta:
+ *                   original_length_seconds: 32.7111
+ *                   selected_start: 17.4269650045195
+ *                   selected_end: 32.7111
+ *                   final_duration: 15.284134995480503
+ *                   thumbnail_time: 1.1279689655172414
+ *                 timing_window:
+ *                   start: 17.4269650045195
+ *                   end: 32.7111
+ *                 thumbnails:
+ *                   - fileName: "uploads/users/69aa81ff5e823afb083f0d5b/ads/1780649101373-554589316.jpg"
+ *                     type: image
+ *                     fileUrl: "https://d1mqgru84n0min.cloudfront.net/uploads/users/69aa81ff5e823afb083f0d5b/ads/1780649101373-554589316.jpg"
+ *                 crop_settings:
+ *                   mode: original
+ *                   aspect_ratio: "9:16"
+ *                   zoom: 1
+ *                   x: 0
+ *                   y: 0
+ *             gallery:
+ *               - link: "https://d1mqgru84n0min.cloudfront.net/uploads/users/69aa81ff5e823afb083f0d5b/ads-gallery/1780649101971-387037363.jpg"
+ *                 filename: "uploads/users/69aa81ff5e823afb083f0d5b/ads-gallery/1780649101971-387037363.jpg"
+ *               - link: "https://d1mqgru84n0min.cloudfront.net/uploads/users/69aa81ff5e823afb083f0d5b/ads-gallery/1780649105871-283047434.jpg"
+ *                 filename: "uploads/users/69aa81ff5e823afb083f0d5b/ads-gallery/1780649105871-283047434.jpg"
+ *             hashtags: []
+ *             tagged_users: []
+ *             cta:
+ *               type: view_site
+ *               url: "https://asynk.in/"
+ *               deep_link: "https://asynk.in/"
+ *               phone_number: ""
+ *               email: ""
+ *               whatsapp_number: ""
+ *             total_budget_coins: 2000
  *             budget:
  *               daily_budget_coins: 500
- *               start_date: "2025-06-01T00:00:00Z"
- *               end_date: "2025-06-30T23:59:59Z"
+ *               start_date: "2026-06-05"
+ *               end_date: "2030-06-05"
  *               auto_stop_on_budget_exhausted: false
+ *             category: Electronics
+ *             sub_category: ""
+ *             tags: []
+ *             keywords:
+ *               - Education
+ *             target_language:
+ *               - Hindi
+ *             target_location:
+ *               - India
+ *             target_states:
+ *               - Maharashtra
  *             targeting:
- *               countries: ["IN"]
- *               states: ["Maharashtra", "Karnataka"]
- *               cities: ["Mumbai", "Bangalore"]
+ *               countries:
+ *                 - India
+ *               states:
+ *                 - Maharashtra
+ *               cities: []
  *               age_min: 18
  *               age_max: 40
  *               gender: all
- *               interests: ["fashion", "lifestyle"]
- *               device_types: ["mobile"]
- *             category: "Fashion"
- *             sub_category: "Women's Clothing"
- *             tags: ["summer", "sale"]
- *             keywords: ["summer sale", "fashion 50% off"]
- *             hashtags: ["#summersale", "#fashion"]
- *             gallery:
- *               - link: "https://example.com/gallery1.jpg"
- *                 filename: "gallery1.jpg"
+ *               interests:
+ *                 - Education
+ *               device_types: []
  *             engagement_controls:
  *               hide_likes_count: false
  *               disable_comments: false
@@ -918,19 +982,14 @@ router.get('/', auth, listAds);
  *               disable_report: false
  *               moderation_enabled: false
  *             tracking:
- *               utm_source: myapp
- *               utm_medium: paid_ad
- *               utm_campaign: summer_sale_2025
+ *               utm_source: ""
+ *               utm_medium: ""
+ *               utm_campaign: ""
+ *               utm_term: ""
+ *               utm_content: ""
+ *               conversion_pixel_id: ""
  *             compliance:
  *               policy_agreed: true
- *             ab_testing:
- *               enabled: false
- *               variants: []
- *             scheduling:
- *               delivery_time_slots:
- *                 - day_of_week: monday
- *                   start_time: "09:00"
- *                   end_time: "21:00"
  *     responses:
  *       401:
  *         description: Unauthorized

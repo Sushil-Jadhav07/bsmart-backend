@@ -53,34 +53,27 @@ function runHlsConversion(inputPath, hlsDir) {
       .outputOptions([
         // Video codec
         '-codec:v libx264',
-        // FIX: scale down to max 720p, keep aspect ratio
-        // -2 means ffmpeg auto-calculates the other dimension divisible by 2
         '-vf scale=-2:720',
-        // FIX: cap video bitrate at 1500kbps (was uncapped — caused 7MB segments)
         '-b:v 1500k',
-        // FIX: max bitrate ceiling — prevents spikes above this
         '-maxrate 1500k',
-        // FIX: buffer size = 2x bitrate for stable encoding
         '-bufsize 3000k',
-        // Audio codec — 128kbps is enough for reels
+        // Audio: force stereo + AAC-LC profile for universal HLS player compatibility.
+        // Without -ac 2, mono/surround inputs produce broken audio on many players.
+        // Without -profile:a aac_low, some ffmpeg builds emit HE-AAC which iOS/Android players reject.
         '-codec:a aac',
+        '-profile:a aac_low',
+        '-ac 2',
         '-b:a 128k',
         '-ar 44100',
         // HLS settings
-        // FIX: 2s segments — faster start, smaller per-segment download
         '-hls_time 2',
         '-hls_list_size 0',
         '-f hls',
-        // FIX: slower preset = better compression at same bitrate
-        // 'fast' was too loose, 'medium' gives 20-30% smaller files
         '-preset medium',
-        // FIX: removed -crf 23 — crf conflicts with -b:v bitrate targeting
-        // when both are set, ffmpeg ignores the bitrate cap
         '-profile:v main',
         '-level 3.1',
-        // Needed for seeking in some players
-        '-movflags +faststart',
-        // Faster seeking in HLS
+        // NOTE: -movflags +faststart removed — it is an MP4-only option and has no
+        // place in HLS output; some ffmpeg versions drop the audio track when it is present.
         '-hls_flags independent_segments',
       ])
       .outputOptions('-hls_segment_filename', segmentPattern)
