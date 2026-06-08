@@ -20,7 +20,8 @@ const {
   unsaveAd,
   deleteAd,
   updateAdMetadata,
-  searchAds
+  searchAds,
+  getAllGalleryImages
 } = require('../controllers/ad.controller');
 const {
   addAdComment,
@@ -539,6 +540,42 @@ const { getAdStats } = require('../controllers/adstats.controller');
  *                     type: string
  */
 router.get('/categories', getAdCategories);
+
+/**
+ * @swagger
+ * /api/ads/gallery:
+ *   get:
+ *     summary: Get all gallery images from all ads
+ *     tags: [Ads]
+ *     responses:
+ *       200:
+ *         description: List of all gallery images with their ad IDs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       adId:
+ *                         type: string
+ *                         description: ID of the ad this gallery image belongs to
+ *                       link:
+ *                         type: string
+ *                         description: URL of the gallery image
+ *                       filename:
+ *                         type: string
+ *                         description: Filename of the gallery image
+ *                       filname:
+ *                         type: string
+ *                         description: Alias for filename
+ */
+router.get('/gallery', getAllGalleryImages);
 
 /**
  * @swagger

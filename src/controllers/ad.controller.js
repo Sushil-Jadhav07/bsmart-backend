@@ -1085,3 +1085,28 @@ exports.updateAdMetadata = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+exports.getAllGalleryImages = async (req, res) => {
+  try {
+    // Get all ads that have gallery items
+    const ads = await Ad.find({ isDeleted: false, gallery: { $exists: true, $not: { $size: 0 } } })
+      .select('_id gallery')
+      .lean();
+
+    // Flatten into array of { adId, ...galleryItem }
+    const galleryImages = [];
+    ads.forEach(ad => {
+      ad.gallery.forEach(item => {
+        galleryImages.push({
+          adId: ad._id,
+          ...item
+        });
+      });
+    });
+
+    res.json({ success: true, data: galleryImages });
+  } catch (error) {
+    console.error('[Ad] getAllGalleryImages error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
