@@ -713,3 +713,63 @@ exports.adminPatchUser = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
+
+// @desc    Check if email is already registered
+// @route   POST /api/users/check/email
+// @access  Public
+exports.checkEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({ available: false, message: 'email is required' });
+    }
+    const exists = await User.exists({ email: email.trim().toLowerCase() });
+    if (exists) {
+      return res.status(409).json({ available: false, message: 'Email is already registered' });
+    }
+    return res.json({ available: true, message: 'Email is available' });
+  } catch (error) {
+    console.error('[User] checkEmail error:', error);
+    return res.status(500).json({ available: false, message: 'Server error' });
+  }
+};
+
+// @desc    Check if username is already taken
+// @route   POST /api/users/check/username
+// @access  Public
+exports.checkUsername = async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username || typeof username !== 'string' || !username.trim()) {
+      return res.status(400).json({ available: false, message: 'username is required' });
+    }
+    const exists = await User.exists({ username: username.trim() });
+    if (exists) {
+      return res.status(409).json({ available: false, message: 'Username is already taken' });
+    }
+    return res.json({ available: true, message: 'Username is available' });
+  } catch (error) {
+    console.error('[User] checkUsername error:', error);
+    return res.status(500).json({ available: false, message: 'Server error' });
+  }
+};
+
+// @desc    Check if phone number is already registered
+// @route   POST /api/users/check/phone
+// @access  Public
+exports.checkPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone || typeof phone !== 'string' || !phone.trim()) {
+      return res.status(400).json({ available: false, message: 'phone is required' });
+    }
+    const exists = await User.exists({ phone: phone.trim() });
+    if (exists) {
+      return res.status(409).json({ available: false, message: 'Phone number is already registered' });
+    }
+    return res.json({ available: true, message: 'Phone number is available' });
+  } catch (error) {
+    console.error('[User] checkPhone error:', error);
+    return res.status(500).json({ available: false, message: 'Server error' });
+  }
+};

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const auth = require('../middleware/auth');
@@ -30,6 +30,142 @@ const optionalAuth = async (req, res, next) => {
  *   description: User management
  */
 
+
+/**
+ * @swagger
+ * /api/users/check/email:
+ *   post:
+ *     summary: Check if an email address is already registered
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "user@example.com"
+ *     responses:
+ *       200:
+ *         description: Email is available
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: true
+ *               message: "Email is available"
+ *       400:
+ *         description: email field is missing
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: false
+ *               message: "email is required"
+ *       409:
+ *         description: Email is already registered
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: false
+ *               message: "Email is already registered"
+ *       500:
+ *         description: Server error
+ */
+router.post('/check/email', checkEmail);
+
+/**
+ * @swagger
+ * /api/users/check/username:
+ *   post:
+ *     summary: Check if a username is already taken
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: "john_doe"
+ *     responses:
+ *       200:
+ *         description: Username is available
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: true
+ *               message: "Username is available"
+ *       400:
+ *         description: username field is missing
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: false
+ *               message: "username is required"
+ *       409:
+ *         description: Username is already taken
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: false
+ *               message: "Username is already taken"
+ *       500:
+ *         description: Server error
+ */
+router.post('/check/username', checkUsername);
+
+/**
+ * @swagger
+ * /api/users/check/phone:
+ *   post:
+ *     summary: Check if a phone number is already registered
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - phone
+ *             properties:
+ *               phone:
+ *                 type: string
+ *                 example: "+919876543210"
+ *     responses:
+ *       200:
+ *         description: Phone number is available
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: true
+ *               message: "Phone number is available"
+ *       400:
+ *         description: phone field is missing
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: false
+ *               message: "phone is required"
+ *       409:
+ *         description: Phone number is already registered
+ *         content:
+ *           application/json:
+ *             example:
+ *               available: false
+ *               message: "Phone number is already registered"
+ *       500:
+ *         description: Server error
+ */
+router.post('/check/phone', checkPhone);
 
 /**
  * @swagger
