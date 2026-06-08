@@ -4,7 +4,7 @@ const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
 const { createPost, getFeed, getPost, deletePost, createReel, listReels, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
-const { savePost, unsavePost, listMySavedPosts } = require('../controllers/saved.controller');
+const { savePost, unsavePost, listMySavedPosts, savePromoteReel, unsavePromoteReel, saveAd, unsaveAd, getSavedItems } = require('../controllers/saved.controller');
 const { getPostStats } = require('../controllers/poststats.controller');
 
 // ─── Feed rate limiters (dynamic — values set via query params) ─────────────
@@ -551,6 +551,18 @@ router.get('/reels/:id', verifyToken, getReelById);
  *         description: Post not found
  */
 router.get('/saved', verifyToken, listMySavedPosts);
+
+// New endpoints for all saved items
+router.get('/saved/all', verifyToken, getSavedItems);
+router.get('/saved/:id', verifyToken, getSavedItems);
+
+// Promote reel save/unsave
+router.post('/promote-reels/:id/save', verifyToken, savePromoteReel);
+router.post('/promote-reels/:id/unsave', verifyToken, unsavePromoteReel);
+
+// Ad save/unsave
+router.post('/ads/:id/save', verifyToken, saveAd);
+router.post('/ads/:id/unsave', verifyToken, unsaveAd);
 
 router.get('/:id/stats', verifyToken, getPostStats);
 
