@@ -43,11 +43,34 @@ const sanitizeUser = (user) => {
   };
 };
 
-const withAbsoluteUploadUrl = (value, baseUrl) => {
-  if (!value) return '';
-  if (String(value).startsWith('http')) return value;
-  if (String(value).startsWith('/')) return `${baseUrl}${value}`;
-  return `${baseUrl}/uploads/${value}`;
+const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+
+  if (fileUrl && fileUrl.startsWith('http')) {
+    if (cloudfront && fileUrl.includes('api.bebsmart.in/uploads/')) {
+      return fileUrl.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
+    return fileUrl;
+  }
+
+  if (fileName) {
+    if (fileName.startsWith('uploads/') || fileName.startsWith('/uploads/')) {
+      const key = fileName.replace(/^\/+/, '');
+      if (cloudfront) return `${cloudfront}/${key}`;
+      return `${baseUrl}/${key}`;
+    }
+    if (cloudfront) return `${cloudfront}/uploads/${fileName}`;
+    return `${baseUrl}/uploads/${fileName}`;
+  }
+
+  if (fileUrl) {
+    if (fileUrl.startsWith('/')) return `${baseUrl}${fileUrl}`;
+    return `${baseUrl}/${fileUrl}`;
+  }
+
+  return '';
 };
 
 const sanitizeMedia = (media = [], baseUrl = '') =>
@@ -56,18 +79,18 @@ const sanitizeMedia = (media = [], baseUrl = '') =>
         const thumbnails = Array.isArray(item.thumbnails)
           ? item.thumbnails.map((thumb) => ({
               ...thumb,
-              fileUrl: withAbsoluteUploadUrl(thumb.fileUrl || thumb.fileName, baseUrl),
+              fileUrl: resolveMediaUrl(thumb.fileName, thumb.fileUrl, baseUrl),
             }))
           : item.thumbnail && (item.thumbnail.fileName || item.thumbnail.fileUrl)
             ? [{
                 ...item.thumbnail,
-                fileUrl: withAbsoluteUploadUrl(item.thumbnail.fileUrl || item.thumbnail.fileName, baseUrl),
+                fileUrl: resolveMediaUrl(item.thumbnail.fileName, item.thumbnail.fileUrl, baseUrl),
               }]
             : [];
 
         return {
           ...item,
-          fileUrl: withAbsoluteUploadUrl(item.fileUrl || item.fileName, baseUrl),
+          fileUrl: resolveMediaUrl(item.fileName, item.fileUrl, baseUrl),
           thumbnails,
           thumbnail: thumbnails,
         };
@@ -102,7 +125,7 @@ const sanitizePromoteReel = (promoteReel, baseUrl) => {
     products: Array.isArray(promoteReel.products)
       ? promoteReel.products.map((p) => ({
           ...p,
-          promote_img: withAbsoluteUploadUrl(p.promote_img, baseUrl),
+          promote_img: resolveMediaUrl(null, p.promote_img, baseUrl),
         }))
       : [],
   };
