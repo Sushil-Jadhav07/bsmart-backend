@@ -469,11 +469,90 @@ const dislikeAdInternal = async ({ adId, userId, session }) => {
 exports.recordAdView = async (req, res) => {
   try {
     const { id } = req.params;
-    const ad = await Ad.findByIdAndUpdate(id, { $inc: { views_count: 1 } }, { new: true });
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid ad ID' });
+    }
+
+    const ad = await Ad.findOne({ _id: id, isDeleted: false });
     if (!ad) return res.status(404).json({ message: 'Ad not found' });
-    res.json({ message: 'View recorded', views_count: ad.views_count });
+
+    // Get/create AdView — returns the doc BEFORE the increment (null = brand new)
+    const prevView = await AdView.findOneAndUpdate(
+      { ad_id: id, user_id: userId },
+      { $inc: { view_count: 1 } },
+      { upsert: true, new: false, setDefaultsOnInsert: true }
+    );
+
+    const isFirstView = !prevView;
+    const alreadyRewarded = prevView?.rewarded || false;
+    const isOwnAd = String(ad.user_id) === String(userId);
+
+    let rewarded = false;
+    const rewardAmount = Number(ad.coins_reward) || 10;
+
+    if (!alreadyRewarded && !isOwnAd) {
+      // Deduct from vendor wallet only if they have enough balance
+      const vendorWallet = await Wallet.findOneAndUpdate(
+        { user_id: ad.user_id, balance: { $gte: rewardAmount } },
+        { $inc: { balance: -rewardAmount } },
+        { new: true }
+      );
+
+      if (vendorWallet) {
+        // Credit member wallet
+        await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: rewardAmount }, $setOnInsert: { currency: 'Coins' } },
+          { upsert: true, new: true }
+        );
+
+        await createWalletTransaction({
+          user_id: ad.user_id,
+          vendor_id: ad.vendor_id,
+          ad_id: ad._id,
+          type: 'AD_VIEW_DEDUCTION',
+          amount: rewardAmount,
+          status: 'SUCCESS',
+          description: `Deducted ${rewardAmount} coins from ad budget for view reward`,
+        });
+
+        await createWalletTransaction({
+          user_id: userId,
+          vendor_id: ad.vendor_id,
+          ad_id: ad._id,
+          type: 'AD_VIEW_REWARD',
+          amount: rewardAmount,
+          status: 'SUCCESS',
+          description: `Earned ${rewardAmount} coins for viewing ad`,
+        });
+
+        // Mark AdView as rewarded
+        await AdView.findOneAndUpdate(
+          { ad_id: id, user_id: userId },
+          { $set: { rewarded: true, coins_rewarded: rewardAmount, rewarded_at: new Date() } }
+        );
+
+        rewarded = true;
+      }
+    }
+
+    // Update Ad counters — always bump views_count, unique on first view
+    const adInc = { views_count: 1 };
+    if (rewarded) adInc.total_coins_spent = rewardAmount;
+    if (isFirstView) adInc.unique_views_count = 1;
+    const updatedAd = await Ad.findByIdAndUpdate(id, { $inc: adInc }, { new: true });
+
+    return res.json({
+      message: rewarded ? 'View recorded and reward credited' : 'View recorded',
+      view_count: updatedAd.views_count,
+      rewarded,
+      reward: rewarded ? rewardAmount : 0,
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('[Ad] recordAdView error:', error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
