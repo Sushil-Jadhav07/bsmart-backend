@@ -16,13 +16,12 @@ const {
   recordClick,
   likeAd,
   dislikeAd,
-  saveAd,
-  unsaveAd,
   deleteAd,
   updateAdMetadata,
   searchAds,
   getAllGalleryImages
 } = require('../controllers/ad.controller');
+const { saveAd, unsaveAd } = require('../controllers/saved.controller');
 const {
   addAdComment,
   getAdComments,

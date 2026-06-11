@@ -20,6 +20,8 @@ const {
   unlikeComment
 } = require('../controllers/promoteReel.controller');
 
+const { savePromoteReel, unsavePromoteReel } = require('../controllers/saved.controller');
+
 /**
  * @swagger
  * tags:
@@ -587,5 +589,63 @@ router.post('/comments/:commentId/like', verifyToken, likeComment);
  *         description: Comment not found
  */
 router.post('/comments/:commentId/unlike', verifyToken, unlikeComment);
+
+/**
+ * @swagger
+ * /api/promote-reels/{id}/save:
+ *   post:
+ *     summary: Save a promote reel
+ *     tags: [PromoteReels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Promote reel saved
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Promote reel saved"
+ *               saved: true
+ *               saved_count: 5
+ *       404:
+ *         description: Promote reel not found
+ *       409:
+ *         description: Already saved
+ */
+router.post('/:id/save', verifyToken, savePromoteReel);
+
+/**
+ * @swagger
+ * /api/promote-reels/{id}/unsave:
+ *   post:
+ *     summary: Unsave a promote reel
+ *     tags: [PromoteReels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Promote reel unsaved
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Promote reel unsaved"
+ *               saved: false
+ *               saved_count: 4
+ *       400:
+ *         description: Not saved yet
+ */
+router.post('/:id/unsave', verifyToken, unsavePromoteReel);
 
 module.exports = router;

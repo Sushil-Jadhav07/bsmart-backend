@@ -53,6 +53,7 @@ const chatRoutes             = require('./src/routes/chat.routes');
 const notificationPrefRoutes  = require('./src/routes/notificationPreference.routes');
 const tweetRoutes           = require('./src/routes/tweet.routes');
 const promoteReelRoutes = require('./src/routes/promoteReel.routes');
+const savedRoutes          = require('./src/routes/saved.routes');
 const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <- PUSH NOTIFICATIONS
 
 const app    = express();
@@ -280,6 +281,7 @@ app.use('/api/chat',              chatRoutes);
 app.use('/api/notification-preferences', notificationPrefRoutes);
 app.use('/api/tweets',           tweetRoutes);
 app.use('/api/promote-reels', promoteReelRoutes);
+app.use('/api/saved',          savedRoutes);
 app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
 
 
