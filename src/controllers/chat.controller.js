@@ -7,6 +7,7 @@ const Post = require('../models/Post');
 const Ad = require('../models/Ad');
 const Tweet = require('../models/tweet.model');
 const { sendPushNotification } = require('../services/pushNotification.service');
+const { getFileUrl: resolveUploadedFileUrl, getFileName: getUploadedFileName } = require('../config/multer');
 
 const USER_SELECT = 'username full_name avatar_url';
 
@@ -1367,7 +1368,6 @@ exports.uploadChatMedia = async (req, res) => {
       return res.status(400).json({ message: 'Please upload at least one file' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
     const media = uploadedFiles.map((file) => {
       let mediaType = 'none';
 
@@ -1382,10 +1382,10 @@ exports.uploadChatMedia = async (req, res) => {
       }
 
       return {
-        mediaUrl: file.location || `${baseUrl}/uploads/${file.filename}`,
+        mediaUrl: resolveUploadedFileUrl(req, file),
         mediaType,
         originalName: file.originalname,
-        filename: file.filename,
+        filename: getUploadedFileName(file),
         mimetype: file.mimetype,
         size: file.size,
       };
@@ -1426,8 +1426,7 @@ exports.uploadVoiceMessage = async (req, res) => {
       return res.status(400).json({ message: 'No audio file uploaded' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const audioUrl = req.file.location || `${baseUrl}/uploads/${req.file.filename}`;
+    const audioUrl = resolveUploadedFileUrl(req, req.file);
     const audioDuration = req.body.duration ? parseFloat(req.body.duration) : null;
 
     const message = await Message.create({
