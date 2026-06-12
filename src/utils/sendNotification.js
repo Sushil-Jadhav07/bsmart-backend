@@ -38,11 +38,15 @@ const buildFcmTitle = (type, message, senderName) => {
       comment_like: `${senderName} liked your comment`,
       post_save: `${senderName} saved your post`,
       post_tag: `${senderName} tagged you in a post`,
+      reel_tag: `${senderName} tagged you in a reel`,
+      ad_tag: `${senderName} tagged you in an ad`,
+      promote_reel_tag: `${senderName} tagged you in a promote reel`,
       ad_comment: `${senderName} commented on your ad`,
       ad_like: `${senderName} liked your ad`,
       ad_save: `${senderName} saved your ad`,
       story_view: `${senderName} viewed your story`,
       mention: `${senderName} mentioned you`,
+      chat_message: `${senderName} sent you a message`,
     };
     if (titles[type]) return titles[type];
   }

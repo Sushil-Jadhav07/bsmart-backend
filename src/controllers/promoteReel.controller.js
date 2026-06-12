@@ -210,6 +210,30 @@ exports.createPromoteReel = async (req, res) => {
       setImmediate(() => runPromoteHlsInBackground(req.app, doc._id, firstMedia.fileName));
     }
 
+    // After responding — notify tagged users
+    if (Array.isArray(people_tags) && people_tags.length > 0) {
+      setImmediate(async () => {
+        try {
+          const creator = await User.findById(req.userId).select('username').lean();
+          for (const tag of people_tags) {
+            const taggedUserId = tag?.user_id || tag;
+            if (taggedUserId && String(taggedUserId) !== String(req.userId)) {
+              sendNotification(req.app, {
+                recipient:  taggedUserId,
+                sender:     req.userId,
+                type:       'promote_reel_tag',
+                message:    `${creator.username} tagged you in a promote reel`,
+                link:       `/promote-reels/${doc._id}`,
+                senderName: creator.username,
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.error('[PromoteReel] tag notification error:', e.message);
+        }
+      });
+    }
+
   } catch (error) {
     console.error('[PromoteReel] createPromoteReel error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

@@ -789,6 +789,30 @@ exports.createAd = async (req, res) => {
       }
     });
 
+    // After responding — notify tagged users
+    if (Array.isArray(tagged_users) && tagged_users.length > 0) {
+      setImmediate(async () => {
+        try {
+          const creator = await User.findById(userId).select('username').lean();
+          for (const tag of tagged_users) {
+            const taggedUserId = tag?.user_id || tag;
+            if (taggedUserId && String(taggedUserId) !== String(userId)) {
+              sendNotification(req.app, {
+                recipient:  taggedUserId,
+                sender:     userId,
+                type:       'ad_tag',
+                message:    `${creator.username} tagged you in an ad`,
+                link:       `/ads/${ad._id}`,
+                senderName: creator.username,
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.error('[Ad] tag notification error:', e.message);
+        }
+      });
+    }
+
   } catch (error) {
     console.error('[Ad] createAd error:', error);
     if (error.name === 'ValidationError') {

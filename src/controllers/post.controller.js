@@ -407,15 +407,17 @@ exports.createPost = async (req, res) => {
       const creator = await User.findById(req.userId).select('username').lean();
 
       if (Array.isArray(people_tags) && people_tags.length > 0) {
-        for (const taggedUserId of people_tags) {
-          if (taggedUserId.toString() !== req.userId.toString()) {
-            await sendNotification(req.app, {
-              recipient: taggedUserId,
-              sender:    req.userId,
-              type:      'post_tag',
-              message:   `${creator.username} tagged you in a post`,
-              link:      `/posts/${post._id}`,
-            });
+        for (const tag of people_tags) {
+          const taggedUserId = tag?.user_id || tag;
+          if (taggedUserId && String(taggedUserId) !== String(req.userId)) {
+            sendNotification(req.app, {
+              recipient:   taggedUserId,
+              sender:      req.userId,
+              type:        'post_tag',
+              message:     `${creator.username} tagged you in a post`,
+              link:        `/posts/${post._id}`,
+              senderName:  creator.username,
+            }).catch(() => {});
           }
         }
       }
@@ -608,8 +610,24 @@ exports.createReel = async (req, res) => {
     try {
       const creator = await User.findById(req.userId).select('username').lean();
       await notifySubscribers(req.app, req.userId, creator.username, post._id, 'reel');
+
+      if (Array.isArray(people_tags) && people_tags.length > 0) {
+        for (const tag of people_tags) {
+          const taggedUserId = tag?.user_id || tag;
+          if (taggedUserId && String(taggedUserId) !== String(req.userId)) {
+            sendNotification(req.app, {
+              recipient:  taggedUserId,
+              sender:     req.userId,
+              type:       'reel_tag',
+              message:    `${creator.username} tagged you in a reel`,
+              link:       `/posts/${post._id}`,
+              senderName: creator.username,
+            }).catch(() => {});
+          }
+        }
+      }
     } catch (notifErr) {
-      console.error('[Post] Reel subscriber notification error:', notifErr.message);
+      console.error('[Post] Reel notification error:', notifErr.message);
     }
 
     const populatedPost = await post.populate('user_id', 'username full_name avatar_url followers_count following_count gender location');

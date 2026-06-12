@@ -22,7 +22,15 @@ const notificationSchema = new mongoose.Schema({
       'story_view', 'login_alert',
       'follow_request', 'follow_accepted',
 
-      // ── NEW types ──────────────────────────────────────────────────────────
+      // ── Tag / mention types ────────────────────────────────────────────────
+      'reel_tag',          // tagged in a reel
+      'ad_tag',            // tagged in an ad
+      'promote_reel_tag',  // tagged in a promote reel
+
+      // ── Chat ──────────────────────────────────────────────────────────────
+      'chat_message',      // new chat message
+
+      // ── Subscriber types ──────────────────────────────────────────────────
       // Fired to subscribers when a watched user/vendor publishes content
       'subscribed_user_post',   // watched user posted a photo/video post
       'subscribed_user_reel',   // watched user posted a reel
