@@ -3,6 +3,15 @@ const { sendPushNotification } = require('../services/pushNotification.service')
 const admin = require('../lib/firebase');
 const User = require('../models/User');
 
+const LOGO_URL = (() => {
+  const cf = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+  if (cf) return `${cf}/assets/bsmart_logo.png`;
+  const base = process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in';
+  return `${base}/assets/bsmart_logo.png`;
+})();
+
 const sendFcmIfAvailable = async (recipientUserId, title, body, data = {}) => {
   try {
     const user = await User.findById(recipientUserId).select('fcm_token');
@@ -10,9 +19,13 @@ const sendFcmIfAvailable = async (recipientUserId, title, body, data = {}) => {
 
     await admin.messaging().send({
       token: user.fcm_token,
-      notification: { title, body },
+      notification: { title, body, image: LOGO_URL },
       android: {
-        notification: { channel_id: 'bsmart_channel' },
+        notification: { channel_id: 'bsmart_channel', icon: 'notification_icon' },
+      },
+      apns: {
+        payload: { aps: { 'mutable-content': 1 } },
+        fcm_options: { image: LOGO_URL },
       },
       data: {
         type: String(data.type || ''),
@@ -31,6 +44,8 @@ const buildFcmTitle = (type, message, senderName) => {
     const titles = {
       like: `${senderName} liked your post`,
       comment: `${senderName} commented on your post`,
+      tweet_like: `${senderName} liked your tweet`,
+      tweet_comment: `${senderName} commented on your tweet`,
       follow_request: `${senderName} requested to follow you`,
       follow_accepted: `${senderName} accepted your follow request`,
       follow: `${senderName} started following you`,

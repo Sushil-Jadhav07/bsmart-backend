@@ -154,11 +154,19 @@ const sendPushNotification = async (recipientId, payload) => {
     // ── 1. Android APK — FCM via AWS SNS ─────────────────────────────────────
     if (user.sns_endpoint_arn) {
       try {
+        const logoUrl = (() => {
+          const cf = process.env.CLOUDFRONT_BASE_URL
+            ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+            : null;
+          if (cf) return `${cf}/assets/bsmart_logo.png`;
+          return `${process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in'}/assets/bsmart_logo.png`;
+        })();
         const message = JSON.stringify({
           GCM: JSON.stringify({
             notification: {
               title,
               body,
+              icon: logoUrl,
               click_action: 'FLUTTER_NOTIFICATION_CLICK',
             },
             data: { link, type, title, body, senderName, senderAvatar },
@@ -187,7 +195,18 @@ const sendPushNotification = async (recipientId, payload) => {
     // ── 2. Web Browser — VAPID Web Push ──────────────────────────────────────
     if (VAPID_READY && user.web_push_subscription) {
       try {
-        const webPayload = JSON.stringify({ title, body, link, type, senderName, senderAvatar });
+        const logoUrl = (() => {
+          const cf = process.env.CLOUDFRONT_BASE_URL
+            ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+            : null;
+          if (cf) return `${cf}/assets/bsmart_logo.png`;
+          return `${process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in'}/assets/bsmart_logo.png`;
+        })();
+        const webPayload = JSON.stringify({
+          title, body, link, type, senderName, senderAvatar,
+          icon: logoUrl,
+          badge: logoUrl,
+        });
         await webpush.sendNotification(user.web_push_subscription, webPayload);
         console.log(`[Push] Web push sent to user ${recipientId}`);
       } catch (err) {

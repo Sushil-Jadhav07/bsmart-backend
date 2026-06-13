@@ -203,6 +203,13 @@ app.use('/uploads', (req, res, next) => {
   next();
 });
 
+app.use('/assets', express.static(path.join(__dirname, 'src/asset'), {
+  setHeaders: (res) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+}));
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.m3u8')) {

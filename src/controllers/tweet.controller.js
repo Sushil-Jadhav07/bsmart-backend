@@ -6,6 +6,7 @@ const TweetComment = require('../models/tweetComment.model');
 const Follow = require('../models/Follow');
 const User = require('../models/User');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
+const sendNotification = require('../utils/sendNotification');
 
 const TWEET_AUTHOR_SELECT = 'username full_name avatar_url';
 
@@ -642,6 +643,19 @@ const likeTweet = async (req, res) => {
     await tweet.save();
 
     await sendTweetLikeEvent(req, tweet, req.userId);
+
+    if (tweet.author.toString() !== req.userId.toString()) {
+      const liker = await User.findById(req.userId).select('username avatar_url').lean();
+      sendNotification(req.app, {
+        recipient: tweet.author,
+        sender: req.userId,
+        type: 'tweet_like',
+        message: `${liker?.username || 'Someone'} liked your tweet`,
+        link: `/tweets/${tweet._id}`,
+        senderName: liker?.username || '',
+        senderAvatar: liker?.avatar_url || '',
+      }).catch(() => {});
+    }
 
     return res.json({
       liked: true,

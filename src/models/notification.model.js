@@ -22,6 +22,10 @@ const notificationSchema = new mongoose.Schema({
       'story_view', 'login_alert',
       'follow_request', 'follow_accepted',
 
+      // ── Tweet types ───────────────────────────────────────────────────────
+      'tweet_like',        // liked a tweet
+      'tweet_comment',     // commented on a tweet
+
       // ── Tag / mention types ────────────────────────────────────────────────
       'reel_tag',          // tagged in a reel
       'ad_tag',            // tagged in an ad

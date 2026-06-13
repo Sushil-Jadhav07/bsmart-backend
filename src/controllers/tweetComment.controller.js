@@ -85,14 +85,18 @@ exports.addTweetComment = async (req, res) => {
           type: 'comment_reply',
           message: `${user.username} replied to your comment`,
           link: `/tweets/${tweetId}`,
+          senderName: user.username,
+          senderAvatar: user.avatar_url || '',
         });
       } else if (tweet.author.toString() !== userId.toString()) {
         await sendNotification(req.app, {
           recipient: tweet.author,
           sender: userId,
-          type: 'comment',
+          type: 'tweet_comment',
           message: `${user.username} commented on your tweet`,
           link: `/tweets/${tweetId}`,
+          senderName: user.username,
+          senderAvatar: user.avatar_url || '',
         });
       }
     } catch (notifErr) {
@@ -196,6 +200,7 @@ exports.likeTweetComment = async (req, res) => {
             type: 'comment_like',
             message: `${liker.username} liked your comment`,
             link: `/tweets/${comment.tweet_id}`,
+            senderName: liker.username,
           });
         }
       }
