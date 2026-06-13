@@ -1,7 +1,8 @@
-const PromoteReel = require('../models/PromoteReel');
-const Comment     = require('../models/Comment');
-const User        = require('../models/User');
-const sendNotification = require('../utils/sendNotification');
+const PromoteReel       = require('../models/PromoteReel');
+const Comment           = require('../models/Comment');
+const User              = require('../models/User');
+const SavedPromoteReel  = require('../models/SavedPromoteReel');
+const sendNotification  = require('../utils/sendNotification');
 const { canViewAuthorContent, getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
@@ -84,7 +85,7 @@ const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
 
 
 // ─── Helper: transform a promote reel doc into the API response shape ──────
-const transformPromoteReel = (doc, baseUrl, currentUserId = null) => {
+const transformPromoteReel = (doc, baseUrl, currentUserId = null, savedSet = null) => {
   const obj = doc.toObject ? doc.toObject() : doc;
 
   const toAbsolute = (val) => {
@@ -131,6 +132,8 @@ const transformPromoteReel = (doc, baseUrl, currentUserId = null) => {
   obj.is_liked_by_me = currentUserId && Array.isArray(obj.likes)
     ? obj.likes.some(id => id.toString() === currentUserId.toString())
     : false;
+
+  obj.is_saved_by_me = savedSet ? savedSet.has(String(obj._id)) : false;
 
   // Normalise comment counts
   const raw = obj.commentsCount ?? obj.comments_count ?? obj.commentCount ?? obj.comment_count ?? 0;
@@ -254,14 +257,18 @@ exports.listPromoteReels = async (req, res) => {
       query.user_id = { $nin: blockedPrivateUserIds };
     }
 
-    const docs = await PromoteReel.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate');
+    const [docs, savedRecords] = await Promise.all([
+      PromoteReel.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
+      req.userId ? SavedPromoteReel.find({ user_id: req.userId }).select('promote_reel_id').lean() : [],
+    ]);
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const data    = docs.map(d => transformPromoteReel(d, baseUrl, req.userId));
+    const savedSet = new Set(savedRecords.map((s) => String(s.promote_reel_id)));
+    const baseUrl  = `${req.protocol}://${req.get('host')}`;
+    const data     = docs.map(d => transformPromoteReel(d, baseUrl, req.userId, savedSet));
 
     res.json({ page, limit, data });
   } catch (error) {
@@ -274,10 +281,11 @@ exports.listPromoteReels = async (req, res) => {
 // GET /api/promote-reels/:id
 exports.getPromoteReelById = async (req, res) => {
   try {
-    const [doc, commentsRaw] = await Promise.all([
+    const [doc, commentsRaw, savedRecord] = await Promise.all([
       PromoteReel.findOne({ _id: req.params.id, isDeleted: false })
         .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate'),
-      Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 })
+      Comment.find({ post_id: req.params.id }).sort({ createdAt: -1 }),
+      req.userId ? SavedPromoteReel.exists({ user_id: req.userId, promote_reel_id: req.params.id }) : null,
     ]);
 
     if (!doc) {
@@ -290,8 +298,9 @@ exports.getPromoteReelById = async (req, res) => {
       return res.status(403).json({ message: 'This account is private. Follow to view content.' });
     }
 
+    const savedSet = new Set(savedRecord ? [String(req.params.id)] : []);
     const baseUrl     = `${req.protocol}://${req.get('host')}`;
-    const transformed = transformPromoteReel(doc, baseUrl, req.userId);
+    const transformed = transformPromoteReel(doc, baseUrl, req.userId, savedSet);
     transformed.comments = commentsRaw.map(c => {
       const obj = c.toObject ? c.toObject() : c;
       obj.comment_id = obj._id;
@@ -333,11 +342,15 @@ exports.updatePromoteReel = async (req, res) => {
 
     await doc.save();
 
-    const populated = await PromoteReel.findById(doc._id)
-      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+    const [populated, savedRecord] = await Promise.all([
+      PromoteReel.findById(doc._id)
+        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
+      SavedPromoteReel.exists({ user_id: req.userId, promote_reel_id: doc._id }),
+    ]);
 
+    const savedSet = new Set(savedRecord ? [String(doc._id)] : []);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.json(transformPromoteReel(populated, baseUrl, req.userId));
+    res.json(transformPromoteReel(populated, baseUrl, req.userId, savedSet));
   } catch (error) {
     console.error('[PromoteReel] updatePromoteReel error:', error);
     if (error.kind === 'ObjectId') {

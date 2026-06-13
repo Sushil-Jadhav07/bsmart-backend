@@ -214,13 +214,18 @@ exports.getAdsFeed = async (req, res) => {
       adQuery.user_id = { $nin: blockedPrivateUserIds };
     }
 
-    const ads = await Ad.find(adQuery)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
-      .lean();
+    const [ads, savedAdRecords] = await Promise.all([
+      Ad.find(adQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('vendor_id', 'business_name logo_url validated')
+        .populate('user_id', 'username full_name avatar_url gender location isPrivate')
+        .lean(),
+      SavedAd.find({ user_id: req.userId }).select('ad_id').lean(),
+    ]);
+
+    const savedAdSet = new Set(savedAdRecords.map((s) => String(s.ad_id)));
 
     const data = ads.map((ad) => {
       const authorId = String(ad?.user_id?._id || ad?.user_id?.id || '');
@@ -228,10 +233,10 @@ exports.getAdsFeed = async (req, res) => {
       const isLikedByMe = hasUserInList(ad?.likes, req.userId);
       return {
         ...ad,
-        // FIX: resolve all media URLs to CloudFront before returning to client
         media: resolveAdMedia(ad.media),
         likes_count: Number(ad?.likes_count || (Array.isArray(ad?.likes) ? ad.likes.length : 0)),
         is_liked_by_me: isLikedByMe,
+        is_saved_by_me: savedAdSet.has(String(ad._id)),
         is_author_followed_by_me: isAuthorFollowed,
         can_view_by_me: !ad?.user_id?.isPrivate || authorId === viewerId || isAuthorFollowed,
       };
@@ -265,12 +270,14 @@ exports.getAdById = async (req, res) => {
       return res.status(403).json({ message: 'This account is private. Follow to view ads.' });
     }
 
+    const isSavedByMe = !!(await SavedAd.exists({ user_id: req.userId, ad_id: id }));
+
     res.json({
       ...ad,
-      // FIX: resolve all media URLs to CloudFront before returning to client
       media: resolveAdMedia(ad.media),
       likes_count: Number(ad?.likes_count || (Array.isArray(ad?.likes) ? ad.likes.length : 0)),
       is_liked_by_me: hasUserInList(ad?.likes, req.userId),
+      is_saved_by_me: isSavedByMe,
     });
   } catch (error) {
     console.error('[Ad] getAdById error:', error);
@@ -843,17 +850,23 @@ exports.getUserAdsWithComments = async (req, res) => {
       filter.category = String(category).trim();
     }
 
-    const ads = await Ad.find(filter)
-      .sort({ createdAt: -1 })
-      .populate('vendor_id', 'business_name logo_url validated')
-      .populate('user_id', 'username full_name avatar_url gender location isPrivate')
-      .lean();
+    const [ads, savedAdRecords] = await Promise.all([
+      Ad.find(filter)
+        .sort({ createdAt: -1 })
+        .populate('vendor_id', 'business_name logo_url validated')
+        .populate('user_id', 'username full_name avatar_url gender location isPrivate')
+        .lean(),
+      req.userId ? SavedAd.find({ user_id: req.userId }).select('ad_id').lean() : [],
+    ]);
+
+    const savedAdSet = new Set(savedAdRecords.map((s) => String(s.ad_id)));
 
     const data = ads.map((ad) => ({
       ...ad,
       likes_count: Number(ad?.likes_count || (Array.isArray(ad?.likes) ? ad.likes.length : 0)),
       comments_count: Number(ad?.comments_count || 0),
       is_liked_by_me: req.userId ? hasUserInList(ad?.likes, req.userId) : false,
+      is_saved_by_me: savedAdSet.has(String(ad._id)),
     }));
 
     return res.json({ ads: data, total: data.length });
