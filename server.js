@@ -18,6 +18,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const connectDB = require('./src/config/db');
+const User = require('./src/models/User');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./src/config/swagger');
 const passport = require('./src/config/passport');
@@ -97,10 +98,21 @@ const io = new Server(server, {
 // userId → socketId mapping (in-memory)
 const onlineUsers = new Map();
 
-const emitOnlineUsersUpdate = () => {
-  io.emit('online-users-updated', {
-    onlineUserIds: Array.from(onlineUsers.keys()),
-  });
+const emitOnlineUsersUpdate = async () => {
+  const allIds = Array.from(onlineUsers.keys());
+  try {
+    const hidden = await User.find(
+      { _id: { $in: allIds }, 'privacy.activity_status.show_online_status': false },
+      { _id: 1 }
+    ).lean();
+    const hiddenSet = new Set(hidden.map((u) => String(u._id)));
+    io.emit('online-users-updated', {
+      onlineUserIds: allIds.filter((id) => !hiddenSet.has(id)),
+    });
+  } catch {
+    // DB unavailable — fall back to unfiltered list rather than dropping the event
+    io.emit('online-users-updated', { onlineUserIds: allIds });
+  }
 };
 
 io.on('connection', (socket) => {
@@ -153,8 +165,19 @@ io.on('connection', (socket) => {
     socket.to(data.conversationId).emit('user-stop-typing', data);
   });
 
-  socket.on('message-seen', (data) => {
-    socket.to(data.conversationId).emit('message-seen-update', data);
+  socket.on('message-seen', async (data) => {
+    try {
+      if (data.userId) {
+        const reader = await User.findById(
+          data.userId,
+          { 'privacy.activity_status.show_read_receipts': 1 }
+        ).lean();
+        if (reader?.privacy?.activity_status?.show_read_receipts === false) return;
+      }
+      socket.to(data.conversationId).emit('message-seen-update', data);
+    } catch {
+      socket.to(data.conversationId).emit('message-seen-update', data);
+    }
   });
 
   socket.on('message-deleted', (data) => {

@@ -303,7 +303,8 @@ exports.createConversation = async (req, res) => {
 
 exports.getOnlineUsers = async (req, res) => {
   try {
-    const onlineUsers = req.app.get('onlineUsers');
+    const requesterId  = String(req.userId);
+    const onlineUsers  = req.app.get('onlineUsers');
     const onlineUserIds = onlineUsers instanceof Map
       ? Array.from(onlineUsers.entries())
           .filter(([, socketIds]) => {
@@ -312,13 +313,28 @@ exports.getOnlineUsers = async (req, res) => {
           })
           .map(([userId]) => String(userId))
       : [];
+
     const ids = typeof req.query.ids === 'string'
       ? normalizeUniqueIds(req.query.ids.split(',').map((id) => id.trim()).filter(Boolean))
       : [];
 
-    const filteredIds = ids.length
+    const candidateIds = ids.length
       ? ids.filter((id) => onlineUserIds.includes(String(id)))
       : onlineUserIds;
+
+    // Filter out users who have disabled online status visibility.
+    // The requester always sees themselves (they know they're online).
+    const hiddenUsers = await User.find(
+      {
+        _id: { $in: candidateIds },
+        'privacy.activity_status.show_online_status': false,
+      },
+      { _id: 1 }
+    ).lean();
+    const hiddenSet = new Set(hiddenUsers.map((u) => String(u._id)));
+    const filteredIds = candidateIds.filter(
+      (id) => id === requesterId || !hiddenSet.has(String(id))
+    );
 
     res.json({ onlineUserIds: filteredIds });
   } catch (error) {
@@ -1178,17 +1194,24 @@ exports.markMessageSeen = async (req, res) => {
       return res.status(error.status).json({ message: error.message });
     }
 
+    // Check whether the reader allows others to see read receipts
+    const readerPrivacy = await User.findById(userId, { 'privacy.activity_status.show_read_receipts': 1 }).lean();
+    const showReadReceipts = readerPrivacy?.privacy?.activity_status?.show_read_receipts !== false;
+
     const updatedMessage = await populateMessage(Message.findByIdAndUpdate(
       messageId,
       {
         $addToSet: { seenBy: userId },
-        ...(String(message.sender) !== String(userId) ? { $set: { seenAt: new Date() } } : {}),
+        // Only stamp seenAt when the reader exposes read receipts and they're not the sender
+        ...(showReadReceipts && String(message.sender) !== String(userId)
+          ? { $set: { seenAt: new Date() } }
+          : {}),
       },
       { new: true }
     ));
 
     const io = req.app.get('io');
-    if (io) {
+    if (io && showReadReceipts) {
       io.to(String(message.conversationId)).emit('message-seen-update', {
         conversationId: String(message.conversationId),
         messageId: String(message._id),
