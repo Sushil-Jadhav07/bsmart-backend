@@ -313,7 +313,7 @@ router.get('/', auth, listUsersProfiles);
  *       500:
  *         description: Server error
  */
-router.get('/:id/profile-content', getUserProfileContent);
+router.get('/:id/profile-content', optionalAuth, getUserProfileContent);
 
 /**
  * @swagger
@@ -430,7 +430,7 @@ router.get('/:id', optionalAuth, getUserById);
  *       500:
  *         description: Server error
  */
-router.get('/:id/posts', getUserPostsDetails);
+router.get('/:id/posts', optionalAuth, getUserPostsDetails);
 router.get('/:id/followers', optionalAuth, getFollowers);
 router.get('/:id/following', optionalAuth, getFollowing);
 router.get('/:id/saved', auth, getSavedPostsByUser);

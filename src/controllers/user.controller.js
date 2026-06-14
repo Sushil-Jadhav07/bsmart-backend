@@ -276,19 +276,35 @@ exports.getUserPostsDetails = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ message: 'Invalid user id' });
     }
+
+    const owner = await User.findById(userId).select('privacy').lean();
+    if (!owner) return res.status(404).json({ message: 'User not found' });
+
+    const viewerIdPD = req.userId || null;
+    const isOwnerPD  = viewerIdPD && String(viewerIdPD) === String(userId);
+    let privacyPD = { posts: true, pulse: true };
+    if (!isOwnerPD) {
+      privacyPD = await checkSections(viewerIdPD, owner, ['posts', 'pulse']);
+    }
+
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-    // Fetch posts, promote reels, and tweets in parallel
     const [postsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
-      Post.find({ user_id: userId, isDeleted: { $ne: true } })
-        .sort({ createdAt: -1 })
-        .populate('user_id', 'username full_name avatar_url followers_count following_count gender location'),
-      PromoteReel.find({ user_id: userId, isDeleted: { $ne: true } })
-        .sort({ createdAt: -1 })
-        .populate('user_id', 'username full_name avatar_url'),
-      Tweet.find({ author: userId, isDeleted: false, parentTweet: null })
-        .sort({ createdAt: -1 })
-        .populate('author', 'username full_name avatar_url'),
+      privacyPD.posts
+        ? Post.find({ user_id: userId, isDeleted: { $ne: true } })
+            .sort({ createdAt: -1 })
+            .populate('user_id', 'username full_name avatar_url followers_count following_count gender location')
+        : [],
+      privacyPD.pulse
+        ? PromoteReel.find({ user_id: userId, isDeleted: { $ne: true } })
+            .sort({ createdAt: -1 })
+            .populate('user_id', 'username full_name avatar_url')
+        : [],
+      privacyPD.posts
+        ? Tweet.find({ author: userId, isDeleted: false, parentTweet: null })
+            .sort({ createdAt: -1 })
+            .populate('author', 'username full_name avatar_url')
+        : [],
     ]);
 
     // Enrich posts with comments

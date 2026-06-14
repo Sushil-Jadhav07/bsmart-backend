@@ -2,7 +2,22 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const verifyToken = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
+
+// Decodes token when present but never blocks unauthenticated requests
+const optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select('_id role').lean();
+      if (user) { req.user = user; req.userId = user._id; }
+    }
+  } catch (_) { /* invalid/expired token — treat as unauthenticated */ }
+  next();
+};
 const { createStory, getStoriesFeed, getStoriesByUserId, getStoryItems, viewStoryItem, getStoryViews, getStoryItemViews, getStoriesArchive, deleteStory, deleteStoryItem, toggleStoryItemLike } = require('../controllers/story.controller');
 const { upload } = require('../config/multer');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
@@ -134,7 +149,7 @@ router.get('/feed', verifyToken, storiesFeedRateLimit, getStoriesFeed);
  *       404:
  *         description: User not found
  */
-router.get('/user/:userId', verifyToken, getStoriesByUserId);
+router.get('/user/:userId', optionalAuth, getStoriesByUserId);
 
 /**
  * @swagger
