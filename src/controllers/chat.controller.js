@@ -278,6 +278,26 @@ exports.createConversation = async (req, res) => {
     }
 
     if (!conversation) {
+      // ── Messaging privacy check before creating a new conversation ────────────
+      const recipientForPrivacy = await User.findById(participantId, { 'privacy.messaging_privacy': 1 }).lean();
+      const msgPrivacy = recipientForPrivacy?.privacy?.messaging_privacy || 'everyone';
+
+      if (msgPrivacy === 'nobody') {
+        return res.status(403).json({
+          message: "This user doesn't accept messages.",
+          code: 'MESSAGING_DISABLED',
+        });
+      }
+      if (msgPrivacy === 'followers_only') {
+        const senderFollowsRecipient = await Follow.exists({ follower_id: myId, followed_id: participantId });
+        if (!senderFollowsRecipient) {
+          return res.status(403).json({
+            message: 'You can only message this user if you follow them.',
+            code: 'MESSAGING_FOLLOWERS_ONLY',
+          });
+        }
+      }
+
       const [myFollow, participantFollow] = await Promise.all([
         Follow.exists({ follower_id: myId, followed_id: participantId }),
         Follow.exists({ follower_id: participantId, followed_id: myId }),
@@ -892,6 +912,34 @@ exports.createMessage = async (req, res) => {
 
     if (conversation.isRequest && conversation.requestStatus === 'pending' && String(conversation.requestedBy) !== String(userId)) {
       return res.status(403).json({ message: 'You cannot reply until this message request is accepted' });
+    }
+
+    // ── Messaging privacy check for direct (non-group) conversations ──────────
+    if (!conversation.isGroup) {
+      const recipientId = (conversation.participants || [])
+        .map(String)
+        .find((pid) => pid !== String(userId));
+
+      if (recipientId) {
+        const recipientPrivacy = await User.findById(recipientId, { 'privacy.messaging_privacy': 1 }).lean();
+        const msgPrivacy = recipientPrivacy?.privacy?.messaging_privacy || 'everyone';
+
+        if (msgPrivacy === 'nobody') {
+          return res.status(403).json({
+            message: "This user doesn't accept messages.",
+            code: 'MESSAGING_DISABLED',
+          });
+        }
+        if (msgPrivacy === 'followers_only') {
+          const senderFollows = await Follow.exists({ follower_id: userId, followed_id: recipientId });
+          if (!senderFollows) {
+            return res.status(403).json({
+              message: 'You can only message this user if you follow them.',
+              code: 'MESSAGING_FOLLOWERS_ONLY',
+            });
+          }
+        }
+      }
     }
 
     let replyTo = undefined;

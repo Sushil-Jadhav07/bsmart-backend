@@ -133,6 +133,16 @@ exports.getUserById = async (req, res) => {
       obj.vendor_id = vendor._id;
     }
 
+    // ── Flat privacy fields for frontend button/UI control ─────────────────────
+    const pv = obj.privacy || {};
+    obj.messaging_privacy     = pv.messaging_privacy || 'everyone';
+    obj.allow_follow_requests = pv.follow_settings?.allow_follow_requests !== false;
+    obj.activity_status = {
+      show_online_status:  pv.activity_status?.show_online_status  !== false,
+      show_last_seen:      pv.activity_status?.show_last_seen       !== false,
+      show_read_receipts:  pv.activity_status?.show_read_receipts   !== false,
+    };
+
     if (req.user?.role === 'admin') {
       const [summaryAgg] = await Post.aggregate([
         {
@@ -230,6 +240,16 @@ exports.getUserByUsername = async (req, res) => {
     if (vendor) {
       obj.vendor_id = vendor._id;
     }
+
+    // ── Flat privacy fields for frontend button/UI control ─────────────────────
+    const pvByUsername = obj.privacy || {};
+    obj.messaging_privacy     = pvByUsername.messaging_privacy || 'everyone';
+    obj.allow_follow_requests = pvByUsername.follow_settings?.allow_follow_requests !== false;
+    obj.activity_status = {
+      show_online_status:  pvByUsername.activity_status?.show_online_status  !== false,
+      show_last_seen:      pvByUsername.activity_status?.show_last_seen       !== false,
+      show_read_receipts:  pvByUsername.activity_status?.show_read_receipts   !== false,
+    };
 
     if (req.user?.role === 'admin') {
       const [summaryAgg] = await Post.aggregate([
