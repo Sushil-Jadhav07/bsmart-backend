@@ -167,14 +167,27 @@ exports.searchAll = async (req, res) => {
     const regex = buildRegex(q);
     const isObjectId = mongoose.Types.ObjectId.isValid(q);
     const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
+    const requesterId = req.userId ? new mongoose.Types.ObjectId(String(req.userId)) : null;
 
     const matchedUsers = await User.find({
       isDeleted: NOT_DELETED_FILTER,
-      $or: [
-        { username: regex },
-        { full_name: regex },
-        { location: regex },
-        ...(exactId ? [{ _id: exactId }] : []),
+      $and: [
+        // Text match
+        {
+          $or: [
+            { username: regex },
+            { full_name: regex },
+            { location: regex },
+            ...(exactId ? [{ _id: exactId }] : []),
+          ],
+        },
+        // Privacy gate — always include the requester themselves
+        {
+          $or: [
+            ...(requesterId ? [{ _id: requesterId }] : []),
+            { 'privacy.search_discovery.allow_search_by_username': { $ne: false } },
+          ],
+        },
       ],
     })
       .select('email googleId provider username full_name bio posts_count followers_count following_count is_active role avatar_url phone age gender location address company_details isDeleted deletedBy deletedAt createdAt updatedAt')
@@ -302,13 +315,13 @@ exports.searchReels = async (req, res) => {
     const isObjectId = mongoose.Types.ObjectId.isValid(q);
     const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
 
-    // Find users first to include their reels in search
+    // Find users first to include their reels in search (respects search_discovery privacy)
+    const reelRequester = req.userId ? new mongoose.Types.ObjectId(String(req.userId)) : null;
     const matchedUsers = await User.find({
       isDeleted: NOT_DELETED_FILTER,
-      $or: [
-        { username: regex },
-        { full_name: regex },
-        ...(exactId ? [{ _id: exactId }] : []),
+      $and: [
+        { $or: [{ username: regex }, { full_name: regex }, ...(exactId ? [{ _id: exactId }] : [])] },
+        { $or: [...(reelRequester ? [{ _id: reelRequester }] : []), { 'privacy.search_discovery.allow_search_by_username': { $ne: false } }] },
       ],
     }).select('_id').lean();
 
@@ -378,13 +391,13 @@ exports.searchPromoteReels = async (req, res) => {
     const isObjectId = mongoose.Types.ObjectId.isValid(q);
     const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
 
-    // Find users first
+    // Find users first (respects search_discovery privacy)
+    const prRequester = req.userId ? new mongoose.Types.ObjectId(String(req.userId)) : null;
     const matchedUsers = await User.find({
       isDeleted: NOT_DELETED_FILTER,
-      $or: [
-        { username: regex },
-        { full_name: regex },
-        ...(exactId ? [{ _id: exactId }] : []),
+      $and: [
+        { $or: [{ username: regex }, { full_name: regex }, ...(exactId ? [{ _id: exactId }] : [])] },
+        { $or: [...(prRequester ? [{ _id: prRequester }] : []), { 'privacy.search_discovery.allow_search_by_username': { $ne: false } }] },
       ],
     }).select('_id').lean();
 
@@ -455,13 +468,13 @@ exports.searchAds = async (req, res) => {
     const isObjectId = mongoose.Types.ObjectId.isValid(q);
     const exactId = isObjectId ? new mongoose.Types.ObjectId(q) : null;
 
-    // Find users first
+    // Find users first (respects search_discovery privacy)
+    const adRequester = req.userId ? new mongoose.Types.ObjectId(String(req.userId)) : null;
     const matchedUsers = await User.find({
       isDeleted: NOT_DELETED_FILTER,
-      $or: [
-        { username: regex },
-        { full_name: regex },
-        ...(exactId ? [{ _id: exactId }] : []),
+      $and: [
+        { $or: [{ username: regex }, { full_name: regex }, ...(exactId ? [{ _id: exactId }] : [])] },
+        { $or: [...(adRequester ? [{ _id: adRequester }] : []), { 'privacy.search_discovery.allow_search_by_username': { $ne: false } }] },
       ],
     }).select('_id').lean();
 

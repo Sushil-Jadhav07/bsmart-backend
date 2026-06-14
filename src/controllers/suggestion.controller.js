@@ -44,7 +44,8 @@ exports.getSuggestedUsers = async (req, res) => {
     const suggestedUsers = await User.find({
       _id: { $nin: excludeIds },
       isDeleted: { $ne: true },
-      is_active: true
+      is_active: true,
+      'privacy.search_discovery.appear_in_suggestions': { $ne: false },
     })
       .select('username full_name avatar_url followers_count bio role')
       .populate('vendor_profile', 'business_name logo_url')
@@ -54,8 +55,8 @@ exports.getSuggestedUsers = async (req, res) => {
 
     const formattedUsers = suggestedUsers.map(u => ({
       ...u,
-      avatar_url: u.avatar_url && !u.avatar_url.startsWith('http') 
-        ? `${baseUrl}/uploads/${u.avatar_url}` 
+      avatar_url: u.avatar_url && !u.avatar_url.startsWith('http')
+        ? `${baseUrl}/uploads/${u.avatar_url}`
         : u.avatar_url,
       vendor_details: u.role === 'vendor' ? u.vendor_profile : undefined
     }));
@@ -175,7 +176,8 @@ exports.getSuggestions = async (req, res) => {
       User.find({
         _id: { $nin: excludeIds },
         isDeleted: { $ne: true },
-        is_active: true
+        is_active: true,
+        'privacy.search_discovery.appear_in_suggestions': { $ne: false },
       })
         .select('username full_name avatar_url followers_count bio role')
         .populate('vendor_profile', 'business_name logo_url')
