@@ -1,12 +1,17 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const Member = require('../models/Member');
 const Vendor = require('../models/Vendor');
 const Otp = require('../models/Otp');
+const PhoneOtp = require('../models/PhoneOtp');
+const Session = require('../models/Session');
+const LoginHistory = require('../models/LoginHistory');
 const sendNotification = require('../utils/sendNotification');
 const { sendEmail } = require('../services/email.service');
 const { otpTemplate, passwordChangedTemplate } = require('../templates/email.templates');
@@ -14,6 +19,65 @@ const {
   sendWelcomeEmail,
   sendNewVendorAlert,
 } = require('./email.controller');
+
+// ─── SNS client for SMS OTP ───────────────────────────────────────────────────
+const snsClient = new SNSClient({
+  region: process.env.AWS_REGION || 'ap-south-1',
+  credentials: {
+    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+const toE164 = (phone) => {
+  const digits = phone.replace(/\D/g, '');
+  if (phone.startsWith('+')) return `+${digits}`;
+  if (digits.length === 10) return `+91${digits}`;
+  return `+${digits}`;
+};
+
+const sendLoginSmsOtp = async (phone, otp) => {
+  const command = new PublishCommand({
+    PhoneNumber: toE164(phone),
+    Message: `Your B-Smart login verification code is: ${otp}. Valid for 10 minutes. Do not share it.`,
+    MessageAttributes: {
+      'AWS.SNS.SMS.SMSType': { DataType: 'String', StringValue: 'Transactional' },
+    },
+  });
+  await snsClient.send(command);
+};
+
+// ─── Session / history helpers ────────────────────────────────────────────────
+const createSession = async (userId, token, req) => {
+  try {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const ua = req.headers['user-agent'] || '';
+    const deviceType = /mobile|android|iphone/i.test(ua) ? 'mobile' : 'web';
+    await Session.create({
+      user_id:     userId,
+      token_hash:  tokenHash,
+      device_name: ua.slice(0, 200),
+      device_type: deviceType,
+      ip:          req.ip || req.headers['x-forwarded-for'] || '',
+      location:    '',
+      last_active: new Date(),
+      expires_at:  new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+  } catch (err) {
+    console.error('[Auth] createSession error:', err.message);
+  }
+};
+
+const recordLoginHistory = (userId, req, status) => {
+  const ua = req.headers['user-agent'] || '';
+  LoginHistory.create({
+    user_id:     userId,
+    device_name: ua.slice(0, 200),
+    ip:          req.ip || req.headers['x-forwarded-for'] || '',
+    login_at:    new Date(),
+    status,
+  }).catch((err) => console.error('[Auth] recordLoginHistory error:', err.message));
+};
 
 const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -394,6 +458,7 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
+      recordLoginHistory(user._id, req, 'failed');
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
@@ -401,70 +466,90 @@ exports.login = async (req, res) => {
     if (bannedLogin) return;
 
     if (user.twoFA?.enabled) {
-      const normalizedEmail = user.email.toLowerCase();
+      const twoFAMethod = user.twoFA?.method || 'email';
 
       if (!otp) {
-        await Otp.deleteMany({ email: normalizedEmail, purpose: 'two_factor' });
-
-        const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-        await Otp.create({
-          email: normalizedEmail,
-          otp: generatedOtp,
-          purpose: 'two_factor',
-          expiresAt,
-        });
-
-        await sendEmail({
-          to: user.email,
-          subject: 'Your B-Smart login verification code',
-          html: otpTemplate({
-            full_name: user.full_name || '',
-            otp: generatedOtp,
-            purpose: 'two_factor',
-            expiresInMinutes: 10,
-          }),
-        });
-
-        return res.status(200).json({
-          requires_2fa: true,
-          message: 'A verification code has been sent to your email.',
-          email: user.email,
-          user: {
-            id: user._id,
-            email: user.email,
-            username: user.username,
-            full_name: user.full_name,
-            role: user.role,
-            twoFA: {
-              enabled: true,
+        if (twoFAMethod === 'sms') {
+          const phone = user.phone;
+          if (!phone) {
+            return res.status(400).json({ message: 'No phone number on file for SMS 2FA. Please use email method.' });
+          }
+          await PhoneOtp.deleteMany({ user_id: user._id, phone });
+          const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+          const expires_at = new Date(Date.now() + 10 * 60 * 1000);
+          await PhoneOtp.create({ user_id: user._id, phone, otp: generatedOtp, expires_at });
+          await sendLoginSmsOtp(phone, generatedOtp);
+          return res.status(200).json({
+            requires_2fa: true,
+            message: 'A verification code has been sent to your phone.',
+            user: {
+              id: user._id,
+              email: user.email,
+              username: user.username,
+              full_name: user.full_name,
+              role: user.role,
+              twoFA: { enabled: true, method: 'sms' },
             },
-          },
-        });
+          });
+        } else {
+          const normalizedEmail = user.email.toLowerCase();
+          await Otp.deleteMany({ email: normalizedEmail, purpose: 'two_factor' });
+          const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+          await Otp.create({ email: normalizedEmail, otp: generatedOtp, purpose: 'two_factor', expiresAt });
+          await sendEmail({
+            to: user.email,
+            subject: 'Your B-Smart login verification code',
+            html: otpTemplate({ full_name: user.full_name || '', otp: generatedOtp, purpose: 'two_factor', expiresInMinutes: 10 }),
+          });
+          return res.status(200).json({
+            requires_2fa: true,
+            message: 'A verification code has been sent to your email.',
+            email: user.email,
+            user: {
+              id: user._id,
+              email: user.email,
+              username: user.username,
+              full_name: user.full_name,
+              role: user.role,
+              twoFA: { enabled: true, method: 'email' },
+            },
+          });
+        }
       }
 
-      const record = await Otp.findOne({
-        email: normalizedEmail,
-        purpose: 'two_factor',
-        used: false,
-      }).sort({ createdAt: -1 });
-
-      if (!record) {
-        return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new login code.' });
+      // OTP provided — verify against the correct channel
+      if (twoFAMethod === 'sms') {
+        const phone = user.phone;
+        const record = await PhoneOtp.findOne({ user_id: user._id, phone, used: false }).sort({ createdAt: -1 });
+        if (!record) {
+          return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new login code.' });
+        }
+        if (new Date() > record.expires_at) {
+          await record.deleteOne();
+          return res.status(400).json({ message: 'OTP has expired. Please log in again to request a new code.' });
+        }
+        if (record.otp !== String(otp)) {
+          return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
+        }
+        record.used = true;
+        await record.save();
+      } else {
+        const normalizedEmail = user.email.toLowerCase();
+        const record = await Otp.findOne({ email: normalizedEmail, purpose: 'two_factor', used: false }).sort({ createdAt: -1 });
+        if (!record) {
+          return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new login code.' });
+        }
+        if (new Date() > record.expiresAt) {
+          await record.deleteOne();
+          return res.status(400).json({ message: 'OTP has expired. Please log in again to request a new code.' });
+        }
+        if (record.otp !== String(otp)) {
+          return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
+        }
+        record.used = true;
+        await record.save();
       }
-
-      if (new Date() > record.expiresAt) {
-        await record.deleteOne();
-        return res.status(400).json({ message: 'OTP has expired. Please log in again to request a new code.' });
-      }
-
-      if (record.otp !== String(otp)) {
-        return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
-      }
-
-      record.used = true;
-      await record.save();
     }
 
     const wallet = await Wallet.findOne({ user_id: user._id });
@@ -499,8 +584,12 @@ exports.login = async (req, res) => {
       }
     }
 
+    const token = generateToken(user._id);
+    await createSession(user._id, token, req);
+    recordLoginHistory(user._id, req, 'success');
+
     res.json({
-      token: generateToken(user._id),
+      token,
       user: {
         id: user._id,
         email: user.email,
@@ -512,9 +601,10 @@ exports.login = async (req, res) => {
         gender: user.gender,
         location: user.location,
         role: user.role,
-        isPrivate: user.isPrivate ?? false,   // ← ADDED
+        isPrivate: user.isPrivate ?? false,
         twoFA: {
-          enabled: !!user.twoFA?.enabled
+          enabled: !!user.twoFA?.enabled,
+          method:  user.twoFA?.method || 'email',
         },
         followers_count: user.followers_count,
         following_count: user.following_count,
@@ -569,7 +659,8 @@ exports.getMe = async (req, res) => {
     }
 
     userData.twoFA = {
-      enabled: !!user.twoFA?.enabled
+      enabled: !!user.twoFA?.enabled,
+      method:  user.twoFA?.method || 'email',
     };
 
     // isPrivate is already included via toObject() — ensure it's always a boolean
@@ -711,5 +802,93 @@ exports.forgotPasswordVerifyAndReset = async (req, res) => {
   } catch (err) {
     console.error('[Auth] forgotPasswordVerifyAndReset error:', err);
     return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ─── Session Management ───────────────────────────────────────────────────────
+
+/**
+ * GET /api/auth/sessions
+ * Returns all active sessions for the current user.
+ * The current session is flagged with isCurrent: true.
+ */
+exports.getSessions = async (req, res) => {
+  try {
+    const sessions = await Session.find({ user_id: req.userId, is_active: true })
+      .sort({ last_active: -1 })
+      .lean();
+
+    res.json({
+      sessions: sessions.map((s) => ({
+        _id:         s._id,
+        device_name: s.device_name,
+        device_type: s.device_type,
+        ip:          s.ip,
+        location:    s.location,
+        last_active: s.last_active,
+        created_at:  s.createdAt,
+        isCurrent:   req.tokenHash ? s.token_hash === req.tokenHash : false,
+      })),
+    });
+  } catch (err) {
+    console.error('[Auth] getSessions error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+/**
+ * DELETE /api/auth/sessions/:sessionId
+ * Revoke a specific session. Cannot revoke the current session.
+ */
+exports.deleteSession = async (req, res) => {
+  try {
+    const session = await Session.findOne({ _id: req.params.sessionId, user_id: req.userId });
+    if (!session) return res.status(404).json({ message: 'Session not found' });
+
+    if (req.tokenHash && session.token_hash === req.tokenHash) {
+      return res.status(400).json({ message: 'Cannot revoke your current session. Use logout instead.' });
+    }
+
+    session.is_active = false;
+    await session.save();
+
+    res.json({ message: 'Session revoked successfully' });
+  } catch (err) {
+    console.error('[Auth] deleteSession error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+/**
+ * GET /api/auth/login-history
+ * Returns the last 50 login attempts for the current user.
+ */
+exports.getLoginHistory = async (req, res) => {
+  try {
+    const history = await LoginHistory.find({ user_id: req.userId })
+      .sort({ login_at: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({ history });
+  } catch (err) {
+    console.error('[Auth] getLoginHistory error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+/**
+ * POST /api/auth/logout-all
+ * Invalidates all sessions for the current user except the current one.
+ */
+exports.logoutAll = async (req, res) => {
+  try {
+    const filter = { user_id: req.userId, is_active: true };
+    if (req.tokenHash) filter.token_hash = { $ne: req.tokenHash };
+    await Session.updateMany(filter, { is_active: false });
+    res.json({ message: 'All other sessions have been logged out' });
+  } catch (err) {
+    console.error('[Auth] logoutAll error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };

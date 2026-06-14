@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, googleLogin, getMe, changePassword, forgotPasswordCheck, forgotPasswordVerifyAndReset } = require('../controllers/auth.controller');
+const {
+  register, login, googleLogin, getMe, changePassword,
+  forgotPasswordCheck, forgotPasswordVerifyAndReset,
+  getSessions, deleteSession, getLoginHistory, logoutAll,
+} = require('../controllers/auth.controller');
 const { getAllUsers } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
 const passport = require('passport');
@@ -555,5 +559,125 @@ router.get(
 
 router.post('/forgot-password/check', forgotPasswordCheck);
 router.post('/forgot-password/verify-reset', forgotPasswordVerifyAndReset);
+
+/**
+ * @swagger
+ * /api/auth/sessions:
+ *   get:
+ *     summary: Get all active sessions for the current user
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of active sessions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       device_name:
+ *                         type: string
+ *                       device_type:
+ *                         type: string
+ *                         enum: [web, mobile, unknown]
+ *                       ip:
+ *                         type: string
+ *                       location:
+ *                         type: string
+ *                       last_active:
+ *                         type: string
+ *                         format: date-time
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       isCurrent:
+ *                         type: boolean
+ *                         description: True if this is the session making the request
+ */
+router.get('/sessions', auth, getSessions);
+
+/**
+ * @swagger
+ * /api/auth/sessions/{sessionId}:
+ *   delete:
+ *     summary: Revoke a specific session
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session revoked
+ *       400:
+ *         description: Cannot revoke current session
+ *       404:
+ *         description: Session not found
+ */
+router.delete('/sessions/:sessionId', auth, deleteSession);
+
+/**
+ * @swagger
+ * /api/auth/login-history:
+ *   get:
+ *     summary: Get login history (last 50 attempts)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Login history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       device_name:
+ *                         type: string
+ *                       ip:
+ *                         type: string
+ *                       location:
+ *                         type: string
+ *                       login_at:
+ *                         type: string
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                         enum: [success, failed]
+ */
+router.get('/login-history', auth, getLoginHistory);
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     summary: Log out all devices except the current one
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All other sessions logged out
+ */
+router.post('/logout-all', auth, logoutAll);
 
 module.exports = router;

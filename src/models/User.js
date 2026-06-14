@@ -113,8 +113,13 @@ const userSchema = new mongoose.Schema({
   twoFA: {
     enabled: {
       type: Boolean,
-      default: false
-    }
+      default: false,
+    },
+    method: {
+      type: String,
+      enum: ['email', 'sms'],
+      default: 'email',
+    },
   },
   // For vendor users: store company details snapshot on the user
   company_details: {

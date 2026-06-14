@@ -559,8 +559,13 @@ exports.updateUser = async (req, res) => {
       updateFields.ad_interests = interests.map(String);
     }
 
-    if (typeof twoFA !== 'undefined' && typeof twoFA === 'object' && typeof twoFA.enabled === 'boolean') {
-      updateFields.twoFA = { enabled: twoFA.enabled };
+    if (typeof twoFA !== 'undefined' && typeof twoFA === 'object') {
+      if (typeof twoFA.enabled === 'boolean') {
+        updateFields['twoFA.enabled'] = twoFA.enabled;
+      }
+      if (twoFA.method && ['email', 'sms'].includes(twoFA.method)) {
+        updateFields['twoFA.method'] = twoFA.method;
+      }
     }
 
     const user = await User.findByIdAndUpdate(

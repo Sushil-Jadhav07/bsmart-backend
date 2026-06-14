@@ -1,22 +1,21 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const crypto = require('crypto');
+const jwt    = require('jsonwebtoken');
+const User   = require('../models/User');
+const Session = require('../models/Session');
 
 const auth = async (req, res, next) => {
   try {
-    // 1. Get token from header
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
       return res.status(401).json({ message: 'No token, authorization denied' });
     }
 
-    // 2. Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Attach user to request object
     const user = await User.findById(decoded.id);
     if (!user) {
-        return res.status(401).json({ message: 'User not found' });
+      return res.status(401).json({ message: 'User not found' });
     }
 
     if (user.is_active === false) {
@@ -47,8 +46,22 @@ const auth = async (req, res, next) => {
       }
     }
 
-    req.user = user;
-    req.userId = user._id; // Keep this for backward compatibility if needed
+    // Check if this token's session has been revoked.
+    // Old tokens (created before session tracking) have no Session record — allow them through.
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const session = await Session.findOne({ token_hash: tokenHash }, { is_active: 1 }).lean();
+    if (session && !session.is_active) {
+      return res.status(401).json({ message: 'Session has been revoked. Please log in again.' });
+    }
+    // Fire-and-forget: bump last_active so sessions list stays fresh
+    if (session) {
+      Session.updateOne({ token_hash: tokenHash }, { last_active: new Date() }).catch(() => {});
+    }
+
+    req.user      = user;
+    req.userId    = user._id;
+    req.tokenHash = tokenHash;
+    req.sessionId = session?._id ?? null;
 
     next();
   } catch (error) {
