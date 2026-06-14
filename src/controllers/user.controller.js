@@ -97,8 +97,13 @@ exports.getUserById = async (req, res) => {
     // Force gender and location to always be present as strings for ALL roles
     obj.gender   = (obj.gender   !== undefined && obj.gender   !== null) ? String(obj.gender)   : '';
     obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+    obj.website  = obj.website  || '';
+    obj.bio      = obj.bio      || '';
 
-    obj.isPrivate = obj.isPrivate ?? false;   // ← ADDED
+    obj.isPrivate          = obj.isPrivate          ?? false;
+    obj.is_email_verified  = obj.is_email_verified  ?? false;
+    obj.is_phone_verified  = obj.is_phone_verified  ?? false;
+    obj.date_of_birth      = obj.date_of_birth      || null;
 
     // ad_interests — always return an array
     obj.ad_interests = Array.isArray(obj.ad_interests) ? obj.ad_interests : [];
@@ -171,8 +176,13 @@ exports.getUserByUsername = async (req, res) => {
     // Force gender and location to always be present as strings for ALL roles
     obj.gender   = (obj.gender   !== undefined && obj.gender   !== null) ? String(obj.gender)   : '';
     obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+    obj.website  = obj.website  || '';
+    obj.bio      = obj.bio      || '';
 
-    obj.isPrivate = obj.isPrivate ?? false;
+    obj.isPrivate          = obj.isPrivate          ?? false;
+    obj.is_email_verified  = obj.is_email_verified  ?? false;
+    obj.is_phone_verified  = obj.is_phone_verified  ?? false;
+    obj.date_of_birth      = obj.date_of_birth      || null;
 
     // ad_interests — always return an array
     obj.ad_interests = Array.isArray(obj.ad_interests) ? obj.ad_interests : [];
@@ -403,7 +413,13 @@ exports.updateUser = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to update this profile' });
     }
 
-    const { full_name, bio, avatar_url, phone, username, age, gender, location, address, twoFA } = req.body;
+    const {
+      full_name, bio, avatar_url, phone, username, age,
+      gender, location, address, twoFA,
+      website, date_of_birth, interests,
+    } = req.body;
+
+    const ALLOWED_GENDERS = ['male', 'female', 'third_gender', 'prefer_not_to_say'];
 
     const normalizeAddress = (raw = {}) => {
       const obj = raw && typeof raw === 'object' ? raw : {};
@@ -419,15 +435,38 @@ exports.updateUser = async (req, res) => {
     };
 
     const updateFields = {};
-    if (full_name)                  updateFields.full_name  = full_name;
-    if (bio)                        updateFields.bio        = bio;
-    if (avatar_url)                 updateFields.avatar_url = avatar_url;
-    if (phone)                      updateFields.phone      = phone;
-    if (username)                   updateFields.username   = username;
+    if (full_name  !== undefined) updateFields.full_name  = full_name;
+    if (bio        !== undefined) updateFields.bio        = bio;
+    if (avatar_url !== undefined) updateFields.avatar_url = avatar_url;
+    if (phone      !== undefined) updateFields.phone      = phone;
+    if (username   !== undefined) updateFields.username   = username;
+    if (website    !== undefined) updateFields.website    = String(website).trim();
     if (typeof age      !== 'undefined') updateFields.age      = age;
-    if (typeof gender   !== 'undefined') updateFields.gender   = gender;
     if (typeof location !== 'undefined') updateFields.location = location;
     if (typeof address  !== 'undefined') updateFields.address  = normalizeAddress(address);
+
+    if (typeof gender !== 'undefined') {
+      if (gender !== '' && !ALLOWED_GENDERS.includes(gender)) {
+        return res.status(400).json({ message: `gender must be one of: ${ALLOWED_GENDERS.join(', ')}` });
+      }
+      updateFields.gender = gender;
+    }
+
+    if (date_of_birth !== undefined) {
+      const dob = new Date(date_of_birth);
+      if (isNaN(dob.getTime())) {
+        return res.status(400).json({ message: 'Invalid date_of_birth format (use YYYY-MM-DD)' });
+      }
+      updateFields.date_of_birth = dob;
+    }
+
+    if (interests !== undefined) {
+      if (!Array.isArray(interests)) {
+        return res.status(400).json({ message: 'interests must be an array' });
+      }
+      updateFields.ad_interests = interests.map(String);
+    }
+
     if (typeof twoFA !== 'undefined' && typeof twoFA === 'object' && typeof twoFA.enabled === 'boolean') {
       updateFields.twoFA = { enabled: twoFA.enabled };
     }

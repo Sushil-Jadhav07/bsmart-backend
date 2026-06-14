@@ -377,7 +377,13 @@ router.get('/username/:username', optionalAuth, getUserByUsername);
  *                   phone: "+910000000000"
  *                   age: 25
  *                   gender: "male"
+ *                   bio: ""
+ *                   website: "https://example.com"
+ *                   date_of_birth: "1998-05-20T00:00:00.000Z"
  *                   location: "Mumbai, India"
+ *                   ad_interests: ["Fashion", "Travel"]
+ *                   is_email_verified: false
+ *                   is_phone_verified: false
  *                   role: "member"
  *                   summary:
  *                     posts_count: 2
@@ -453,21 +459,41 @@ router.get('/:id/saved', auth, getSavedPostsByUser);
  *             properties:
  *               full_name:
  *                 type: string
+ *                 example: "John Doe"
  *               bio:
  *                 type: string
+ *                 example: "Loves travel and food"
  *               avatar_url:
  *                 type: string
+ *                 example: "https://cdn.example.com/profile.jpg"
  *               phone:
  *                 type: string
+ *                 example: "+919876543210"
  *               username:
  *                 type: string
+ *                 example: "john_doe"
+ *               website:
+ *                 type: string
+ *                 example: "https://johndoe.com"
+ *                 description: Personal or business website URL
+ *               date_of_birth:
+ *                 type: string
+ *                 format: date
+ *                 example: "1998-05-20"
+ *                 description: ISO date string (YYYY-MM-DD)
+ *               interests:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["Fashion", "Travel", "Food"]
+ *                 description: Full replacement list of ad interest categories (saved as ad_interests)
  *               age:
  *                 type: integer
  *                 description: User age
  *                 example: 25
  *               gender:
  *                 type: string
- *                 description: User gender (e.g. male, female, other)
+ *                 enum: [male, female, third_gender, prefer_not_to_say, ""]
  *                 example: "male"
  *               location:
  *                 type: string

@@ -155,6 +155,24 @@ followRequests: [
   { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 ],
 
+  // ─── Extended Profile Fields ──────────────────────────────────────────────
+  website: {
+    type: String,
+    default: '',
+  },
+  date_of_birth: {
+    type: Date,
+    default: null,
+  },
+  is_email_verified: {
+    type: Boolean,
+    default: false,
+  },
+  is_phone_verified: {
+    type: Boolean,
+    default: false,
+  },
+
   // ─── Push Notification Tokens ─────────────────────────────────────────────
   // FCM token sent by the Android APK on login / token refresh
   fcm_token: {

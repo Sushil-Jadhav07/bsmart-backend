@@ -55,6 +55,7 @@ const tweetRoutes           = require('./src/routes/tweet.routes');
 const promoteReelRoutes = require('./src/routes/promoteReel.routes');
 const savedRoutes          = require('./src/routes/saved.routes');
 const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <- PUSH NOTIFICATIONS
+const settingsRoutes       = require('./src/routes/settings.routes');       // <- ACCOUNT SETTINGS
 
 const app    = express();
 const server = http.createServer(app);
@@ -290,6 +291,7 @@ app.use('/api/tweets',           tweetRoutes);
 app.use('/api/promote-reels', promoteReelRoutes);
 app.use('/api/saved',          savedRoutes);
 app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
+app.use('/api/settings',      settingsRoutes);         // <- ACCOUNT SETTINGS
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
