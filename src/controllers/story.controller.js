@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Follow = require('../models/Follow');
 const sendNotification = require('../utils/sendNotification');
 const mongoose = require('mongoose');
+const { checkSections } = require('../utils/privacyGuard');
 
 const nowUtc = () => new Date();
 const addHours = (date, h) => new Date(date.getTime() + h * 60 * 60 * 1000);
@@ -167,9 +168,18 @@ exports.getStoriesByUserId = async (req, res) => {
       return res.status(400).json({ message: 'Invalid userId' });
     }
 
-    const user = await User.findById(userId).select('username avatar_url followers_count following_count gender location').lean();
+    const user = await User.findById(userId).select('username avatar_url followers_count following_count gender location privacy').lean();
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // ── Privacy check for stories ──────────────────────────────────────────────
+    const isOwnerStory = viewerId && String(viewerId) === String(userId);
+    if (!isOwnerStory) {
+      const { stories } = await checkSections(viewerId, user, ['stories']);
+      if (!stories) {
+        return res.status(403).json({ message: 'Stories are private', privacy_blocked: true });
+      }
     }
 
     const now = nowUtc();

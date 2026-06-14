@@ -431,8 +431,8 @@ router.get('/:id', optionalAuth, getUserById);
  *         description: Server error
  */
 router.get('/:id/posts', getUserPostsDetails);
-router.get('/:id/followers', getFollowers);
-router.get('/:id/following', getFollowing);
+router.get('/:id/followers', optionalAuth, getFollowers);
+router.get('/:id/following', optionalAuth, getFollowing);
 router.get('/:id/saved', auth, getSavedPostsByUser);
 
 /**

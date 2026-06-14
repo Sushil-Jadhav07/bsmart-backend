@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Follow = require('../models/Follow');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
+const { checkSections } = require('../utils/privacyGuard');
 
 // ─── HELPER ────────────────────────────────────────────────────────────────
 const toStr = (id) => id?.toString();
@@ -193,7 +194,20 @@ exports.unfollowUser = async (req, res) => {
 // ─── getFollowers ──────────────────────────────────────────────────────────
 exports.getFollowers = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId   = req.params.id;
+    const viewerId = req.userId || null;
+    const isOwner  = viewerId && String(viewerId) === String(userId);
+
+    if (!isOwner) {
+      const owner = await User.findById(userId).select('privacy').lean();
+      if (owner) {
+        const { followers_list } = await checkSections(viewerId, owner, ['followers_list']);
+        if (!followers_list) {
+          return res.status(403).json({ message: 'Followers list is private', privacy_blocked: true });
+        }
+      }
+    }
+
     const users = await Follow.find({ followed_id: userId })
       .populate('follower_id', 'username full_name avatar_url followers_count following_count gender location')
       .lean();
@@ -208,7 +222,20 @@ exports.getFollowers = async (req, res) => {
 // ─── getFollowing ──────────────────────────────────────────────────────────
 exports.getFollowing = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId   = req.params.id;
+    const viewerId = req.userId || null;
+    const isOwner  = viewerId && String(viewerId) === String(userId);
+
+    if (!isOwner) {
+      const owner = await User.findById(userId).select('privacy').lean();
+      if (owner) {
+        const { following_list } = await checkSections(viewerId, owner, ['following_list']);
+        if (!following_list) {
+          return res.status(403).json({ message: 'Following list is private', privacy_blocked: true });
+        }
+      }
+    }
+
     const users = await Follow.find({ follower_id: userId })
       .populate('followed_id', 'username full_name avatar_url followers_count following_count gender location')
       .lean();

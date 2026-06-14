@@ -173,6 +173,43 @@ followRequests: [
     default: false,
   },
 
+  // ─── Privacy Settings ────────────────────────────────────────────────────
+  privacy: {
+    // Who can view each section of the profile
+    profile_visibility: {
+      profile:        { type: String, enum: ['everyone', 'followers_only', 'nobody'], default: 'everyone' },
+      posts:          { type: String, enum: ['everyone', 'followers_only', 'nobody'], default: 'everyone' },
+      stories:        { type: String, enum: ['everyone', 'followers_only', 'nobody'], default: 'everyone' },
+      pulse:          { type: String, enum: ['everyone', 'followers_only', 'nobody'], default: 'everyone' },
+      followers_list: { type: String, enum: ['everyone', 'followers_only', 'nobody'], default: 'everyone' },
+      following_list: { type: String, enum: ['everyone', 'followers_only', 'nobody'], default: 'everyone' },
+    },
+    // Activity status visibility
+    activity_status: {
+      show_online_status:  { type: Boolean, default: true },
+      show_last_seen:      { type: Boolean, default: true },
+      show_read_receipts:  { type: Boolean, default: true },
+    },
+    // Follow behaviour
+    follow_settings: {
+      allow_follow_requests:        { type: Boolean, default: true },
+      auto_approve_follow_requests: { type: Boolean, default: false },
+    },
+    // Who can send direct messages
+    messaging_privacy: {
+      type: String,
+      enum: ['everyone', 'followers_only', 'nobody'],
+      default: 'everyone',
+    },
+    // Search & discovery
+    search_discovery: {
+      allow_search_by_username: { type: Boolean, default: true },
+      allow_search_by_email:    { type: Boolean, default: true },
+      allow_search_by_phone:    { type: Boolean, default: true },
+      appear_in_suggestions:    { type: Boolean, default: true },
+    },
+  },
+
   // ─── Push Notification Tokens ─────────────────────────────────────────────
   // FCM token sent by the Android APK on login / token refresh
   fcm_token: {

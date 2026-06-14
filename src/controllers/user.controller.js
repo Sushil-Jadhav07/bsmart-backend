@@ -5,6 +5,7 @@ const Vendor = require('../models/Vendor');
 const PromoteReel = require('../models/PromoteReel');
 const Tweet = require('../models/tweet.model');
 const mongoose = require('mongoose');
+const { checkSections } = require('../utils/privacyGuard');
 
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
@@ -90,6 +91,25 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // ── Privacy check on the profile itself ───────────────────────────────────
+    const viewerId = req.userId || null;
+    const isOwner  = viewerId && String(viewerId) === String(userId);
+    if (!isOwner && req.user?.role !== 'admin') {
+      const { profile: canViewProfile } = await checkSections(viewerId, user, ['profile']);
+      if (!canViewProfile) {
+        return res.status(403).json({
+          message: 'This profile is private',
+          privacy_blocked: true,
+          user: {
+            _id: user._id,
+            username: user.username,
+            full_name: user.full_name,
+            avatar_url: user.avatar_url,
+          },
+        });
+      }
+    }
+
     const vendor = await Vendor.findOne({ user_id: userId }).select('validated _id').lean();
     const validated = vendor ? !!vendor.validated : false;
     const obj = user.toObject ? user.toObject() : user;
@@ -167,6 +187,25 @@ exports.getUserByUsername = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // ── Privacy check on the profile itself ───────────────────────────────────
+    const viewerIdByUsername = req.userId || null;
+    const isOwnerByUsername  = viewerIdByUsername && String(viewerIdByUsername) === String(user._id);
+    if (!isOwnerByUsername && req.user?.role !== 'admin') {
+      const { profile: canViewProfile } = await checkSections(viewerIdByUsername, user, ['profile']);
+      if (!canViewProfile) {
+        return res.status(403).json({
+          message: 'This profile is private',
+          privacy_blocked: true,
+          user: {
+            _id: user._id,
+            username: user.username,
+            full_name: user.full_name,
+            avatar_url: user.avatar_url,
+          },
+        });
+      }
     }
 
     const vendor = await Vendor.findOne({ user_id: user._id }).select('validated _id').lean();
@@ -296,31 +335,44 @@ exports.getUserProfileContent = async (req, res) => {
       return res.status(400).json({ message: 'Invalid user id' });
     }
 
-    const userExists = await User.exists({ _id: userId });
-    if (!userExists) {
+    const owner = await User.findById(userId).select('privacy').lean();
+    if (!owner) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // ── Per-section privacy check ──────────────────────────────────────────────
+    const viewerIdPC = req.userId || null;
+    const isOwnerPC  = viewerIdPC && String(viewerIdPC) === String(userId);
+    let privacy = { posts: true, pulse: true };
+    if (!isOwnerPC) {
+      privacy = await checkSections(viewerIdPC, owner, ['posts', 'pulse']);
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
 
+    // Only query sections the viewer is allowed to see
     const [postsRaw, reelsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
-      Post.find({ user_id: userId, type: 'post', isDeleted: { $ne: true } })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .populate('user_id', 'username full_name avatar_url'),
-      Post.find({ user_id: userId, type: 'reel', isDeleted: { $ne: true } })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .populate('user_id', 'username full_name avatar_url'),
-      PromoteReel.find({ user_id: userId, isDeleted: { $ne: true } })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .populate('user_id', 'username full_name avatar_url'),
-      Tweet.find({ author: userId, isDeleted: false, parentTweet: null })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .populate('author', 'username full_name avatar_url')
+      privacy.posts
+        ? Post.find({ user_id: userId, type: 'post', isDeleted: { $ne: true } })
+            .sort({ createdAt: -1 }).limit(limit)
+            .populate('user_id', 'username full_name avatar_url')
+        : [],
+      privacy.pulse
+        ? Post.find({ user_id: userId, type: 'reel', isDeleted: { $ne: true } })
+            .sort({ createdAt: -1 }).limit(limit)
+            .populate('user_id', 'username full_name avatar_url')
+        : [],
+      privacy.pulse
+        ? PromoteReel.find({ user_id: userId, isDeleted: { $ne: true } })
+            .sort({ createdAt: -1 }).limit(limit)
+            .populate('user_id', 'username full_name avatar_url')
+        : [],
+      privacy.posts
+        ? Tweet.find({ author: userId, isDeleted: false, parentTweet: null })
+            .sort({ createdAt: -1 }).limit(limit)
+            .populate('author', 'username full_name avatar_url')
+        : [],
     ]);
 
     const posts = postsRaw.map((p) => withMediaUrls(p, baseUrl));
@@ -330,6 +382,10 @@ exports.getUserProfileContent = async (req, res) => {
 
     return res.json({
       user_id: userId,
+      privacy_restricted: {
+        posts: !privacy.posts,
+        pulse: !privacy.pulse,
+      },
       counts: {
         posts: posts.length,
         reels: reels.length,
