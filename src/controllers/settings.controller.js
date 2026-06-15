@@ -1,7 +1,8 @@
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
-const User     = require('../models/User');
-const Otp      = require('../models/Otp');
-const PhoneOtp = require('../models/PhoneOtp');
+const User         = require('../models/User');
+const Otp          = require('../models/Otp');
+const PhoneOtp     = require('../models/PhoneOtp');
+const UserSettings = require('../models/UserSettings');
 const { sendEmail }  = require('../services/email.service');
 const { otpTemplate } = require('../templates/email.templates');
 const { makeUploader, getFileUrl } = require('../config/multer');
@@ -327,6 +328,64 @@ exports.sendPhoneOtp = async (req, res) => {
   } catch (err) {
     console.error('[Settings] sendPhoneOtp error:', err.message);
     res.status(500).json({ message: 'Failed to send SMS OTP', error: err.message });
+  }
+};
+
+// ─── GET /api/settings/messaging ─────────────────────────────────────────────
+exports.getMessagingSettings = async (req, res) => {
+  try {
+    const doc = await UserSettings.findOne({ user_id: req.userId }).lean();
+    const messaging = doc?.messaging ?? {
+      auto_download_images:    true,
+      auto_download_videos:    false,
+      auto_download_documents: false,
+    };
+    res.json({ success: true, settings: messaging });
+  } catch (err) {
+    console.error('[Settings] getMessagingSettings error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ─── PATCH /api/settings/messaging ───────────────────────────────────────────
+exports.updateMessagingSettings = async (req, res) => {
+  try {
+    const { auto_download_images, auto_download_videos, auto_download_documents } = req.body;
+    const updates = {};
+
+    if (auto_download_images !== undefined) {
+      if (typeof auto_download_images !== 'boolean') {
+        return res.status(400).json({ message: 'auto_download_images must be a boolean' });
+      }
+      updates['messaging.auto_download_images'] = auto_download_images;
+    }
+    if (auto_download_videos !== undefined) {
+      if (typeof auto_download_videos !== 'boolean') {
+        return res.status(400).json({ message: 'auto_download_videos must be a boolean' });
+      }
+      updates['messaging.auto_download_videos'] = auto_download_videos;
+    }
+    if (auto_download_documents !== undefined) {
+      if (typeof auto_download_documents !== 'boolean') {
+        return res.status(400).json({ message: 'auto_download_documents must be a boolean' });
+      }
+      updates['messaging.auto_download_documents'] = auto_download_documents;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No valid fields to update' });
+    }
+
+    const doc = await UserSettings.findOneAndUpdate(
+      { user_id: req.userId },
+      { $set: updates },
+      { new: true, upsert: true, runValidators: true }
+    ).lean();
+
+    res.json({ success: true, message: 'Settings updated successfully', settings: doc.messaging });
+  } catch (err) {
+    console.error('[Settings] updateMessagingSettings error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 

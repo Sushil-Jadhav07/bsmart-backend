@@ -10,6 +10,8 @@ const {
   confirmEmailOtp,
   sendPhoneOtp,
   confirmPhoneOtp,
+  getMessagingSettings,
+  updateMessagingSettings,
 } = require('../controllers/settings.controller');
 
 /**
@@ -396,5 +398,80 @@ router.post('/account/verify-phone/send', auth, sendPhoneOtp);
  *         description: Server error
  */
 router.post('/account/verify-phone/confirm', auth, confirmPhoneOtp);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MESSAGING SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/settings/messaging:
+ *   get:
+ *     summary: Get messaging settings
+ *     description: Returns the current user's messaging auto-download preferences.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Messaging settings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 settings:
+ *                   type: object
+ *                   properties:
+ *                     auto_download_images:    { type: boolean, example: true }
+ *                     auto_download_videos:    { type: boolean, example: false }
+ *                     auto_download_documents: { type: boolean, example: false }
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/messaging', auth, getMessagingSettings);
+
+/**
+ * @swagger
+ * /api/settings/messaging:
+ *   patch:
+ *     summary: Update messaging settings
+ *     description: Updates one or more messaging auto-download preferences. Only provided fields are updated.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               auto_download_images:    { type: boolean, example: true }
+ *               auto_download_videos:    { type: boolean, example: true }
+ *               auto_download_documents: { type: boolean, example: false }
+ *     responses:
+ *       200:
+ *         description: Settings updated successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Settings updated successfully"
+ *               settings:
+ *                 auto_download_images: true
+ *                 auto_download_videos: true
+ *                 auto_download_documents: false
+ *       400:
+ *         description: Validation error or no valid fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.patch('/messaging', auth, updateMessagingSettings);
 
 module.exports = router;
