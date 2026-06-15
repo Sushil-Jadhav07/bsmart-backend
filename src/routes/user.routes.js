@@ -3,6 +3,11 @@ const router = express.Router();
 const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
+const {
+  getBlockedUsers, blockUser, unblockUser,
+  getRestrictedUsers, restrictUser, unrestrictUser,
+  getMutedUsers, muteUser, unmuteUser,
+} = require('../controllers/blockRestrictMute.controller');
 const auth = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -342,6 +347,11 @@ router.get('/:id/profile-content', optionalAuth, getUserProfileContent);
  *         description: Server error
  */
 router.get('/username/:username', optionalAuth, getUserByUsername);
+
+// ─── Blocked / Restricted / Muted — list routes (must precede /:id) ──────────
+router.get('/blocked',    auth, getBlockedUsers);
+router.get('/restricted', auth, getRestrictedUsers);
+router.get('/muted',      auth, getMutedUsers);
 
 /**
  * @swagger
@@ -720,3 +730,11 @@ router.get('/:id/interests', getUserInterests);
  *         description: User not found
  */
 router.post('/:id/interests', auth, updateUserInterests);
+
+// ─── Block / Restrict / Mute — action routes ─────────────────────────────────
+router.post('/:targetId/block',      auth, blockUser);
+router.delete('/:targetId/block',    auth, unblockUser);
+router.post('/:targetId/restrict',   auth, restrictUser);
+router.delete('/:targetId/restrict', auth, unrestrictUser);
+router.post('/:targetId/mute',       auth, muteUser);
+router.delete('/:targetId/mute',     auth, unmuteUser);
