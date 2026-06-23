@@ -88,9 +88,14 @@ const sendNotification = async (app, { recipient, sender, type, message, link, s
     }
   }
 
-  // ── 3. Push notification (new) ────────────────────────────────────────────
+  // ── 3. Push notification (web push + SNS) ───────────────────────────────
+  // Use sender name as title for chat messages (WhatsApp style)
+  // For all other types, use the descriptive title e.g. "Rahul liked your post"
+  const pushTitle = (type === 'chat_message' && senderName)
+    ? senderName
+    : buildFcmTitle(type, message, senderName) || 'Bsmart';
   sendPushNotification(recipient.toString(), {
-    title:        'Bsmart',
+    title:        pushTitle,
     body:         message,
     link:         link || '/',
     type,

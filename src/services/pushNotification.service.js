@@ -161,12 +161,15 @@ const sendPushNotification = async (recipientId, payload) => {
           if (cf) return `${cf}/assets/bsmart_logo.png`;
           return `${process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in'}/assets/bsmart_logo.png`;
         })();
+        // For chat messages: use sender avatar as icon (WhatsApp style)
+        // For all others: use BSmart logo
+        const notifIcon = (type === 'chat_message' && senderAvatar) ? senderAvatar : logoUrl;
         const message = JSON.stringify({
           GCM: JSON.stringify({
             notification: {
               title,
               body,
-              icon: logoUrl,
+              icon: notifIcon,
               click_action: 'FLUTTER_NOTIFICATION_CLICK',
             },
             data: { link, type, title, body, senderName, senderAvatar },
@@ -202,9 +205,11 @@ const sendPushNotification = async (recipientId, payload) => {
           if (cf) return `${cf}/assets/bsmart_logo.png`;
           return `${process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in'}/assets/bsmart_logo.png`;
         })();
+        // For chat messages: use sender avatar as icon (WhatsApp style)
+        const webIcon = (type === 'chat_message' && senderAvatar) ? senderAvatar : logoUrl;
         const webPayload = JSON.stringify({
           title, body, link, type, senderName, senderAvatar,
-          icon: logoUrl,
+          icon: webIcon,
           badge: logoUrl,
         });
         await webpush.sendNotification(user.web_push_subscription, webPayload);
