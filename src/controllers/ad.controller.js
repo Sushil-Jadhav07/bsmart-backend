@@ -722,25 +722,44 @@ exports.createAd = async (req, res) => {
     }
 
     // ── Build media array ────────────────────────────────────────────────────
+    // BUGFIX: never trust item.hls or item.processing from the frontend.
+    // Instead, detect HLS by checking whether the fileName ends with .m3u8.
+    // If the upload route already converted the video (synchronous HLS via
+    // handleVideoUpload), the fileName will be the m3u8 key — mark it as
+    // hls:true, processing:false so we do NOT re-trigger background conversion.
+    // If the fileName is still a raw video file (.mp4 etc.), mark it as
+    // processing:true so background HLS runs after we respond.
+    const normalizedMedia = media.map((item) => {
+      const fileName    = item.fileName || '';
+      const isAlreadyHls = fileName.endsWith('.m3u8') ||
+                           (item.fileUrl || '').endsWith('.m3u8') ||
+                           (item.fileUrl || '').includes('/index.m3u8');
+      const isVideo     = (item.media_type || 'image') === 'video';
 
-    const normalizedMedia = media.map((item) => ({
-      fileName:   item.fileName || '',
-      // FIX: always resolve to CloudFront URL before saving to MongoDB
-      fileUrl:    resolveAdMediaUrl(item.fileName, item.fileUrl || item.url || ''),
-      media_type: item.media_type || 'image',
-      video_meta: item.video_meta || {},
-      timing_window:  item.timing_window  || {},
-      crop_settings:  item.crop_settings  || {},
-      hls:        item.hls        ?? false,
-      processing: item.processing ?? false,
-      thumbnails: Array.isArray(item.thumbnails)
-        ? item.thumbnails.map((t) => ({
-            fileName:   t.fileName   || '',
-            fileUrl:    resolveAdMediaUrl(t.fileName, t.fileUrl || ''),
-            media_type: t.type || t.media_type || 'image',
-          }))
-        : [],
-    }));
+      // If the upload already produced HLS, honour it — no background job needed.
+      // If it is a raw video that still needs conversion, set processing:true.
+      const hlsFlag        = isAlreadyHls ? true  : false;
+      const processingFlag = isVideo && !isAlreadyHls ? true : false;
+
+      return {
+        fileName,
+        // Always resolve to CloudFront URL before saving to MongoDB
+        fileUrl:    resolveAdMediaUrl(fileName, item.fileUrl || item.url || ''),
+        media_type: item.media_type || 'image',
+        video_meta: item.video_meta || {},
+        timing_window:  item.timing_window  || {},
+        crop_settings:  item.crop_settings  || {},
+        hls:        hlsFlag,
+        processing: processingFlag,
+        thumbnails: Array.isArray(item.thumbnails)
+          ? item.thumbnails.map((t) => ({
+              fileName:   t.fileName   || '',
+              fileUrl:    resolveAdMediaUrl(t.fileName, t.fileUrl || ''),
+              media_type: t.type || t.media_type || 'image',
+            }))
+          : [],
+      };
+    });
 
     // ── Create Ad ────────────────────────────────────────────────────────────
 
@@ -789,9 +808,10 @@ exports.createAd = async (req, res) => {
       ad: populatedAd,
     });
 
-    // After responding — fire background HLS for any video media items
+    // After responding — fire background HLS only for videos that are NOT yet HLS.
+    // With the fix above, processing:true is only set when fileName is a raw video.
     normalizedMedia.forEach((item, idx) => {
-      if (item.media_type === 'video' && item.processing === true && item.fileName) {
+      if (item.media_type === 'video' && item.processing === true && item.fileName && !item.fileName.endsWith('.m3u8')) {
         setImmediate(() => runAdHlsInBackground(req.app, ad._id, idx, item.fileName));
       }
     });

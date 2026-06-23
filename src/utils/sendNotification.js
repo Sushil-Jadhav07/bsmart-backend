@@ -61,7 +61,7 @@ const buildFcmTitle = (type, message, senderName) => {
       ad_save: `${senderName} saved your ad`,
       story_view: `${senderName} viewed your story`,
       mention: `${senderName} mentioned you`,
-      chat_message: `${senderName} sent you a message`,
+      chat_message: senderName,
     };
     if (titles[type]) return titles[type];
   }
@@ -99,7 +99,12 @@ const sendNotification = async (app, { recipient, sender, type, message, link, s
   }).catch(() => {});
 
   // ── 4. Firebase Admin FCM (additive, non-blocking) ────────────────────────
-  sendFcmIfAvailable(recipient.toString(), buildFcmTitle(type, message, senderName), message, {
+  // For chat messages, use the sender name as the FCM notification title
+  // so the lock screen shows "Rahul" not "Bsmart"
+  const fcmTitle = (type === 'chat_message' && senderName)
+    ? senderName
+    : buildFcmTitle(type, message, senderName);
+  sendFcmIfAvailable(recipient.toString(), fcmTitle, message, {
     type,
     link: link || '',
   }).catch(() => {});

@@ -984,16 +984,40 @@ exports.createMessage = async (req, res) => {
     }
 
     // In-app + push notification for all non-sender participants
+    //
+    // FIX 1: Message model uses .text (not .content) and .mediaType (not .contentType)
+    // FIX 2: Notification title = sender name so recipient knows who messaged them
+    // FIX 3: Body shows real text (60 char limit) or a clear attachment label
     const msgSender    = populatedMessage.sender;
-    const senderName   = msgSender && (msgSender.full_name || msgSender.username) ? (msgSender.full_name || msgSender.username) : 'Someone';
+    const senderName   = msgSender?.full_name || msgSender?.username || 'Someone';
     const senderAvatar = msgSender?.avatar_url || '';
-    const rawContent   = populatedMessage.content || '';
-    const msgPreview   = rawContent
-      ? (rawContent.length > 60 ? rawContent.slice(0, 60) + '...' : rawContent)
-      : populatedMessage.contentType === 'image' ? 'Sent a photo'
-      : populatedMessage.contentType === 'video' ? 'Sent a video'
-      : populatedMessage.contentType === 'audio' ? 'Sent an audio'
-      : 'Sent an attachment';
+
+    // Correct field names from Message schema: .text and .mediaType
+    const rawText      = typeof populatedMessage.text === 'string' ? populatedMessage.text.trim() : '';
+    const msgMediaType = populatedMessage.mediaType || 'none';
+    const hasShared    = populatedMessage.sharedContent?.contentType;
+
+    // Build notification body
+    let msgBody;
+    if (rawText) {
+      msgBody = rawText.length > 60 ? rawText.slice(0, 60) + '...' : rawText;
+    } else if (msgMediaType === 'image') {
+      msgBody = 'Sent an attachment';
+    } else if (msgMediaType === 'video') {
+      msgBody = 'Sent an attachment';
+    } else if (msgMediaType === 'audio') {
+      msgBody = 'Sent an attachment';
+    } else if (hasShared === 'post') {
+      msgBody = 'Shared a post';
+    } else if (hasShared === 'reel') {
+      msgBody = 'Shared a reel';
+    } else if (hasShared === 'ad') {
+      msgBody = 'Shared an ad';
+    } else if (hasShared === 'tweet') {
+      msgBody = 'Shared a tweet';
+    } else {
+      msgBody = 'Sent an attachment';
+    }
 
     const notifParticipantIds = (conversation.participants || []).map(String);
     for (const pid of notifParticipantIds) {
@@ -1002,7 +1026,7 @@ exports.createMessage = async (req, res) => {
         recipient:   pid,
         sender:      req.userId,
         type:        'chat_message',
-        message:     msgPreview,
+        message:     msgBody,
         link:        '/chat/' + conversationId,
         senderName,
         senderAvatar,

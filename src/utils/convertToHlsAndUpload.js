@@ -15,6 +15,9 @@ const BUCKET = process.env.S3_BUCKET_NAME;
 
 function getCloudfrontBase() {
   let cf = process.env.CLOUDFRONT_BASE_URL || '';
+  if (!cf) {
+    console.warn('[HLS] WARNING: CLOUDFRONT_BASE_URL is not set. Videos will be served directly from S3 — no CDN caching, slower playback. Set this env var on EC2.');
+  }
   if (cf && !cf.startsWith('http')) cf = `https://${cf}`;
   return cf.replace(/\/+$/, '');
 }
@@ -69,7 +72,7 @@ function runHlsConversion(inputPath, hlsDir) {
         '-hls_time 2',
         '-hls_list_size 0',
         '-f hls',
-        '-preset medium',
+        '-preset veryfast',
         '-profile:v main',
         '-level 3.1',
         // NOTE: -movflags +faststart removed — it is an MP4-only option and has no
