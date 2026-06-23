@@ -1027,7 +1027,7 @@ exports.createMessage = async (req, res) => {
         sender:      req.userId,
         type:        'chat_message',
         message:     msgBody,
-        link:        '/chat/' + conversationId,
+        link:        '/messages/' + conversationId,
         senderName,
         senderAvatar,
       }).catch(() => {});
