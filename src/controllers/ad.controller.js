@@ -1186,15 +1186,30 @@ exports.updateAdMetadata = async (req, res) => {
       }
     }
 
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ message: 'No valid fields to update' });
-    }
-
     // If ad was rejected, allow re-submission by resetting to pending
     if (ad.status === 'rejected') {
       updates.status = 'pending';
       updates['compliance.approval_status'] = 'pending';
       updates.rejection_reason = '';
+    } else if (req.body.status !== undefined) {
+      const newStatus = String(req.body.status).trim().toLowerCase();
+      const validTransitions = {
+        draft: ['pending'],
+        active: ['paused'],
+        paused: ['active'],
+      };
+      const allowed = validTransitions[ad.status];
+      if (allowed && allowed.includes(newStatus)) {
+        updates.status = newStatus;
+      } else {
+        return res.status(400).json({
+          message: `Invalid vendor status transition from ${ad.status} to ${newStatus}`,
+        });
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No valid fields to update' });
     }
 
     const updatedAd = await Ad.findByIdAndUpdate(
