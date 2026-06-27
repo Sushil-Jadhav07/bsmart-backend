@@ -10,16 +10,23 @@ const { checkSections } = require('../utils/privacyGuard');
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
   const postObj = post.toObject ? post.toObject() : post;
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
   const toUploadsUrl = (value) => {
     if (!value) return '';
     const raw = String(value).trim();
     if (!raw) return '';
-    if (/^https?:\/\//i.test(raw)) return raw;
-    const clean = raw
-      .replace(/^\/+/, '')
-      .replace(/^uploads\//i, '')
-      .replace(/^\/+/, '');
-    return `${baseUrl}/uploads/${clean}`;
+    if (/^https?:\/\//i.test(raw)) {
+      if (cloudfront && raw.includes('api.bebsmart.in/uploads/')) {
+        return raw.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+      }
+      return raw;
+    }
+    const clean = raw.replace(/^\/+/, '');
+    const key = clean.startsWith('uploads/') || clean.startsWith('uploads\\') ? clean.replace(/^uploads[/\\]/i, '') : clean;
+    if (cloudfront) return `${cloudfront}/uploads/${key}`;
+    return `${baseUrl}/uploads/${key}`;
   };
 
   if (postObj.media && Array.isArray(postObj.media)) {
@@ -779,19 +786,46 @@ const toUploadsUrl = (baseUrl, value) => {
   if (!value) return null;
   const normalized = String(value).trim();
   if (!normalized) return null;
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  const clean = normalized.replace(/^\/+/, '').replace(/^uploads\//, '');
-  return `${baseUrl}/uploads/${clean}`;
+
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+
+  if (/^https?:\/\//i.test(normalized)) {
+    if (cloudfront && normalized.includes('api.bebsmart.in/uploads/')) {
+      return normalized.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
+    return normalized;
+  }
+
+  const clean = normalized.replace(/^\/+/, '');
+  const key = clean.startsWith('uploads/') ? clean : `uploads/${clean}`;
+  if (cloudfront) return `${cloudfront}/${key}`;
+  return `${baseUrl}/${key}`;
 };
 
 const withMediaUrls = (item, baseUrl) => {
   const obj = item.toObject ? item.toObject() : item;
   if (Array.isArray(obj.media)) {
-    obj.media = obj.media.map((m) => ({
-      ...m,
-      fileUrl: toUploadsUrl(baseUrl, m?.fileName),
-      url: m?.url ? toUploadsUrl(baseUrl, m.url) : m?.url
-    }));
+    obj.media = obj.media.map((m) => {
+      const updated = {
+        ...m,
+        fileUrl: toUploadsUrl(baseUrl, m?.fileName),
+        url: m?.url ? toUploadsUrl(baseUrl, m.url) : m?.url
+      };
+      if (Array.isArray(m.thumbnails)) {
+        updated.thumbnails = m.thumbnails.map((t) => ({
+          ...t,
+          fileUrl: toUploadsUrl(baseUrl, t?.fileName || t?.fileUrl)
+        }));
+      } else if (m.thumbnail && m.thumbnail.fileName) {
+        updated.thumbnail = {
+          ...m.thumbnail,
+          fileUrl: toUploadsUrl(baseUrl, m.thumbnail.fileName)
+        };
+      }
+      return updated;
+    });
   }
   return obj;
 };

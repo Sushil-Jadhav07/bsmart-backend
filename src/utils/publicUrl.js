@@ -27,12 +27,20 @@ const absolutizeUploadUrl = (value, req) => {
   const raw = String(value).trim();
   if (!raw) return '';
 
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+
   if (/^https?:\/\//i.test(raw)) {
+    if (cloudfront && raw.includes('api.bebsmart.in/uploads/')) {
+      return raw.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
     return raw.replace(/^http:\/\/api\.bebsmart\.in/i, 'https://api.bebsmart.in');
   }
 
   const normalized = raw.replace(/^\/+/, '');
   const relativePath = normalized.startsWith('uploads/') ? normalized : `uploads/${normalized}`;
+  if (cloudfront) return `${cloudfront}/${relativePath}`;
   return `${getPublicBaseUrl(req)}/${relativePath}`;
 };
 
