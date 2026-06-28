@@ -12,6 +12,8 @@ const {
   confirmPhoneOtp,
   getMessagingSettings,
   updateMessagingSettings,
+  getNotificationSettings,
+  updateNotificationSettings,
 } = require('../controllers/settings.controller');
 
 /**
@@ -473,5 +475,85 @@ router.get('/messaging', auth, getMessagingSettings);
  *         description: Server error
  */
 router.patch('/messaging', auth, updateMessagingSettings);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATION SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/settings/notifications:
+ *   get:
+ *     summary: Get notification preferences
+ *     description: Returns all notification toggle states for the logged-in user.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Notification settings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 push_notifications: { type: boolean, example: true }
+ *                 likes:              { type: boolean, example: true }
+ *                 comments:           { type: boolean, example: true }
+ *                 replies:            { type: boolean, example: true }
+ *                 mentions:           { type: boolean, example: true }
+ *                 tags:               { type: boolean, example: true }
+ *                 shares:             { type: boolean, example: true }
+ *                 new_followers:      { type: boolean, example: true }
+ *                 follow_requests:    { type: boolean, example: true }
+ *                 new_messages:       { type: boolean, example: true }
+ *                 message_requests:   { type: boolean, example: true }
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/notifications', auth, getNotificationSettings);
+
+/**
+ * @swagger
+ * /api/settings/notifications:
+ *   patch:
+ *     summary: Update notification preferences
+ *     description: >
+ *       Pass any combination of notification fields with boolean values.
+ *       Only the fields you include will be updated; omitted fields remain unchanged.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               push_notifications: { type: boolean }
+ *               likes:              { type: boolean }
+ *               comments:           { type: boolean }
+ *               replies:            { type: boolean }
+ *               mentions:           { type: boolean }
+ *               tags:               { type: boolean }
+ *               shares:             { type: boolean }
+ *               new_followers:      { type: boolean }
+ *               follow_requests:    { type: boolean }
+ *               new_messages:       { type: boolean }
+ *               message_requests:   { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Updated notification settings
+ *       400:
+ *         description: No valid notification fields provided
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.patch('/notifications', auth, updateNotificationSettings);
 
 module.exports = router;

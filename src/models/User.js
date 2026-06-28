@@ -215,6 +215,21 @@ followRequests: [
     },
   },
 
+  // ─── Notification Settings ───────────────────────────────────────────────
+  notification_settings: {
+    push_notifications: { type: Boolean, default: true },
+    likes:              { type: Boolean, default: true },
+    comments:           { type: Boolean, default: true },
+    replies:            { type: Boolean, default: true },
+    mentions:           { type: Boolean, default: true },
+    tags:               { type: Boolean, default: true },
+    shares:             { type: Boolean, default: true },
+    new_followers:      { type: Boolean, default: true },
+    follow_requests:    { type: Boolean, default: true },
+    new_messages:       { type: Boolean, default: true },
+    message_requests:   { type: Boolean, default: true },
+  },
+
   // ─── Push Notification Tokens ─────────────────────────────────────────────
   // FCM token sent by the Android APK on login / token refresh
   fcm_token: {

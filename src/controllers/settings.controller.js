@@ -430,3 +430,71 @@ exports.confirmPhoneOtp = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
+// ─── Notification Settings ──────────────────────────────────────────────────
+
+const NOTIFICATION_FIELDS = [
+  'push_notifications',
+  'likes',
+  'comments',
+  'replies',
+  'mentions',
+  'tags',
+  'shares',
+  'new_followers',
+  'follow_requests',
+  'new_messages',
+  'message_requests',
+];
+
+const DEFAULT_NOTIFICATION_SETTINGS = Object.fromEntries(
+  NOTIFICATION_FIELDS.map((f) => [f, true])
+);
+
+exports.getNotificationSettings = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId)
+      .select('notification_settings')
+      .lean();
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const saved = user.notification_settings || {};
+    const settings = { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
+
+    res.json(settings);
+  } catch (err) {
+    console.error('[Settings] getNotificationSettings error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.updateNotificationSettings = async (req, res) => {
+  try {
+    const updates = {};
+    for (const field of NOTIFICATION_FIELDS) {
+      if (typeof req.body[field] === 'boolean') {
+        updates[`notification_settings.${field}`] = req.body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No valid notification fields provided' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $set: updates },
+      { new: true }
+    ).select('notification_settings').lean();
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const saved = user.notification_settings || {};
+    const settings = { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
+
+    res.json(settings);
+  } catch (err) {
+    console.error('[Settings] updateNotificationSettings error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
