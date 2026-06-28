@@ -120,9 +120,10 @@ exports.deleteVendorByAdmin = async (req, res) => {
 // @access  Admin only
 exports.adminGetAllUsers = async (req, res) => {
   try {
+    const fetchAll = req.query.all === 'true' || req.query.all === '1';
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip  = (page - 1) * limit;
+    const limit = fetchAll ? 0 : Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = fetchAll ? 0 : (page - 1) * limit;
 
     const filter = { isDeleted: { $ne: true } };
 
@@ -139,13 +140,16 @@ exports.adminGetAllUsers = async (req, res) => {
       ];
     }
 
+    let query = User.find(filter)
+      .select('-password')
+      .sort({ createdAt: -1 });
+
+    if (!fetchAll) {
+      query = query.skip(skip).limit(limit);
+    }
+
     const [users, total] = await Promise.all([
-      User.find(filter)
-        .select('-password')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+      query.lean(),
       User.countDocuments(filter),
     ]);
 
@@ -161,9 +165,9 @@ exports.adminGetAllUsers = async (req, res) => {
     return res.json({
       success: true,
       total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit),
+      page:  fetchAll ? 1 : page,
+      limit: fetchAll ? total : limit,
+      pages: fetchAll ? 1 : Math.ceil(total / limit),
       data,
     });
   } catch (error) {
