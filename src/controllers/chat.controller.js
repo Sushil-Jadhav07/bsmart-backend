@@ -33,9 +33,35 @@ const getAppBaseUrl = (req) => {
 const toUploadsUrl = (req, fileName) => {
   const trimmed = typeof fileName === 'string' ? fileName.trim() : '';
   if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `${req.protocol}://${req.get('host')}/uploads/${trimmed}`;
+
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    if (cloudfront && trimmed.includes('api.bebsmart.in/uploads/')) {
+      return trimmed.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
+    return trimmed;
+  }
+
+  const clean = trimmed.replace(/^\/+/, '');
+  const key = clean.startsWith('uploads/') ? clean : `uploads/${clean}`;
+  if (cloudfront) return `${cloudfront}/${key}`;
+  return `${req.protocol}://${req.get('host')}/${key}`;
 };
+const toCloudfrontUrl = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+  if (!cloudfront) return url;
+  if (url.includes('api.bebsmart.in/uploads/')) {
+    return url.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+  }
+  return url;
+};
+
 const resolveShareContent = async (req, contentType, contentId) => {
   const appUrl = getAppBaseUrl(req);
 
@@ -428,6 +454,26 @@ exports.getConversations = async (req, res) => {
         (participantId) => String(getParticipantObjectId(participantId)) === String(userId)
       );
       obj.unreadCount = isActiveParticipant ? (unreadMap.get(String(conversation._id)) || 0) : 0;
+
+      if (obj.groupAvatar) obj.groupAvatar = toCloudfrontUrl(obj.groupAvatar);
+      if (Array.isArray(obj.participants)) {
+        obj.participants = obj.participants.map((p) => {
+          if (p && p.avatar_url) p.avatar_url = toCloudfrontUrl(p.avatar_url);
+          return p;
+        });
+      }
+      if (obj.lastMessage) {
+        if (obj.lastMessage.mediaUrl) obj.lastMessage.mediaUrl = toCloudfrontUrl(obj.lastMessage.mediaUrl);
+        if (obj.lastMessage.sharedContent) {
+          if (obj.lastMessage.sharedContent.previewUrl) {
+            obj.lastMessage.sharedContent.previewUrl = toCloudfrontUrl(obj.lastMessage.sharedContent.previewUrl);
+          }
+          if (obj.lastMessage.sharedContent.creatorAvatarUrl) {
+            obj.lastMessage.sharedContent.creatorAvatarUrl = toCloudfrontUrl(obj.lastMessage.sharedContent.creatorAvatarUrl);
+          }
+        }
+      }
+
       return obj;
     });
 
@@ -858,7 +904,16 @@ exports.getConversationMessages = async (req, res) => {
       .populate('reactions.userId', USER_SELECT);
 
     const hasMore = messages.length > limit;
-    const paginatedMessages = hasMore ? messages.slice(0, limit) : messages;
+    const paginatedMessages = (hasMore ? messages.slice(0, limit) : messages).map((msg) => {
+      const m = msg.toObject ? msg.toObject() : msg;
+      if (m.mediaUrl) m.mediaUrl = toCloudfrontUrl(m.mediaUrl);
+      if (m.sharedContent) {
+        if (m.sharedContent.previewUrl) m.sharedContent.previewUrl = toCloudfrontUrl(m.sharedContent.previewUrl);
+        if (m.sharedContent.creatorAvatarUrl) m.sharedContent.creatorAvatarUrl = toCloudfrontUrl(m.sharedContent.creatorAvatarUrl);
+      }
+      if (m.sender && m.sender.avatar_url) m.sender.avatar_url = toCloudfrontUrl(m.sender.avatar_url);
+      return m;
+    });
 
     res.json({
       messages: paginatedMessages,
