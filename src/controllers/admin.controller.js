@@ -189,13 +189,24 @@ exports.adminGetUserContent = async (req, res) => {
 
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const cloudfront = process.env.CLOUDFRONT_BASE_URL
+      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+      : null;
 
     const toFileUrl = (fileName) => {
       if (!fileName) return null;
       const s = String(fileName).trim();
       if (!s) return null;
-      if (/^https?:\/\//i.test(s)) return s;
-      return `${baseUrl}/uploads/${s.replace(/^\/+/, '').replace(/^uploads\//, '')}`;
+      if (/^https?:\/\//i.test(s)) {
+        if (cloudfront && s.includes('api.bebsmart.in/uploads/')) {
+          return s.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+        }
+        return s;
+      }
+      const clean = s.replace(/^\/+/, '');
+      const key = clean.startsWith('uploads/') ? clean : `uploads/${clean.replace(/^uploads\//, '')}`;
+      if (cloudfront) return `${cloudfront}/${key}`;
+      return `${baseUrl}/${key}`;
     };
 
     const withUrls = (item) => {

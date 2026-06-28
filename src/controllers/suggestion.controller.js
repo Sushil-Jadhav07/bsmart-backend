@@ -6,23 +6,39 @@ const Follow = require('../models/Follow');
 const mongoose = require('mongoose');
 const { getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
 
+// Helper to resolve a single media/upload URL to CloudFront
+const resolveUrl = (value, baseUrl) => {
+  if (!value) return '';
+  const s = String(value).trim();
+  if (!s) return '';
+  const cf = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+  if (/^https?:\/\//i.test(s)) {
+    if (cf && s.includes('api.bebsmart.in/uploads/')) {
+      return s.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cf}/uploads/`);
+    }
+    return s;
+  }
+  const clean = s.replace(/^\/+/, '');
+  const key = clean.startsWith('uploads/') ? clean : `uploads/${clean}`;
+  if (cf) return `${cf}/${key}`;
+  return `${baseUrl}/${key}`;
+};
+
 // Helper to format media URLs
 const formatMedia = (media, baseUrl) => {
   if (!Array.isArray(media)) return [];
   return media.map(m => {
-    const fileUrl = m.fileUrl 
-      ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
-      : (m.fileName ? `${baseUrl}/uploads/${m.fileName}` : '');
-    
+    const fileUrl = resolveUrl(m.fileUrl || m.fileName, baseUrl);
+
     const thumbnails = Array.isArray(m.thumbnails)
       ? m.thumbnails.map(t => ({
           ...t,
-          fileUrl: t.fileUrl 
-            ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
-            : (t.fileName ? `${baseUrl}/uploads/${t.fileName}` : '')
+          fileUrl: resolveUrl(t.fileUrl || t.fileName, baseUrl)
         }))
       : [];
-      
+
     return { ...m, fileUrl, thumbnails };
   });
 };
@@ -55,9 +71,7 @@ exports.getSuggestedUsers = async (req, res) => {
 
     const formattedUsers = suggestedUsers.map(u => ({
       ...u,
-      avatar_url: u.avatar_url && !u.avatar_url.startsWith('http')
-        ? `${baseUrl}/uploads/${u.avatar_url}`
-        : u.avatar_url,
+      avatar_url: resolveUrl(u.avatar_url, baseUrl),
       vendor_details: u.role === 'vendor' ? u.vendor_profile : undefined
     }));
 
@@ -206,9 +220,7 @@ exports.getSuggestions = async (req, res) => {
 
     const formattedUsers = suggestedUsers.map(u => ({
       ...u,
-      avatar_url: u.avatar_url && !u.avatar_url.startsWith('http') 
-        ? `${baseUrl}/uploads/${u.avatar_url}` 
-        : u.avatar_url,
+      avatar_url: resolveUrl(u.avatar_url, baseUrl),
       vendor_details: u.role === 'vendor' ? u.vendor_profile : undefined
     }));
 
@@ -226,9 +238,7 @@ exports.getSuggestions = async (req, res) => {
       ...v,
       user: {
         ...v.user_id,
-        avatar_url: v.user_id?.avatar_url && !v.user_id.avatar_url.startsWith('http') 
-          ? `${baseUrl}/uploads/${v.user_id.avatar_url}` 
-          : v.user_id?.avatar_url
+        avatar_url: resolveUrl(v.user_id?.avatar_url, baseUrl)
       }
     }));
 
@@ -273,9 +283,7 @@ exports.getSuggestedVendors = async (req, res) => {
       ...v,
       user: {
         ...v.user_id,
-        avatar_url: v.user_id?.avatar_url && !v.user_id.avatar_url.startsWith('http') 
-          ? `${baseUrl}/uploads/${v.user_id.avatar_url}` 
-          : v.user_id?.avatar_url
+        avatar_url: resolveUrl(v.user_id?.avatar_url, baseUrl)
       }
     }));
 

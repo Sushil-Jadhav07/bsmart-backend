@@ -205,7 +205,10 @@ exports.uploadVendorCoverImage = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const cfBase = process.env.CLOUDFRONT_BASE_URL
+      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+      : null;
+    const baseUrl = cfBase || `${req.protocol}://${req.get('host')}`;
     const fileUrls = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
 
     // Append new URLs to existing cover_image_urls array
@@ -448,8 +451,10 @@ exports.uploadVendorLogo = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const logoUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    const cfBase2 = process.env.CLOUDFRONT_BASE_URL
+      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+      : null;
+    const logoUrl = `${cfBase2 || `${req.protocol}://${req.get('host')}`}/uploads/${req.file.filename}`;
     vendor.logo_url = logoUrl;
     await vendor.save();
 
