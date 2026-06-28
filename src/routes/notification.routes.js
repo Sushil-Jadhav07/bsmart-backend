@@ -209,6 +209,7 @@ router.get('/', verifyToken, async (req, res) => {
       limit,
       total,
       hasMore: skip + notifications.length < total,
+      appliedFilter: typeParam || 'all',
     });
   } catch (err) {
     console.error('[Notifications] GET error:', err);
