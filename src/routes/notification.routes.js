@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Notification = require('../models/notification.model');
+const Post = require('../models/Post');
 const verifyToken = require('../middleware/auth');
 
 /**
@@ -108,12 +110,108 @@ const verifyToken = require('../middleware/auth');
  */
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const notifications = await Notification.find({ recipient: req.user._id })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .populate('sender', 'username full_name avatar_url');
-    res.json(notifications);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const filter = { recipient: req.user._id };
+
+    const typeParam = req.query.type;
+    const typeMap = {
+      like:     ['like', 'ad_like', 'comment_like'],
+      comment:  ['comment', 'comment_reply', 'ad_comment', 'tweet_comment'],
+      follow:   ['follow', 'follow_request', 'follow_accepted'],
+      mention:  ['mention', 'post_tag', 'reel_tag', 'ad_tag', 'promote_reel_tag'],
+    };
+    if (typeParam && typeMap[typeParam]) {
+      filter.type = { $in: typeMap[typeParam] };
+    } else if (typeParam === 'unread') {
+      filter.isRead = false;
+    }
+
+    const cloudfront = process.env.CLOUDFRONT_BASE_URL
+      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+      : null;
+
+    const toCfUrl = (url) => {
+      if (!url || typeof url !== 'string') return url;
+      if (cloudfront && url.includes('api.bebsmart.in/uploads/')) {
+        return url.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+      }
+      if (cloudfront && url && !url.startsWith('http')) {
+        const clean = url.replace(/^\/+/, '');
+        const key = clean.startsWith('uploads/') ? clean : `uploads/${clean}`;
+        return `${cloudfront}/${key}`;
+      }
+      return url;
+    };
+
+    const [notifications, total] = await Promise.all([
+      Notification.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('sender', 'username full_name avatar_url')
+        .lean(),
+      Notification.countDocuments(filter),
+    ]);
+
+    const postIds = [];
+    for (const n of notifications) {
+      if (n.link) {
+        const match = n.link.match(/\/posts\/([a-f0-9]{24})/);
+        if (match && mongoose.Types.ObjectId.isValid(match[1])) {
+          postIds.push(match[1]);
+        }
+      }
+    }
+
+    let postMap = new Map();
+    if (postIds.length > 0) {
+      const posts = await Post.find({ _id: { $in: postIds } })
+        .select('_id caption type media likes_count comments_count')
+        .lean();
+      postMap = new Map(posts.map((p) => [String(p._id), p]));
+    }
+
+    const result = notifications.map((n) => {
+      if (n.sender && n.sender.avatar_url) {
+        n.sender.avatar_url = toCfUrl(n.sender.avatar_url);
+      }
+
+      let postId = null;
+      if (n.link) {
+        const match = n.link.match(/\/posts\/([a-f0-9]{24})/);
+        if (match) postId = match[1];
+      }
+
+      let relatedPost = null;
+      if (postId && postMap.has(postId)) {
+        const p = { ...postMap.get(postId) };
+        if (Array.isArray(p.media)) {
+          p.media = p.media.map((m) => ({
+            ...m,
+            fileUrl: toCfUrl(m.fileUrl || m.fileName),
+            thumbnails: Array.isArray(m.thumbnails)
+              ? m.thumbnails.map((t) => ({ ...t, fileUrl: toCfUrl(t.fileUrl || t.fileName) }))
+              : m.thumbnails,
+          }));
+        }
+        relatedPost = p;
+      }
+
+      return { ...n, postId, relatedPost };
+    });
+
+    res.json({
+      notifications: result,
+      page,
+      limit,
+      total,
+      hasMore: skip + notifications.length < total,
+    });
   } catch (err) {
+    console.error('[Notifications] GET error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
