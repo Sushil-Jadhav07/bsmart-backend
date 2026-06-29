@@ -23,8 +23,27 @@ const supportQuerySchema = new mongoose.Schema({
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    default: null,
     index: true,
+  },
+  name: {
+    type: String,
+    trim: true,
+    maxlength: 100,
+    default: '',
+  },
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    maxlength: 200,
+    default: '',
+  },
+  phone: {
+    type: String,
+    trim: true,
+    maxlength: 20,
+    default: '',
   },
   app_source: {
     type: String,

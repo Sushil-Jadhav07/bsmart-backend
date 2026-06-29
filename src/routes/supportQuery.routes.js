@@ -7,7 +7,7 @@ const ctrl = require('../controllers/supportQuery.controller');
  * @swagger
  * tags:
  *   - name: Support Queries
- *     description: Customer support queries from BSmart & Ruvees apps
+ *     description: Customer support queries from BSmart & Ruvees apps and websites
  *
  * components:
  *   schemas:
@@ -45,6 +45,7 @@ const ctrl = require('../controllers/supportQuery.controller');
  *         _id:
  *           type: string
  *         user_id:
+ *           nullable: true
  *           oneOf:
  *             - type: string
  *             - type: object
@@ -57,6 +58,15 @@ const ctrl = require('../controllers/supportQuery.controller');
  *                   type: string
  *                 avatar_url:
  *                   type: string
+ *         name:
+ *           type: string
+ *           description: Visitor name (website submissions)
+ *         email:
+ *           type: string
+ *           description: Visitor email (website submissions)
+ *         phone:
+ *           type: string
+ *           description: Visitor phone (website submissions)
  *         app_source:
  *           type: string
  *           enum: [bsmart, ruvees]
@@ -112,13 +122,80 @@ const ctrl = require('../controllers/supportQuery.controller');
  *           format: date-time
  */
 
+// ─── WEBSITE (public, no auth) ─────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/support-queries/website:
+ *   post:
+ *     summary: Submit a support query from website (no auth required)
+ *     description: Used by Ruvees/BSmart website contact forms. Requires name, email instead of auth token.
+ *     tags: [Support Queries]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, email, subject, message, category, app_source]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Rahul Sharma"
+ *               email:
+ *                 type: string
+ *                 example: "rahul@example.com"
+ *               phone:
+ *                 type: string
+ *                 example: "+919876543210"
+ *               subject:
+ *                 type: string
+ *                 example: "Want to know about pricing"
+ *               message:
+ *                 type: string
+ *                 example: "I want to know more about your vendor packages and pricing."
+ *               category:
+ *                 type: string
+ *                 enum: [account, payment, technical, general, other]
+ *                 example: "general"
+ *               app_source:
+ *                 type: string
+ *                 enum: [bsmart, ruvees]
+ *                 example: "ruvees"
+ *     responses:
+ *       201:
+ *         description: Support query submitted successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Support query submitted successfully"
+ *               query:
+ *                 _id: "67e3aa001122334455669001"
+ *                 user_id: null
+ *                 name: "Rahul Sharma"
+ *                 email: "rahul@example.com"
+ *                 phone: "+919876543210"
+ *                 app_source: "ruvees"
+ *                 subject: "Want to know about pricing"
+ *                 message: "I want to know more about your vendor packages and pricing."
+ *                 category: "general"
+ *                 status: "open"
+ *                 assigned_to: null
+ *                 replies: []
+ *                 createdAt: "2026-06-29T10:00:00.000Z"
+ *       400:
+ *         description: Validation error
+ */
+router.post('/website', ctrl.createWebsiteQuery);
+
 // ─── APP-SIDE (authenticated user) ─────────────────────────────────────────
 
 /**
  * @swagger
  * /api/support-queries:
  *   post:
- *     summary: Submit a new support query
+ *     summary: Submit a new support query (app users, auth required)
  *     tags: [Support Queries]
  *     security:
  *       - bearerAuth: []

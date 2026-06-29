@@ -1,6 +1,47 @@
 const mongoose = require('mongoose');
 const SupportQuery = require('../models/SupportQuery');
 
+// ─── WEBSITE (public, no auth) ──────────────────────────────────────────────
+
+exports.createWebsiteQuery = async (req, res) => {
+  try {
+    const { name, email, phone, subject, message, category, app_source } = req.body;
+
+    if (!name || !email || !subject || !message || !category || !app_source) {
+      return res.status(400).json({ message: 'name, email, subject, message, category and app_source are required' });
+    }
+    if (!['bsmart', 'ruvees'].includes(app_source)) {
+      return res.status(400).json({ message: 'app_source must be bsmart or ruvees' });
+    }
+    if (!['account', 'payment', 'technical', 'general', 'other'].includes(category)) {
+      return res.status(400).json({ message: 'Invalid category' });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email address' });
+    }
+
+    const query = await SupportQuery.create({
+      name,
+      email,
+      phone: phone || '',
+      subject,
+      message,
+      category,
+      app_source,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Support query submitted successfully',
+      query,
+    });
+  } catch (error) {
+    console.error('[createWebsiteQuery]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // ─── APP-SIDE (authenticated user) ──────────────────────────────────────────
 
 exports.createQuery = async (req, res) => {
