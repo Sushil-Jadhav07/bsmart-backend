@@ -59,6 +59,7 @@ const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <
 const settingsRoutes       = require('./src/routes/settings.routes');       // <- ACCOUNT SETTINGS
 const privacyRoutes        = require('./src/routes/privacy.routes');        // <- PRIVACY SETTINGS
 const smsRoutes            = require('./src/routes/sms.routes');            // <- SMS OTP
+const supportQueryRoutes   = require('./src/routes/supportQuery.routes');   // <- SUPPORT QUERIES
 
 const app    = express();
 const server = http.createServer(app);
@@ -319,6 +320,7 @@ app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
 app.use('/api/settings',      settingsRoutes);         // <- ACCOUNT SETTINGS
 app.use('/api/privacy',       privacyRoutes);          // <- PRIVACY SETTINGS
 app.use('/api/sms',           smsRoutes);              // <- SMS OTP
+app.use('/api/support-queries', supportQueryRoutes);   // <- SUPPORT QUERIES
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
