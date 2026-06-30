@@ -1,6 +1,13 @@
 'use strict';
 
+const crypto   = require('crypto');
 const mongoose = require('mongoose');
+const Razorpay = require('razorpay');
+
+const razorpay = new Razorpay({
+  key_id:     process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 const Ad = require('../models/Ad');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
@@ -274,6 +281,196 @@ exports.rechargeWallet = async (req, res) => {
   } catch (err) {
     console.error('[rechargeWallet]', err);
     res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/wallet/recharge/create-order
+// Step 1 — Create a Razorpay order for vendor self-recharge
+// ─────────────────────────────────────────────────────────────
+
+exports.createRechargeOrder = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { recharge_amount } = req.body;
+
+    const amount = Number(recharge_amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'recharge_amount must be a positive number' });
+    }
+
+    const user = await User.findById(userId).select('role').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role !== 'vendor') {
+      return res.status(403).json({ success: false, message: 'Only vendors can recharge their wallet' });
+    }
+
+    const activePurchase = await VendorPackagePurchase.findOne({ user_id: userId, status: 'active' })
+      .populate('package_id', 'tier name')
+      .lean();
+
+    const packageTier = activePurchase?.package_id?.tier || null;
+    const packageName = activePurchase?.package_id?.name || 'No active package';
+    const coinsToCredit = calculateRechargeCoins(amount, packageTier);
+
+    const amountInPaise = Math.round(amount * 100);
+    const order = await razorpay.orders.create({
+      amount:   amountInPaise,
+      currency: 'INR',
+      receipt:  `rch_${String(userId).slice(-15)}_${Date.now().toString().slice(-10)}`,
+      notes: {
+        user_id:       String(userId),
+        recharge_amount: String(amount),
+        coins_to_credit: String(coinsToCredit),
+        package_tier:    packageTier || 'none',
+      },
+    });
+
+    return res.json({
+      success: true,
+      key_id: process.env.RAZORPAY_KEY_ID,
+      order: {
+        order_id:        order.id,
+        amount:          amountInPaise,
+        currency:        'INR',
+        recharge_amount: amount,
+        coins_to_credit: coinsToCredit,
+        package_tier:    packageTier || 'none',
+        package_name:    packageName,
+        formula: (packageTier === 'premium' || packageTier === 'enterprise')
+          ? `${amount} × 4 + ${amount} = ${coinsToCredit} coins`
+          : `${amount} × 4 = ${coinsToCredit} coins`,
+      },
+    });
+  } catch (err) {
+    console.error('createRechargeOrder:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/wallet/recharge/verify-payment
+// Step 2 — Verify Razorpay payment and credit coins
+// ─────────────────────────────────────────────────────────────
+
+exports.verifyRechargePayment = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, recharge_amount } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !recharge_amount) {
+      return res.status(400).json({ success: false, message: 'razorpay_order_id, razorpay_payment_id, razorpay_signature and recharge_amount are required' });
+    }
+
+    const amount = Number(recharge_amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'recharge_amount must be a positive number' });
+    }
+
+    // Verify HMAC-SHA256 signature
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+    }
+
+    // Duplicate payment guard
+    const already = await WalletTransaction.findOne({ razorpay_payment_id }).lean();
+    if (already) {
+      const wallet = await Wallet.findOne({ user_id: userId }).lean();
+      return res.json({ success: true, message: 'Payment already processed', wallet_balance: wallet?.balance ?? 0 });
+    }
+
+    const user = await User.findById(userId).select('role username email full_name').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role !== 'vendor') {
+      return res.status(403).json({ success: false, message: 'Only vendors can recharge their wallet' });
+    }
+
+    const activePurchase = await VendorPackagePurchase.findOne({ user_id: userId, status: 'active' })
+      .populate('package_id', 'tier name')
+      .lean();
+
+    const packageTier = activePurchase?.package_id?.tier || null;
+    const packageName = activePurchase?.package_id?.name || 'No active package';
+    const coinsToCredit = calculateRechargeCoins(amount, packageTier);
+    const now = new Date();
+
+    let newBalance;
+    await runMongoTransaction({
+      work: async (session) => {
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: coinsToCredit } },
+          { new: true, upsert: true, session }
+        );
+        newBalance = wallet.balance;
+        await WalletTransaction.create([{
+          user_id: userId,
+          type: 'VENDOR_RECHARGE',
+          amount: coinsToCredit,
+          status: 'SUCCESS',
+          description: `Wallet recharged ₹${amount} → ${coinsToCredit} coins (${packageName}) | Razorpay: ${razorpay_payment_id}`,
+          transactionDate: now,
+          razorpay_order_id,
+          razorpay_payment_id,
+        }], { session });
+      },
+      fallback: async () => {
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: coinsToCredit } },
+          { new: true, upsert: true }
+        );
+        newBalance = wallet.balance;
+        await WalletTransaction.create({
+          user_id: userId,
+          type: 'VENDOR_RECHARGE',
+          amount: coinsToCredit,
+          status: 'SUCCESS',
+          description: `Wallet recharged ₹${amount} → ${coinsToCredit} coins (${packageName}) | Razorpay: ${razorpay_payment_id}`,
+          transactionDate: now,
+          razorpay_order_id,
+          razorpay_payment_id,
+        });
+      },
+    });
+
+    try {
+      await sendNotification(req.app, {
+        recipient: userId,
+        sender: null,
+        type: 'coins_credited',
+        message: `${coinsToCredit} coins have been added to your wallet`,
+        link: '/wallet',
+      });
+    } catch (notifErr) {
+      console.error('[verifyRechargePayment] notification error:', notifErr.message);
+    }
+
+    const isPremiumTier = (packageTier === 'premium' || packageTier === 'enterprise');
+    return res.status(201).json({
+      success: true,
+      message: 'Payment verified and wallet recharged',
+      recharge: {
+        recharge_amount:  amount,
+        coins_credited:   coinsToCredit,
+        package_tier:     packageTier || 'none',
+        package_name:     packageName,
+        formula: isPremiumTier
+          ? `${amount} × 4 + ${amount} = ${coinsToCredit} coins`
+          : `${amount} × 4 = ${coinsToCredit} coins`,
+        razorpay_order_id,
+        razorpay_payment_id,
+      },
+      wallet: { new_balance: newBalance, currency: 'Coins' },
+    });
+  } catch (err) {
+    console.error('verifyRechargePayment:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };
 

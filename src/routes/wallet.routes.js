@@ -12,6 +12,8 @@ const {
   getAdWalletHistory,
   rechargeVendorWallet,
   rechargeWallet,
+  createRechargeOrder,
+  verifyRechargePayment,
   getMyRechargeHistory,
   getVendorRechargeHistory,
   updateWalletBalance,
@@ -105,6 +107,107 @@ router.get('/me', auth, getMyWallet);
  *       404:
  *         description: User not found
  */
+/**
+ * @swagger
+ * /api/wallet/recharge/create-order:
+ *   post:
+ *     summary: Create a Razorpay order for vendor self-recharge — Step 1 of payment
+ *     description: Call this first. Returns order_id and key_id to open Razorpay checkout. Coin preview is included in the response.
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [recharge_amount]
+ *             properties:
+ *               recharge_amount:
+ *                 type: number
+ *                 description: Amount in INR to recharge (must be > 0)
+ *                 example: 1000
+ *     responses:
+ *       200:
+ *         description: Razorpay order created
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               key_id: "rzp_test_XXXXXXXXXX"
+ *               order:
+ *                 order_id: "order_XXXXXXXXXXXXXXXXXX"
+ *                 amount: 100000
+ *                 currency: "INR"
+ *                 recharge_amount: 1000
+ *                 coins_to_credit: 4000
+ *                 package_tier: "basic"
+ *                 package_name: "Basic"
+ *                 formula: "1000 × 4 = 4000 coins"
+ *       400:
+ *         description: Invalid recharge_amount
+ *       403:
+ *         description: Only vendors can recharge
+ */
+router.post('/recharge/create-order', auth, createRechargeOrder);
+
+/**
+ * @swagger
+ * /api/wallet/recharge/verify-payment:
+ *   post:
+ *     summary: Verify Razorpay payment and credit coins — Step 2 of recharge
+ *     description: Call this after Razorpay checkout succeeds. Verifies HMAC signature and credits coins to vendor wallet.
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [razorpay_order_id, razorpay_payment_id, razorpay_signature, recharge_amount]
+ *             properties:
+ *               razorpay_order_id:
+ *                 type: string
+ *                 example: "order_XXXXXXXXXXXXXXXXXX"
+ *               razorpay_payment_id:
+ *                 type: string
+ *                 example: "pay_XXXXXXXXXXXXXXXXXX"
+ *               razorpay_signature:
+ *                 type: string
+ *                 example: "abc123def456..."
+ *               recharge_amount:
+ *                 type: number
+ *                 example: 1000
+ *                 description: Same amount sent in create-order
+ *     responses:
+ *       201:
+ *         description: Payment verified and wallet recharged
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Payment verified and wallet recharged"
+ *               recharge:
+ *                 recharge_amount: 1000
+ *                 coins_credited: 4000
+ *                 package_tier: "basic"
+ *                 package_name: "Basic"
+ *                 formula: "1000 × 4 = 4000 coins"
+ *                 razorpay_order_id: "order_XXXXXXXXXXXXXXXXXX"
+ *                 razorpay_payment_id: "pay_XXXXXXXXXXXXXXXXXX"
+ *               wallet:
+ *                 new_balance: 4000
+ *                 currency: "Coins"
+ *       400:
+ *         description: Missing fields or invalid signature
+ *       403:
+ *         description: Only vendors can recharge
+ */
+router.post('/recharge/verify-payment', auth, verifyRechargePayment);
+
 router.post('/recharge', auth, rechargeWallet);
 
 // ──────────────────────────────────────────────
