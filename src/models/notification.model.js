@@ -43,6 +43,12 @@ const notificationSchema = new mongoose.Schema({
       // Fired to the vendor themselves when their subscription is expiring
       'subscription_expiring',  // sent X days before expiry
       'subscription_expired',   // sent on/after expiry day
+
+      // ── Support queries ───────────────────────────────────────────────────
+      'support_query',   // new query submitted — sent to admins/sales
+      'support_reply',   // reply added — sent to the other party
+      'support_status',  // status changed — sent to user
+      'support_assign',  // query assigned — sent to sales officer
     ],
     required: true
   },
