@@ -16,7 +16,7 @@ const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const sendNotification = require('../utils/sendNotification');
 const runMongoTransaction = require('../utils/runMongoTransaction');
-const { sendCoinsLowEmail } = require('./email.controller');
+const { sendCoinsLowEmail, sendWalletRechargeEmail } = require('./email.controller');
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -439,19 +439,43 @@ exports.verifyRechargePayment = async (req, res) => {
       },
     });
 
+    const isPremiumTier = (packageTier === 'premium' || packageTier === 'enterprise');
+    const formula = isPremiumTier
+      ? `${amount} × 4 + ${amount} = ${coinsToCredit} coins`
+      : `${amount} × 4 = ${coinsToCredit} coins`;
+
+    // Push notification
     try {
       await sendNotification(req.app, {
         recipient: userId,
         sender: null,
         type: 'coins_credited',
-        message: `${coinsToCredit} coins have been added to your wallet`,
-        link: '/wallet',
+        message: `Wallet recharged! ₹${amount} paid — ${coinsToCredit} coins added. Check your email for the receipt.`,
+        link: '/vendor/wallet',
       });
     } catch (notifErr) {
       console.error('[verifyRechargePayment] notification error:', notifErr.message);
     }
 
-    const isPremiumTier = (packageTier === 'premium' || packageTier === 'enterprise');
+    // Email receipt
+    const userForEmail = await User.findById(userId).select('email full_name username').lean();
+    const vendor = await Vendor.findOne({ user_id: userId }).select('company_details business_name').lean();
+    if (userForEmail?.email) {
+      sendWalletRechargeEmail({
+        email:               userForEmail.email,
+        full_name:           userForEmail.full_name || userForEmail.username,
+        company_name:        vendor?.company_details?.company_name || vendor?.business_name,
+        recharge_amount:     amount,
+        coins_credited:      coinsToCredit,
+        package_tier:        packageTier || 'none',
+        package_name:        packageName,
+        formula,
+        new_balance:         newBalance,
+        razorpay_order_id,
+        razorpay_payment_id,
+        recharged_at:        now,
+      }).catch((err) => console.error('[verifyRechargePayment] email error:', err.message));
+    }
     return res.status(201).json({
       success: true,
       message: 'Payment verified and wallet recharged',
@@ -460,9 +484,7 @@ exports.verifyRechargePayment = async (req, res) => {
         coins_credited:   coinsToCredit,
         package_tier:     packageTier || 'none',
         package_name:     packageName,
-        formula: isPremiumTier
-          ? `${amount} × 4 + ${amount} = ${coinsToCredit} coins`
-          : `${amount} × 4 = ${coinsToCredit} coins`,
+        formula,
         razorpay_order_id,
         razorpay_payment_id,
       },

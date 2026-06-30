@@ -10,6 +10,7 @@ const VendorPackage      = require('../models/VendorPackage');
 const VendorPackagePurchase = require('../models/VendorPackagePurchase');
 const runMongoTransaction = require('../utils/runMongoTransaction');
 const User               = require('../models/User');
+const sendNotification   = require('../utils/sendNotification');
 const {
   sendPackagePurchasedEmail,
   sendCoinsLowEmail,
@@ -439,6 +440,15 @@ exports.purchasePackage = async (req, res) => {
         );
       }
     }
+
+    // Push notification
+    fireAndForget('Package purchased push', sendNotification(req.app, {
+      recipient: userId,
+      sender: null,
+      type: 'coins_credited',
+      message: `Package activated: ${pkg.name} — ₹${pkg.final_price} paid. Check your email for the receipt.`,
+      link: '/vendor/wallet',
+    }));
 
     return res.status(201).json({
       success: true,
@@ -951,6 +961,15 @@ exports.verifyRazorpayPayment = async (req, res) => {
         );
       }
     }
+
+    // Push notification
+    fireAndForget('Package purchased push', sendNotification(req.app, {
+      recipient: userId,
+      sender: null,
+      type: 'coins_credited',
+      message: `Payment successful! ${pkg.name} package activated — ₹${pkg.final_price} paid. Check your email for the receipt.`,
+      link: '/vendor/wallet',
+    }));
 
     return res.status(201).json({
       success: true,

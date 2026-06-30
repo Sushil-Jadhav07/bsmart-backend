@@ -435,6 +435,50 @@ const websiteInquiryCustomerTemplate = ({ name, subject, message, category, app_
     ${note('Please do not reply to this email. For further queries, use the contact form on our website.')}
   `);
 
+const walletRechargeTemplate = ({
+  full_name,
+  company_name,
+  recharge_amount,
+  coins_credited,
+  package_tier,
+  package_name,
+  formula,
+  new_balance,
+  razorpay_order_id,
+  razorpay_payment_id,
+  recharged_at,
+}) => {
+  const tierLabel = package_tier && package_tier !== 'none'
+    ? package_tier.charAt(0).toUpperCase() + package_tier.slice(1)
+    : 'No active package';
+  const dateText = recharged_at
+    ? new Date(recharged_at).toLocaleString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : new Date().toLocaleString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return baseTemplate(`
+    ${h2('Wallet recharge successful')}
+    ${hi(full_name)}
+    ${p(`Your wallet for <strong>${company_name || 'your business'}</strong> has been recharged successfully. Your coins are ready to use for ad budgets.`)}
+    ${infoBox(`
+      <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:${BRAND_PRIMARY};">Recharge Receipt</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Amount Paid', `₹${Number(recharge_amount || 0).toLocaleString('en-IN')}`)}
+        ${kvRow('Coins Credited', `${Number(coins_credited || 0).toLocaleString()} coins`)}
+        ${kvRow('Coin Formula', formula || '-')}
+        ${kvRow('Package', `${package_name || '-'} (${tierLabel})`)}
+        ${kvRow('New Wallet Balance', `${Number(new_balance || 0).toLocaleString()} coins`)}
+        ${kvRow('Date & Time', dateText)}
+        ${razorpay_payment_id ? kvRow('Payment ID', razorpay_payment_id) : ''}
+        ${razorpay_order_id ? kvRow('Order ID', razorpay_order_id) : ''}
+      </table>
+    `, BRAND_LIGHT, BRAND_SECONDARY)}
+    ${p('Use your coins to set ad budgets and reach more customers. Premium and Enterprise packages give you bonus coins on every recharge.')}
+    ${btn('View My Wallet', `${CLIENT}/vendor/wallet`, BRAND_PRIMARY)}
+    ${divider()}
+    ${note('This is an automated receipt. Keep it for your records.')}
+  `, BRAND_PRIMARY);
+};
+
 module.exports = {
   welcomeMemberTemplate,
   welcomeVendorTemplate,
@@ -452,4 +496,5 @@ module.exports = {
   customSendEmailTemplate,
   websiteInquiryAdminTemplate,
   websiteInquiryCustomerTemplate,
+  walletRechargeTemplate,
 };

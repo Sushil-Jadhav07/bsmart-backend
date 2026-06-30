@@ -18,6 +18,7 @@ const {
   newVendorAlertTemplate,
   newAdPendingTemplate,
   customSendEmailTemplate,
+  walletRechargeTemplate,
 } = require('../templates/email.templates');
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
@@ -368,6 +369,26 @@ exports.sendCustomEmail = async (req, res) => {
   }
 };
 
+const sendWalletRechargeEmail = async ({
+  email, full_name, company_name,
+  recharge_amount, coins_credited, package_tier, package_name, formula,
+  new_balance, razorpay_order_id, razorpay_payment_id, recharged_at,
+}) => {
+  try {
+    await sendEmail({
+      to: email,
+      subject: `Wallet Recharged: ₹${recharge_amount} → ${coins_credited} coins — B-Smart`,
+      html: walletRechargeTemplate({
+        full_name, company_name, recharge_amount, coins_credited,
+        package_tier, package_name, formula, new_balance,
+        razorpay_order_id, razorpay_payment_id, recharged_at,
+      }),
+    });
+  } catch (err) {
+    console.error('[Email] Wallet recharge email failed:', err.message);
+  }
+};
+
 module.exports.sendWelcomeEmail = sendWelcomeEmail;
 module.exports.sendVendorApprovedEmail = sendVendorApprovedEmail;
 module.exports.sendVendorRejectedEmail = sendVendorRejectedEmail;
@@ -377,3 +398,4 @@ module.exports.sendAdRejectedEmail = sendAdRejectedEmail;
 module.exports.sendCoinsLowEmail = sendCoinsLowEmail;
 module.exports.sendNewVendorAlert = sendNewVendorAlert;
 module.exports.sendNewAdPendingAlert = sendNewAdPendingAlert;
+module.exports.sendWalletRechargeEmail = sendWalletRechargeEmail;
