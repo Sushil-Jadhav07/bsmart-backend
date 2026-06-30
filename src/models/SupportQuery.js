@@ -91,6 +91,10 @@ const supportQuerySchema = new mongoose.Schema({
     default: null,
   },
   replies: [replySchema],
+  deleted_by_user: {
+    type: Boolean,
+    default: false,
+  },
 }, { timestamps: true });
 
 supportQuerySchema.index({ user_id: 1, status: 1 });

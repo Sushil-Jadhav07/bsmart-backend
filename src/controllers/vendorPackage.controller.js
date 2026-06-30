@@ -1,17 +1,24 @@
 'use strict';
 
-const mongoose = require('mongoose');
-const Vendor                 = require('../models/Vendor');
-const Wallet                 = require('../models/Wallet');
-const WalletTransaction      = require('../models/WalletTransaction');
-const VendorPackage          = require('../models/VendorPackage');
-const VendorPackagePurchase  = require('../models/VendorPackagePurchase');
-const runMongoTransaction    = require('../utils/runMongoTransaction');
-const User                   = require('../models/User');
+const crypto             = require('crypto');
+const mongoose           = require('mongoose');
+const Razorpay           = require('razorpay');
+const Vendor             = require('../models/Vendor');
+const Wallet             = require('../models/Wallet');
+const WalletTransaction  = require('../models/WalletTransaction');
+const VendorPackage      = require('../models/VendorPackage');
+const VendorPackagePurchase = require('../models/VendorPackagePurchase');
+const runMongoTransaction = require('../utils/runMongoTransaction');
+const User               = require('../models/User');
 const {
   sendPackagePurchasedEmail,
   sendCoinsLowEmail,
 } = require('./email.controller');
+
+const razorpay = new Razorpay({
+  key_id:     process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 const LOW_COIN_THRESHOLD = 500;
 
@@ -631,6 +638,8 @@ exports.getMyTransactionHistory = async (req, res) => {
         description: t.description,
         status:      t.status,
         ad:          t.ad_id ? { _id: t.ad_id._id, caption: t.ad_id.caption } : null,
+        razorpay_order_id:   t.razorpay_order_id   ?? null,
+        razorpay_payment_id: t.razorpay_payment_id ?? null,
         created_at:  t.createdAt,
       };
     });
@@ -680,6 +689,288 @@ exports.adminListPurchases = async (req, res) => {
     return res.json({ success: true, total, page, total_pages: Math.ceil(total / limit), purchases });
   } catch (err) {
     console.error('adminListPurchases:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Razorpay: Step 1 — Create Order
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/vendor-packages/:packageId/create-order
+ * Vendor calls this first. Returns a Razorpay order_id + key_id for the frontend checkout.
+ */
+exports.createRazorpayOrder = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { packageId } = req.params;
+
+    const pkg = await VendorPackage.findById(packageId);
+    if (!pkg || !pkg.is_active) {
+      return res.status(404).json({ success: false, message: 'Package not found or inactive' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId, isDeleted: false });
+    if (!vendor) {
+      return res.status(403).json({ success: false, message: 'Vendor profile not found' });
+    }
+
+    // Razorpay requires amount in paise (1 INR = 100 paise)
+    const amountInPaise = Math.round(pkg.final_price * 100);
+
+    const order = await razorpay.orders.create({
+      amount:   amountInPaise,
+      currency: 'INR',
+      receipt:  `pkg_${packageId}_${Date.now()}`,
+      notes: {
+        package_id:   String(packageId),
+        package_name: pkg.name,
+        vendor_id:    String(vendor._id),
+        user_id:      String(userId),
+      },
+    });
+
+    return res.json({
+      success: true,
+      key_id: process.env.RAZORPAY_KEY_ID,
+      order: {
+        order_id:    order.id,
+        amount:      order.amount,
+        currency:    order.currency,
+        package_id:  packageId,
+        package_name: pkg.name,
+        tier:         pkg.tier,
+        final_price:  pkg.final_price,
+        coins_granted: pkg.coins_granted,
+      },
+    });
+  } catch (err) {
+    console.error('createRazorpayOrder:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Razorpay: Step 2 — Verify Payment & Activate Package
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/vendor-packages/:packageId/verify-payment
+ * Called after Razorpay checkout succeeds on frontend.
+ * Verifies HMAC signature, then credits coins and activates the package.
+ */
+exports.verifyRazorpayPayment = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { packageId } = req.params;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'razorpay_order_id, razorpay_payment_id and razorpay_signature are required',
+      });
+    }
+
+    // Verify HMAC-SHA256 signature
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed — invalid signature',
+      });
+    }
+
+    // Prevent duplicate activation if webhook/frontend fires twice
+    const alreadyProcessed = await VendorPackagePurchase.findOne({ razorpay_payment_id });
+    if (alreadyProcessed) {
+      return res.json({
+        success: true,
+        message: 'Payment already processed',
+        purchase: { purchase_id: alreadyProcessed._id },
+      });
+    }
+
+    const pkg = await VendorPackage.findById(packageId);
+    if (!pkg || !pkg.is_active) {
+      return res.status(404).json({ success: false, message: 'Package not found or inactive' });
+    }
+
+    const vendor = await Vendor.findOne({ user_id: userId, isDeleted: false });
+    if (!vendor) {
+      return res.status(403).json({ success: false, message: 'Vendor profile not found' });
+    }
+
+    const now       = new Date();
+    const expiresAt = pkg.validity_days > 0
+      ? new Date(now.getTime() + pkg.validity_days * 24 * 60 * 60 * 1000)
+      : null;
+
+    const coinsToCredit = Math.max(0, Number(pkg.coins_granted) || 0);
+
+    const result = await runMongoTransaction({
+      work: async (session) => {
+        await VendorPackagePurchase.updateMany(
+          { vendor_id: vendor._id, status: 'active' },
+          { $set: { status: 'superseded' } },
+          { session }
+        );
+
+        const [purchase] = await VendorPackagePurchase.create(
+          [{
+            vendor_id:    vendor._id,
+            user_id:      userId,
+            package_id:   pkg._id,
+            package_snapshot: {
+              name:             pkg.name,
+              tier:             pkg.tier,
+              ads_allowed_min:  pkg.ads_allowed_min,
+              ads_allowed_max:  pkg.ads_allowed_max,
+              base_price:       pkg.base_price,
+              discount_percent: pkg.discount_percent,
+              final_price:      pkg.final_price,
+              coins_granted:    coinsToCredit,
+              validity_days:    pkg.validity_days,
+            },
+            amount_paid:         pkg.final_price,
+            coins_credited:      coinsToCredit,
+            purchased_at:        now,
+            expires_at:          expiresAt,
+            status:              'active',
+            razorpay_order_id,
+            razorpay_payment_id,
+          }],
+          { session }
+        );
+
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: coinsToCredit } },
+          { new: true, upsert: true, session }
+        );
+
+        await WalletTransaction.create(
+          [{
+            user_id:     userId,
+            vendor_id:   vendor._id,
+            type:        'VENDOR_PACKAGE_PURCHASE',
+            amount:      coinsToCredit,
+            description: `Package purchased: ${pkg.name} (${pkg.tier}) — ₹${pkg.final_price} | ${coinsToCredit} coins credited | Razorpay: ${razorpay_payment_id}`,
+            status:      'SUCCESS',
+            transactionDate: now,
+            razorpay_order_id,
+            razorpay_payment_id,
+          }],
+          { session }
+        );
+
+        await Vendor.findByIdAndUpdate(
+          vendor._id,
+          { $set: { credits: wallet.balance, credits_expires_at: expiresAt } },
+          { session }
+        );
+
+        return { purchase, wallet };
+      },
+
+      fallback: async () => {
+        await VendorPackagePurchase.updateMany(
+          { vendor_id: vendor._id, status: 'active' },
+          { $set: { status: 'superseded' } }
+        );
+
+        const purchase = await VendorPackagePurchase.create({
+          vendor_id: vendor._id, user_id: userId, package_id: pkg._id,
+          package_snapshot: {
+            name: pkg.name, tier: pkg.tier,
+            ads_allowed_min: pkg.ads_allowed_min, ads_allowed_max: pkg.ads_allowed_max,
+            base_price: pkg.base_price, discount_percent: pkg.discount_percent,
+            final_price: pkg.final_price, coins_granted: coinsToCredit,
+            validity_days: pkg.validity_days,
+          },
+          amount_paid: pkg.final_price, coins_credited: coinsToCredit,
+          purchased_at: now, expires_at: expiresAt, status: 'active',
+          razorpay_order_id, razorpay_payment_id,
+        });
+
+        const wallet = await Wallet.findOneAndUpdate(
+          { user_id: userId },
+          { $inc: { balance: coinsToCredit } },
+          { new: true, upsert: true }
+        );
+
+        await WalletTransaction.create({
+          user_id: userId, vendor_id: vendor._id,
+          type: 'VENDOR_PACKAGE_PURCHASE', amount: coinsToCredit,
+          description: `Package purchased: ${pkg.name} (${pkg.tier}) — ₹${pkg.final_price} | ${coinsToCredit} coins credited | Razorpay: ${razorpay_payment_id}`,
+          status: 'SUCCESS', transactionDate: now,
+          razorpay_order_id,
+          razorpay_payment_id,
+        });
+
+        await Vendor.findByIdAndUpdate(
+          vendor._id,
+          { $set: { credits: wallet.balance, credits_expires_at: expiresAt } }
+        );
+
+        return { purchase, wallet };
+      },
+    });
+
+    const user = await User.findById(userId).select('email full_name username').lean();
+    if (user?.email) {
+      fireAndForget(
+        'Package purchased email',
+        sendPackagePurchasedEmail({
+          email:        user.email,
+          full_name:    user.full_name || user.username,
+          company_name: vendor.company_details?.company_name || vendor.business_name,
+          package_name: pkg.name,
+          tier:         pkg.tier,
+          final_price:  pkg.final_price,
+          coins_granted: coinsToCredit,
+          validity_days: pkg.validity_days,
+          expires_at:    expiresAt,
+        })
+      );
+
+      if (Number(result.wallet?.balance || 0) <= LOW_COIN_THRESHOLD) {
+        fireAndForget(
+          'Coins low email',
+          sendCoinsLowEmail({
+            email:           user.email,
+            full_name:       user.full_name || user.username,
+            current_balance: result.wallet.balance,
+            threshold:       LOW_COIN_THRESHOLD,
+          })
+        );
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Payment verified and package activated',
+      purchase: {
+        purchase_id:         result.purchase._id,
+        package_name:        pkg.name,
+        tier:                pkg.tier,
+        ads_allowed_min:     pkg.ads_allowed_min,
+        ads_allowed_max:     pkg.ads_allowed_max,
+        amount_paid:         pkg.final_price,
+        coins_credited:      coinsToCredit,
+        expires_at:          expiresAt,
+        wallet_balance:      result.wallet.balance,
+        razorpay_order_id,
+        razorpay_payment_id,
+      },
+    });
+  } catch (err) {
+    console.error('verifyRazorpayPayment:', err);
     return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 };

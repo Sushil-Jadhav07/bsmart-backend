@@ -33,6 +33,7 @@
     "nodemailer": "^8.0.4",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "razorpay": "^2.9.6",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",

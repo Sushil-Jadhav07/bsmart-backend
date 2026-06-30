@@ -391,6 +391,50 @@ const customSendEmailTemplate = ({ subject, senderName, message, html }) =>
     '#EC1C44'
   );
 
+const websiteInquiryAdminTemplate = ({ name, email, phone, subject, message, category, app_source, submitted_at }) =>
+  baseTemplate(`
+    ${h2('New Website Inquiry Received')}
+    ${p('A visitor has submitted a support inquiry from the website. Please review and respond.')}
+    ${infoBox(`
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Name', name || '-')}
+        ${kvRow('Email', email || '-')}
+        ${kvRow('Phone', phone || '-')}
+        ${kvRow('App Source', (app_source || '').charAt(0).toUpperCase() + (app_source || '').slice(1))}
+        ${kvRow('Category', (category || '').charAt(0).toUpperCase() + (category || '').slice(1))}
+        ${kvRow('Submitted At', submitted_at ? new Date(submitted_at).toLocaleString('en-IN') : new Date().toLocaleString('en-IN'))}
+      </table>
+    `)}
+    ${infoBox(`
+      <p style="margin:0 0 6px;font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">Subject</p>
+      <p style="margin:0 0 14px;font-size:15px;color:#1a1a1a;font-weight:600;">${subject || '-'}</p>
+      <p style="margin:0 0 6px;font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">Message</p>
+      <p style="margin:0;font-size:14px;color:#444444;line-height:1.7;white-space:pre-wrap;">${message || '-'}</p>
+    `, BRAND_LIGHT_ALT, BRAND_SECONDARY)}
+    ${btn('View in Admin Panel', `${CLIENT}/admin/support-queries`)}
+  `);
+
+const websiteInquiryCustomerTemplate = ({ name, subject, message, category, app_source }) =>
+  baseTemplate(`
+    ${h2('We received your inquiry')}
+    ${hi(name)}
+    ${p('Thank you for reaching out to us. We have received your inquiry and our support team will get back to you shortly.')}
+    ${infoBox(`
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Subject', subject || '-')}
+        ${kvRow('Category', (category || '').charAt(0).toUpperCase() + (category || '').slice(1))}
+        ${kvRow('Platform', (app_source || '').charAt(0).toUpperCase() + (app_source || '').slice(1))}
+      </table>
+    `)}
+    ${infoBox(`
+      <p style="margin:0 0 6px;font-size:12px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">Your Message</p>
+      <p style="margin:0;font-size:14px;color:#444444;line-height:1.7;white-space:pre-wrap;">${message || '-'}</p>
+    `, BRAND_LIGHT_ALT, BRAND_SECONDARY)}
+    ${p('Our team typically responds within <strong>24-48 hours</strong>. If your matter is urgent, please do not hesitate to reach out again.')}
+    ${divider()}
+    ${note('Please do not reply to this email. For further queries, use the contact form on our website.')}
+  `);
+
 module.exports = {
   welcomeMemberTemplate,
   welcomeVendorTemplate,
@@ -406,4 +450,6 @@ module.exports = {
   newVendorAlertTemplate,
   newAdPendingTemplate,
   customSendEmailTemplate,
+  websiteInquiryAdminTemplate,
+  websiteInquiryCustomerTemplate,
 };

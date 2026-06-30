@@ -19,6 +19,8 @@ const {
   getMyPurchaseHistory,
   getMyTransactionHistory,
   adminListPurchases,
+  createRazorpayOrder,
+  verifyRazorpayPayment,
 } = require('../controllers/vendorPackage.controller');
 
 /**
@@ -406,6 +408,104 @@ router.get('/', auth, listPackages);
  *         description: Package not found
  */
 router.get('/:packageId/preview', auth, previewPackage);
+
+/**
+ * @swagger
+ * /api/vendor-packages/{packageId}/create-order:
+ *   post:
+ *     summary: Create a Razorpay order for a package (vendor only) — Step 1 of payment
+ *     description: Call this first. Returns order_id and key_id to open Razorpay checkout on frontend.
+ *     tags: [VendorPackages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: packageId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Razorpay order created
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               key_id: "rzp_test_XXXXXXXXXX"
+ *               order:
+ *                 order_id: "order_XXXXXXXXXXXXXXXXXX"
+ *                 amount: 2000000
+ *                 currency: "INR"
+ *                 package_id: "665f..."
+ *                 package_name: "Premium"
+ *                 tier: "premium"
+ *                 final_price: 20000
+ *                 coins_granted: 0
+ *       404:
+ *         description: Package not found or inactive
+ *       403:
+ *         description: Vendor profile not found
+ */
+router.post('/:packageId/create-order', auth, requireRole('vendor'), createRazorpayOrder);
+
+/**
+ * @swagger
+ * /api/vendor-packages/{packageId}/verify-payment:
+ *   post:
+ *     summary: Verify Razorpay payment and activate package (vendor only) — Step 2 of payment
+ *     description: Call this after Razorpay checkout succeeds. Verifies HMAC signature and credits coins to vendor wallet.
+ *     tags: [VendorPackages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: packageId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+ *             properties:
+ *               razorpay_order_id:
+ *                 type: string
+ *                 example: "order_XXXXXXXXXXXXXXXXXX"
+ *               razorpay_payment_id:
+ *                 type: string
+ *                 example: "pay_XXXXXXXXXXXXXXXXXX"
+ *               razorpay_signature:
+ *                 type: string
+ *                 example: "abc123def456..."
+ *     responses:
+ *       201:
+ *         description: Payment verified and package activated
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Payment verified and package activated"
+ *               purchase:
+ *                 purchase_id: "665f..."
+ *                 package_name: "Premium"
+ *                 tier: "premium"
+ *                 amount_paid: 20000
+ *                 coins_credited: 0
+ *                 expires_at: "2026-07-30T00:00:00.000Z"
+ *                 wallet_balance: 0
+ *                 razorpay_order_id: "order_XXXXXXXXXXXXXXXXXX"
+ *                 razorpay_payment_id: "pay_XXXXXXXXXXXXXXXXXX"
+ *       400:
+ *         description: Missing fields or invalid signature
+ *       403:
+ *         description: Vendor profile not found
+ *       404:
+ *         description: Package not found
+ */
+router.post('/:packageId/verify-payment', auth, requireRole('vendor'), verifyRazorpayPayment);
 
 /**
  * @swagger

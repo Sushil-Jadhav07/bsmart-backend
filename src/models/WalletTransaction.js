@@ -109,6 +109,16 @@ const walletTransactionSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    razorpay_order_id: {
+      type: String,
+      default: null,
+    },
+    razorpay_payment_id: {
+      type: String,
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );

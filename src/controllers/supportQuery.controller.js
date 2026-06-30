@@ -1,5 +1,12 @@
 const mongoose = require('mongoose');
 const SupportQuery = require('../models/SupportQuery');
+const { sendEmail, isEmailConfigured } = require('../services/email.service');
+const {
+  websiteInquiryAdminTemplate,
+  websiteInquiryCustomerTemplate,
+} = require('../templates/email.templates');
+
+const SUPPORT_EMAIL = 'info@ruvees.in';
 
 // ─── WEBSITE (public, no auth) ──────────────────────────────────────────────
 
@@ -30,6 +37,22 @@ exports.createWebsiteQuery = async (req, res) => {
       category,
       app_source,
     });
+
+    if (isEmailConfigured()) {
+      const emailData = { name, email, phone: phone || '-', subject, message, category, app_source, submitted_at: query.createdAt };
+
+      sendEmail({
+        to: SUPPORT_EMAIL,
+        subject: `New Website Inquiry: ${subject}`,
+        html: websiteInquiryAdminTemplate(emailData),
+      }).catch((err) => console.error('[createWebsiteQuery] Admin email failed:', err.message));
+
+      sendEmail({
+        to: email,
+        subject: 'We received your inquiry — BSmart Support',
+        html: websiteInquiryCustomerTemplate(emailData),
+      }).catch((err) => console.error('[createWebsiteQuery] Customer email failed:', err.message));
+    }
 
     return res.status(201).json({
       success: true,
@@ -81,7 +104,7 @@ exports.getMyQueries = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
-    const filter = { user_id: req.userId };
+    const filter = { user_id: req.userId, deleted_by_user: false };
     if (req.query.status) filter.status = req.query.status;
 
     const total = await SupportQuery.countDocuments(filter);
@@ -112,7 +135,7 @@ exports.getMyQueryById = async (req, res) => {
       return res.status(400).json({ message: 'Invalid query id' });
     }
 
-    const query = await SupportQuery.findOne({ _id: id, user_id: req.userId })
+    const query = await SupportQuery.findOne({ _id: id, user_id: req.userId, deleted_by_user: false })
       .populate('replies.sender_id', 'username full_name avatar_url role')
       .lean();
 
@@ -139,7 +162,7 @@ exports.replyToMyQuery = async (req, res) => {
       return res.status(400).json({ message: 'message is required' });
     }
 
-    const query = await SupportQuery.findOne({ _id: id, user_id: req.userId });
+    const query = await SupportQuery.findOne({ _id: id, user_id: req.userId, deleted_by_user: false });
     if (!query) {
       return res.status(404).json({ message: 'Query not found' });
     }
@@ -168,10 +191,13 @@ exports.deleteMyQuery = async (req, res) => {
       return res.status(400).json({ message: 'Invalid query id' });
     }
 
-    const query = await SupportQuery.findOneAndDelete({ _id: id, user_id: req.userId });
+    const query = await SupportQuery.findOne({ _id: id, user_id: req.userId, deleted_by_user: false });
     if (!query) {
       return res.status(404).json({ message: 'Query not found' });
     }
+
+    query.deleted_by_user = true;
+    await query.save();
 
     return res.json({ success: true, message: 'Query deleted successfully' });
   } catch (error) {
@@ -217,6 +243,68 @@ exports.listAllQueries = async (req, res) => {
     });
   } catch (error) {
     console.error('[listAllQueries]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.listWebsiteQueries = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const filter = { user_id: null };
+
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.app_source) filter.app_source = req.query.app_source;
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.assigned_to) {
+      filter.assigned_to = req.query.assigned_to === 'unassigned'
+        ? null
+        : req.query.assigned_to;
+    }
+
+    const total = await SupportQuery.countDocuments(filter);
+    const queries = await SupportQuery.find(filter)
+      .populate('assigned_to', 'username full_name avatar_url')
+      .populate('assigned_by', 'username full_name')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    return res.json({
+      success: true,
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit) || 1,
+      queries,
+    });
+  } catch (error) {
+    console.error('[listWebsiteQueries]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getWebsiteQueryById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid query id' });
+    }
+
+    const query = await SupportQuery.findOne({ _id: id, user_id: null })
+      .populate('assigned_to', 'username full_name avatar_url')
+      .populate('assigned_by', 'username full_name')
+      .populate('replies.sender_id', 'username full_name avatar_url role')
+      .lean();
+
+    if (!query) {
+      return res.status(404).json({ message: 'Website inquiry not found' });
+    }
+
+    return res.json({ success: true, query });
+  } catch (error) {
+    console.error('[getWebsiteQueryById]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

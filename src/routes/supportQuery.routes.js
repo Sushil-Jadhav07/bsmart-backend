@@ -391,7 +391,8 @@ router.post('/my/:id/reply', auth, ctrl.replyToMyQuery);
  * @swagger
  * /api/support-queries/my/{id}:
  *   delete:
- *     summary: Delete own support query
+ *     summary: Delete own support query (hidden from user, still visible to admin)
+ *     description: Soft-deletes the query. It will no longer appear in the user's list but remains visible in admin panel.
  *     tags: [Support Queries]
  *     security:
  *       - bearerAuth: []
@@ -499,6 +500,136 @@ router.delete('/my/:id', auth, ctrl.deleteMyQuery);
  *         description: Forbidden
  */
 router.get('/admin', auth, requireRole('admin', 'sales'), ctrl.listAllQueries);
+
+/**
+ * @swagger
+ * /api/support-queries/admin/website:
+ *   get:
+ *     summary: List all website inquiries (admin & sales)
+ *     description: Returns only queries submitted from website contact forms (no logged-in user). These have name, email, phone instead of user_id.
+ *     tags: [Support Queries]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [open, in_progress, resolved, closed]
+ *       - in: query
+ *         name: app_source
+ *         schema:
+ *           type: string
+ *           enum: [bsmart, ruvees]
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [account, payment, technical, general, other]
+ *       - in: query
+ *         name: assigned_to
+ *         schema:
+ *           type: string
+ *         description: Filter by assigned sales officer ID, or "unassigned" for unassigned queries
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Website inquiries list
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               total: 10
+ *               page: 1
+ *               limit: 20
+ *               total_pages: 1
+ *               queries:
+ *                 - _id: "67e3aa001122334455669001"
+ *                   user_id: null
+ *                   name: "Rahul Sharma"
+ *                   email: "rahul@example.com"
+ *                   phone: "+919876543210"
+ *                   app_source: "ruvees"
+ *                   subject: "Want to know about pricing"
+ *                   message: "I want to know more about your vendor packages."
+ *                   category: "general"
+ *                   status: "open"
+ *                   assigned_to: null
+ *                   createdAt: "2026-06-29T10:00:00.000Z"
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get('/admin/website', auth, requireRole('admin', 'sales'), ctrl.listWebsiteQueries);
+
+/**
+ * @swagger
+ * /api/support-queries/admin/website/{id}:
+ *   get:
+ *     summary: Get a single website inquiry with full details (admin & sales)
+ *     tags: [Support Queries]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Website inquiry with reply thread
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               query:
+ *                 _id: "67e3aa001122334455669001"
+ *                 user_id: null
+ *                 name: "Rahul Sharma"
+ *                 email: "rahul@example.com"
+ *                 phone: "+919876543210"
+ *                 app_source: "ruvees"
+ *                 subject: "Want to know about pricing"
+ *                 message: "I want to know more about your vendor packages."
+ *                 category: "general"
+ *                 status: "in_progress"
+ *                 assigned_to:
+ *                   _id: "67e3aa001122334455667799"
+ *                   username: "sales_officer"
+ *                   full_name: "Sales Officer"
+ *                   avatar_url: "https://example.com/sales.jpg"
+ *                 replies:
+ *                   - _id: "67e3aa001122334455669101"
+ *                     sender_type: "sales"
+ *                     sender_id:
+ *                       _id: "67e3aa001122334455667799"
+ *                       username: "sales_officer"
+ *                       full_name: "Sales Officer"
+ *                       avatar_url: "https://example.com/sales.jpg"
+ *                       role: "sales"
+ *                     message: "Here are our pricing details..."
+ *                     createdAt: "2026-06-29T11:00:00.000Z"
+ *       400:
+ *         description: Invalid id
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Website inquiry not found
+ */
+router.get('/admin/website/:id', auth, requireRole('admin', 'sales'), ctrl.getWebsiteQueryById);
 
 /**
  * @swagger

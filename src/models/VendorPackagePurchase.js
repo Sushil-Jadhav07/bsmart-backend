@@ -67,6 +67,15 @@ const vendorPackagePurchaseSchema = new mongoose.Schema(
       default: 'active',
       index: true,
     },
+
+    razorpay_order_id: {
+      type: String,
+      default: null,
+    },
+    razorpay_payment_id: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );
