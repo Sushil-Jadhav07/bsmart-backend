@@ -62,28 +62,9 @@ const {
  */
 router.get('/', listFaqs);
 
-/**
- * @swagger
- * /api/faq/{id}:
- *   get:
- *     summary: Get a single active FAQ by ID (public)
- *     tags: [FAQ]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: FAQ detail
- *       404:
- *         description: FAQ not found or inactive
- */
-router.get('/:id', getFaq);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN — auth required
-// Static routes MUST come before /:id
+// IMPORTANT: registered BEFORE /:id so Express does not treat "admin" as an id
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -260,5 +241,28 @@ router.delete('/admin/:id', auth, requireRole('admin'), deleteFaq);
  *               data: { _id: "665f...", is_active: false }
  */
 router.patch('/admin/:id/toggle', auth, requireRole('admin'), toggleFaq);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC dynamic route — MUST be last so "admin" is never matched as an :id
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/faq/{id}:
+ *   get:
+ *     summary: Get a single active FAQ by ID (public)
+ *     tags: [FAQ]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: FAQ detail
+ *       404:
+ *         description: FAQ not found or inactive
+ */
+router.get('/:id', getFaq);
 
 module.exports = router;
