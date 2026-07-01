@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 const axios   = require('axios');
 const router  = express.Router();
@@ -14,12 +16,12 @@ const verifyToken = require('../middleware/auth');
  * @swagger
  * /api/location/search:
  *   get:
- *     summary: Search for locations using Google Places Autocomplete
+ *     summary: Search for locations using Google Places API (New)
  *     description: |
- *       Returns matching places (businesses, cities, areas, landmarks).
- *       Uses session tokens so all keystrokes in one search = 1 free session (not per-request billing).
+ *       Returns matching places (businesses, cities, areas, landmarks) worldwide.
+ *       Uses session tokens so all keystrokes in one search = 1 billed session (not per-request).
  *       Pass the same sessionToken for every keystroke in a single search session.
- *       Generate a new sessionToken when the user starts a fresh search or clears the field.
+ *       Generate a new sessionToken when the user starts a fresh search or selects a result.
  *     tags: [Location]
  *     security:
  *       - bearerAuth: []
@@ -37,7 +39,7 @@ const verifyToken = require('../middleware/auth');
  *         schema:
  *           type: string
  *         description: |
- *           UUID session token — groups all autocomplete calls in one search into 1 free session.
+ *           UUID session token — groups all autocomplete calls in one search into 1 billed session.
  *           Generate once per search session using crypto.randomUUID() on the frontend.
  *           Reset to a new UUID after the user selects a result or clears the input.
  *         example: "550e8400-e29b-41d4-a716-446655440000"
@@ -63,6 +65,9 @@ const verifyToken = require('../middleware/auth');
  *                       address:
  *                         type: string
  *                         example: "Maharashtra, India"
+ *                       fullText:
+ *                         type: string
+ *                         example: "Mumbai, Maharashtra, India"
  *             examples:
  *               success:
  *                 summary: Places found
@@ -71,12 +76,7 @@ const verifyToken = require('../middleware/auth');
  *                     - placeId: "ChIJwe1EZjDG5zsRaYxkjY_tpF0"
  *                       name: "Mumbai"
  *                       address: "Maharashtra, India"
- *                     - placeId: "ChIJ4zLP2oAP5DsRme_GnlKMqaA"
- *                       name: "Mumbai Suburban"
- *                       address: "Maharashtra, India"
- *                     - placeId: "ChIJiWgA-tX88DsR5SsLQDTNe9c"
- *                       name: "Starbucks Mumbai"
- *                       address: "Bandra West, Mumbai, Maharashtra, India"
+ *                       fullText: "Mumbai, Maharashtra, India"
  *               zero_results:
  *                 summary: No matching places
  *                 value:
@@ -87,19 +87,6 @@ const verifyToken = require('../middleware/auth');
  *         description: Unauthorized — invalid or missing JWT token
  *       500:
  *         description: Google Places API error
- *         content:
- *           application/json:
- *             examples:
- *               request_denied:
- *                 summary: API key missing or Places API not enabled
- *                 value:
- *                   message: "Location service error"
- *                   status: "REQUEST_DENIED"
- *               invalid_key:
- *                 summary: Invalid API key
- *                 value:
- *                   message: "Location service error"
- *                   status: "INVALID_KEY"
  */
 router.get('/search', verifyToken, async (req, res) => {
   const { query, sessionToken } = req.query;
@@ -108,47 +95,58 @@ router.get('/search', verifyToken, async (req, res) => {
     return res.status(400).json({ message: 'Query must be at least 2 characters' });
   }
 
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ message: 'Google Places API key not configured' });
+  }
+
   try {
-    const params = {
+    const body = {
       input: query.trim(),
-      key:   process.env.GOOGLE_PLACES_API_KEY,
-      // 'establishment|geocode' returns BOTH businesses (restaurants, shops, landmarks)
-      // AND geographic areas (cities, states, countries).
-      // Using only 'geocode' misses businesses — this is the correct setting.
-      types: 'establishment|geocode',
+      // Return both geocoding (cities, countries) and establishment (businesses, buildings)
+      includedPrimaryTypes: [],
     };
 
-    // Session token groups all keystrokes in one search into a single free session.
-    // Without this, every keystroke is billed separately as a per-request call.
     if (sessionToken) {
-      params.sessiontoken = sessionToken;
+      body.sessionToken = sessionToken;
     }
 
-    const response = await axios.get(
-      'https://maps.googleapis.com/maps/api/place/autocomplete/json',
-      { params }
+    const response = await axios.post(
+      'https://places.googleapis.com/v1/places:autocomplete',
+      body,
+      {
+        headers: {
+          'Content-Type':    'application/json',
+          'X-Goog-Api-Key':  apiKey,
+        },
+      }
     );
 
-    const status = response.data.status;
+    const suggestions = response.data.suggestions || [];
 
-    if (status !== 'OK' && status !== 'ZERO_RESULTS') {
-      console.error('[Location] Google API status:', status, response.data.error_message || '');
-      return res.status(500).json({
-        message: 'Location service error',
-        status,  // expose status so frontend can show helpful error messages
-      });
-    }
+    const places = suggestions.map((s) => {
+      const p = s.placePrediction;
+      return {
+        placeId:  p.placeId,
+        name:     p.structuredFormat?.mainText?.text      || p.text?.text || '',
+        address:  p.structuredFormat?.secondaryText?.text || '',
+        fullText: p.text?.text || '',
+      };
+    });
 
-    const places = (response.data.predictions || []).map((p) => ({
-      placeId: p.place_id,
-      name:    p.structured_formatting?.main_text    || p.description,
-      address: p.structured_formatting?.secondary_text || '',
-    }));
-
-    res.json({ places });
+    return res.json({ places });
   } catch (err) {
-    console.error('[Location] Search error:', err.message);
-    res.status(500).json({ message: 'Failed to search locations' });
+    const status  = err.response?.status;
+    const message = err.response?.data?.error?.message || err.message;
+    console.error('[Location] Google Places API error:', status, message);
+
+    if (status === 400) {
+      return res.status(400).json({ message: 'Invalid search query' });
+    }
+    if (status === 403) {
+      return res.status(500).json({ message: 'Places API key invalid or API not enabled in Google Cloud Console' });
+    }
+    return res.status(500).json({ message: 'Failed to search locations', error: message });
   }
 });
 
