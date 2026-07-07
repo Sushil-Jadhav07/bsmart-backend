@@ -99,8 +99,9 @@ const userSchema = new mongoose.Schema({
     default: ''
   },
   location: {
-    type: String,
-    default: ''
+    name: { type: String, default: '' },
+    lat:  { type: Number, default: null },
+    lng:  { type: Number, default: null },
   },
   address: {
     address_line1: { type: String, default: '' },

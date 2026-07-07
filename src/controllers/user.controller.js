@@ -69,7 +69,7 @@ exports.getAllUsers = async (req, res) => {
 
       const userObj = user.toObject();
       userObj.gender   = (userObj.gender   !== undefined && userObj.gender   !== null) ? String(userObj.gender)   : '';
-      userObj.location = (userObj.location !== undefined && userObj.location !== null) ? String(userObj.location) : '';
+      userObj.location = { name: userObj.location?.name || '', lat: userObj.location?.lat ?? null, lng: userObj.location?.lng ?? null };
       userObj.isPrivate = userObj.isPrivate ?? false;   // ← ADDED
       result.push({
         ...userObj,
@@ -123,7 +123,7 @@ exports.getUserById = async (req, res) => {
 
     // Force gender and location to always be present as strings for ALL roles
     obj.gender   = (obj.gender   !== undefined && obj.gender   !== null) ? String(obj.gender)   : '';
-    obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+    obj.location = { name: obj.location?.name || '', lat: obj.location?.lat ?? null, lng: obj.location?.lng ?? null };
     obj.website  = obj.website  || '';
     obj.bio      = obj.bio      || '';
 
@@ -231,7 +231,7 @@ exports.getUserByUsername = async (req, res) => {
 
     // Force gender and location to always be present as strings for ALL roles
     obj.gender   = (obj.gender   !== undefined && obj.gender   !== null) ? String(obj.gender)   : '';
-    obj.location = (obj.location !== undefined && obj.location !== null) ? String(obj.location) : '';
+    obj.location = { name: obj.location?.name || '', lat: obj.location?.lat ?? null, lng: obj.location?.lng ?? null };
     obj.website  = obj.website  || '';
     obj.bio      = obj.bio      || '';
 
@@ -941,5 +941,64 @@ exports.checkPhone = async (req, res) => {
   } catch (error) {
     console.error('[User] checkPhone error:', error);
     return res.status(500).json({ available: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get own profile (authenticated)
+// @route   GET /api/users/me
+// @access  Private
+exports.getMe = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const user = await User.findById(userId).select('-password');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const vendor = await Vendor.findOne({ user_id: userId }).select('validated _id').lean();
+    const obj = user.toObject();
+
+    obj.location = { name: obj.location?.name || '', lat: obj.location?.lat ?? null, lng: obj.location?.lng ?? null };
+    obj.gender   = obj.gender   || '';
+    obj.website  = obj.website  || '';
+    obj.bio      = obj.bio      || '';
+    obj.isPrivate         = obj.isPrivate         ?? false;
+    obj.is_email_verified = obj.is_email_verified ?? false;
+    obj.is_phone_verified = obj.is_phone_verified ?? false;
+    obj.date_of_birth     = obj.date_of_birth     || null;
+    obj.ad_interests      = Array.isArray(obj.ad_interests) ? obj.ad_interests : [];
+    obj.validated         = vendor ? !!vendor.validated : false;
+    if (vendor) obj.vendor_id = vendor._id;
+
+    return res.json({ success: true, data: obj });
+  } catch (error) {
+    console.error('[User] getMe error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Update own location
+// @route   PATCH /api/users/location
+// @access  Private
+exports.updateLocation = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { name, lat, lng } = req.body;
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'name is required' });
+    }
+    if (lat === undefined || lng === undefined) {
+      return res.status(400).json({ success: false, message: 'lat and lng are required' });
+    }
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ success: false, message: 'lat and lng must be numbers' });
+    }
+
+    const location = { name: name.trim(), lat, lng };
+    await User.findByIdAndUpdate(userId, { $set: { location } });
+
+    return res.json({ success: true, location });
+  } catch (error) {
+    console.error('[User] updateLocation error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };

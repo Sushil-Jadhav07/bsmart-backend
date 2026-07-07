@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -171,6 +171,71 @@ router.post('/check/username', checkUsername);
  *         description: Server error
  */
 router.post('/check/phone', checkPhone);
+
+/**
+ * @swagger
+ * /api/users/me:
+ *   get:
+ *     summary: Get own profile (authenticated user)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user's profile
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 _id: "664f..."
+ *                 username: "john_doe"
+ *                 full_name: "John Doe"
+ *                 location:
+ *                   name: "Kandivali West"
+ *                   lat: 19.2183
+ *                   lng: 72.8478
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/me', auth, getMe);
+
+/**
+ * @swagger
+ * /api/users/location:
+ *   patch:
+ *     summary: Update authenticated user's location
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, lat, lng]
+ *             properties:
+ *               name: { type: string, example: "Kandivali West" }
+ *               lat:  { type: number, example: 19.2183 }
+ *               lng:  { type: number, example: 72.8478 }
+ *     responses:
+ *       200:
+ *         description: Location saved
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               location:
+ *                 name: "Kandivali West"
+ *                 lat: 19.2183
+ *                 lng: 72.8478
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+router.patch('/location', auth, updateLocation);
 
 /**
  * @swagger
