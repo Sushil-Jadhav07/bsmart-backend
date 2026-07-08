@@ -108,6 +108,34 @@ const verifyToken = require('../middleware/auth');
  *       500:
  *         description: Server error
  */
+// ─── Filter tab → notification type mapping ───────────────────────────────────
+// Matches the UI tabs: All | Unread | Approvals | Rejections | Engagement | Credits | Spend
+const TAB_TYPE_MAP = {
+  // Social approvals / acceptances
+  approvals:   ['vendor_approved', 'ad_approved', 'follow_accepted', 'follow_request'],
+  // Rejections / refusals
+  rejections:  ['vendor_rejected', 'ad_rejected'],
+  // All social engagement (likes, comments, follows, tags, views, subscriptions)
+  engagement:  [
+    'like', 'comment', 'follow', 'mention',
+    'comment_like', 'comment_reply', 'post_save', 'post_tag',
+    'ad_comment', 'ad_like', 'ad_save', 'ad_tag',
+    'reel_tag', 'promote_reel_tag',
+    'tweet_like', 'tweet_comment',
+    'story_view', 'chat_message',
+    'subscribed_user_post', 'subscribed_user_reel', 'subscribed_vendor_post',
+  ],
+  // Money earned / received
+  credits:     ['coins_credited', 'payout', 'order'],
+  // Money spent / deducted / warnings
+  spend:       ['coins_debited', 'subscription_expiring', 'subscription_expired'],
+  // Legacy explicit types
+  like:        ['like', 'ad_like', 'comment_like'],
+  comment:     ['comment', 'comment_reply', 'ad_comment', 'tweet_comment'],
+  follow:      ['follow', 'follow_request', 'follow_accepted'],
+  mention:     ['mention', 'post_tag', 'reel_tag', 'ad_tag', 'promote_reel_tag'],
+};
+
 router.get('/', verifyToken, async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -116,17 +144,11 @@ router.get('/', verifyToken, async (req, res) => {
 
     const filter = { recipient: req.user._id };
 
-    const typeParam = req.query.type;
-    const typeMap = {
-      like:     ['like', 'ad_like', 'comment_like'],
-      comment:  ['comment', 'comment_reply', 'ad_comment', 'tweet_comment'],
-      follow:   ['follow', 'follow_request', 'follow_accepted'],
-      mention:  ['mention', 'post_tag', 'reel_tag', 'ad_tag', 'promote_reel_tag'],
-    };
-    if (typeParam && typeMap[typeParam]) {
-      filter.type = { $in: typeMap[typeParam] };
-    } else if (typeParam === 'unread') {
+    const typeParam = req.query.filter || req.query.type;   // accept both ?filter=approvals and legacy ?type=like
+    if (typeParam === 'unread') {
       filter.isRead = false;
+    } else if (typeParam && TAB_TYPE_MAP[typeParam]) {
+      filter.type = { $in: TAB_TYPE_MAP[typeParam] };
     }
 
     const cloudfront = process.env.CLOUDFRONT_BASE_URL
@@ -219,6 +241,68 @@ router.get('/', verifyToken, async (req, res) => {
 
 /**
  * @swagger
+ * /api/notifications/tab-counts:
+ *   get:
+ *     summary: Get unread notification count per filter tab
+ *     description: Returns a count object for each filter tab so the frontend can show badge numbers on tabs (like "Unread 2").
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Per-tab unread counts
+ *         content:
+ *           application/json:
+ *             example:
+ *               total_unread: 7
+ *               tabs:
+ *                 all: 7
+ *                 unread: 7
+ *                 approvals: 2
+ *                 rejections: 0
+ *                 engagement: 4
+ *                 credits: 1
+ *                 spend: 0
+ */
+router.get('/tab-counts', verifyToken, async (req, res) => {
+  try {
+    const recipientId = req.user._id;
+
+    // Aggregate unread counts grouped by type in one DB round-trip
+    const agg = await Notification.aggregate([
+      { $match: { recipient: recipientId, isRead: false } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]);
+
+    // Build a map: type -> unread count
+    const byType = {};
+    for (const row of agg) byType[row._id] = row.count;
+
+    // Sum counts for each tab
+    const tabTotal = (types) => types.reduce((sum, t) => sum + (byType[t] || 0), 0);
+
+    const totalUnread = Object.values(byType).reduce((a, b) => a + b, 0);
+
+    res.json({
+      total_unread: totalUnread,
+      tabs: {
+        all:        totalUnread,
+        unread:     totalUnread,
+        approvals:  tabTotal(TAB_TYPE_MAP.approvals),
+        rejections: tabTotal(TAB_TYPE_MAP.rejections),
+        engagement: tabTotal(TAB_TYPE_MAP.engagement),
+        credits:    tabTotal(TAB_TYPE_MAP.credits),
+        spend:      tabTotal(TAB_TYPE_MAP.spend),
+      },
+    });
+  } catch (err) {
+    console.error('[Notifications] tab-counts error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @swagger
  * /api/notifications/unread-count:
  *   get:
  *     summary: Get count of unread notifications
@@ -243,14 +327,11 @@ router.get('/', verifyToken, async (req, res) => {
  */
 router.get('/unread-count', verifyToken, async (req, res) => {
   try {
-    const count = await Notification.countDocuments({ 
-      recipient: req.user._id, 
-      isRead: false 
-    }); 
-    res.json({ count }); 
-  } catch (err) { 
-    res.status(500).json({ message: 'Server error' }); 
-  } 
+    const count = await Notification.countDocuments({ recipient: req.user._id, isRead: false });
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 /**

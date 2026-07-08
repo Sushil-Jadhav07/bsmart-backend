@@ -61,6 +61,7 @@ const privacyRoutes        = require('./src/routes/privacy.routes');        // <
 const smsRoutes            = require('./src/routes/sms.routes');            // <- SMS OTP
 const supportQueryRoutes   = require('./src/routes/supportQuery.routes');   // <- SUPPORT QUERIES
 const faqRoutes            = require('./src/routes/faq.routes');            // <- FAQ
+const voucherRoutes        = require('./src/routes/voucher.routes');        // <- XOXODAY VOUCHERS
 
 const app    = express();
 const server = http.createServer(app);
@@ -324,6 +325,7 @@ app.use('/api/sms',           smsRoutes);              // <- SMS OTP
 app.use('/api/support-queries', supportQueryRoutes);   // <- SUPPORT QUERIES
 app.use('/api/location',        locationRoutes);        // <- LOCATION SEARCH
 app.use('/api/faq',             faqRoutes);             // <- FAQ
+app.use('/api/vouchers',        voucherRoutes);         // <- XOXODAY GIFT VOUCHERS
 
 
 // ── Country / State / City / Language routes ──────────────────────────────

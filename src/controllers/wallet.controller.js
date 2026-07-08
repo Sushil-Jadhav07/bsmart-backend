@@ -31,6 +31,7 @@ const DEBIT_TYPES = new Set([
   'AD_SAVE_DEDUCTION',
   'AD_BUDGET_DEDUCTION',
   'VENDOR_PROFILE_VIEW_DEDUCTION',
+  'COIN_REDEMPTION',
 ]);
 
 const VENDOR_WALLET_TYPES = new Set([
@@ -53,6 +54,7 @@ const MEMBER_WALLET_TYPES = new Set([
   'REEL_VIEW_REWARD',
   'AD_REWARD',
   'VENDOR_PROFILE_VIEW_REWARD',
+  'COIN_REDEMPTION',
   'ADMIN_ADJUSTMENT',
 ]);
 
@@ -92,6 +94,7 @@ const TRANSACTION_LABELS = {
   AD_BUDGET_DEDUCTION:           'Ad Budget Allocated',
   VENDOR_PROFILE_VIEW_REWARD:    'Vendor Profile View Reward',
   VENDOR_PROFILE_VIEW_DEDUCTION: 'Vendor Profile View Deduction',
+  COIN_REDEMPTION:               'Gift Voucher Redemption',
   LIKE:    'Like',
   COMMENT: 'Comment',
   REPLY:   'Reply',

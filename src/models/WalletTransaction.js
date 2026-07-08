@@ -82,6 +82,8 @@ const walletTransactionSchema = new mongoose.Schema(
         'AD_COMMENT_DEDUCTION',
         'AD_REPLY_DEDUCTION',
         'AD_SAVE_DEDUCTION',
+        // Member redemption
+        'COIN_REDEMPTION',
         // Shared
         'ADMIN_ADJUSTMENT',
         // Legacy post actions
