@@ -331,7 +331,7 @@ router.post('/account/verify-email/send', auth, sendEmailOtp);
 router.post('/account/verify-email/confirm', auth, confirmEmailOtp);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PHONE VERIFICATION (AWS SNS SMS)
+// PHONE VERIFICATION (Twilio SMS)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -340,7 +340,7 @@ router.post('/account/verify-email/confirm', auth, confirmEmailOtp);
  *   post:
  *     summary: Send mobile number verification OTP via SMS
  *     description: |
- *       Sends a 6-digit OTP to the user's registered mobile number via **AWS SNS SMS**.
+ *       Sends a 6-digit OTP to the user's registered mobile number via **Twilio SMS**.
  *       The OTP is valid for **10 minutes**.
  *       Requires a phone number to be saved on the account first (use `PATCH /api/settings/account/contact`).
  *       Returns 400 if the phone is already verified or not set.

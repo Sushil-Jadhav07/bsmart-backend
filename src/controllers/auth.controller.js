@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
-const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+const { sendOtpSms, checkOtpSms } = require('../services/twilio.service');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
@@ -20,32 +20,7 @@ const {
   sendNewVendorAlert,
 } = require('./email.controller');
 
-// ─── SNS client for SMS OTP ───────────────────────────────────────────────────
-const snsClient = new SNSClient({
-  region: process.env.AWS_REGION || 'ap-south-1',
-  credentials: {
-    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
-
-const toE164 = (phone) => {
-  const digits = phone.replace(/\D/g, '');
-  if (phone.startsWith('+')) return `+${digits}`;
-  if (digits.length === 10) return `+91${digits}`;
-  return `+${digits}`;
-};
-
-const sendLoginSmsOtp = async (phone, otp) => {
-  const command = new PublishCommand({
-    PhoneNumber: toE164(phone),
-    Message: `Your B-Smart login verification code is: ${otp}. Valid for 10 minutes. Do not share it.`,
-    MessageAttributes: {
-      'AWS.SNS.SMS.SMSType': { DataType: 'String', StringValue: 'Transactional' },
-    },
-  });
-  await snsClient.send(command);
-};
+const sendLoginSmsOtp = (phone) => sendOtpSms(phone);
 
 // ─── Session / history helpers ────────────────────────────────────────────────
 const createSession = async (userId, token, req) => {
@@ -474,11 +449,7 @@ exports.login = async (req, res) => {
           if (!phone) {
             return res.status(400).json({ message: 'No phone number on file for SMS 2FA. Please use email method.' });
           }
-          await PhoneOtp.deleteMany({ user_id: user._id, phone });
-          const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-          const expires_at = new Date(Date.now() + 10 * 60 * 1000);
-          await PhoneOtp.create({ user_id: user._id, phone, otp: generatedOtp, expires_at });
-          await sendLoginSmsOtp(phone, generatedOtp);
+          await sendLoginSmsOtp(phone);
           return res.status(200).json({
             requires_2fa: true,
             message: 'A verification code has been sent to your phone.',
@@ -521,19 +492,10 @@ exports.login = async (req, res) => {
       // OTP provided — verify against the correct channel
       if (twoFAMethod === 'sms') {
         const phone = user.phone;
-        const record = await PhoneOtp.findOne({ user_id: user._id, phone, used: false }).sort({ createdAt: -1 });
-        if (!record) {
-          return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new login code.' });
+        const approved = await checkOtpSms(phone, otp);
+        if (!approved) {
+          return res.status(400).json({ message: 'Incorrect or expired OTP. Please try again.' });
         }
-        if (new Date() > record.expires_at) {
-          await record.deleteOne();
-          return res.status(400).json({ message: 'OTP has expired. Please log in again to request a new code.' });
-        }
-        if (record.otp !== String(otp)) {
-          return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
-        }
-        record.used = true;
-        await record.save();
       } else {
         const normalizedEmail = user.email.toLowerCase();
         const record = await Otp.findOne({ email: normalizedEmail, purpose: 'two_factor', used: false }).sort({ createdAt: -1 });

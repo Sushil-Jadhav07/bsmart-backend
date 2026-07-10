@@ -1,4 +1,4 @@
-const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+const { sendOtpSms, checkOtpSms } = require('../services/twilio.service');
 const User         = require('../models/User');
 const Otp          = require('../models/Otp');
 const PhoneOtp     = require('../models/PhoneOtp');
@@ -10,43 +10,13 @@ const { makeUploader, getFileUrl } = require('../config/multer');
 // ─── Multer uploader for profile pictures ────────────────────────────────────
 const profileUploader = makeUploader('profile').single('avatar');
 
-// ─── SNS client (reuses existing AWS credentials) ────────────────────────────
-const snsClient = new SNSClient({
-  region: process.env.AWS_REGION || 'ap-south-1',
-  credentials: {
-    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const generateOtp   = () => String(Math.floor(100000 + Math.random() * 900000));
-const otpExpiry     = (minutes = 10) => new Date(Date.now() + minutes * 60 * 1000);
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+const otpExpiry   = (minutes = 10) => new Date(Date.now() + minutes * 60 * 1000);
 
 const ALLOWED_GENDERS = ['male', 'female', 'third_gender', 'prefer_not_to_say'];
 
-// Normalise phone to E.164 — required by AWS SNS
-const toE164 = (phone) => {
-  const digits = phone.replace(/\D/g, '');
-  if (phone.startsWith('+')) return `+${digits}`;
-  // Default to +91 (India) if no country code supplied
-  if (digits.length === 10) return `+91${digits}`;
-  return `+${digits}`;
-};
-
-const sendSmsOtp = async (phone, otp) => {
-  const command = new PublishCommand({
-    PhoneNumber: toE164(phone),
-    Message: `Your B-Smart verification code is: ${otp}. It is valid for 10 minutes. Do not share it.`,
-    MessageAttributes: {
-      'AWS.SNS.SMS.SMSType': {
-        DataType:    'String',
-        StringValue: 'Transactional',
-      },
-    },
-  });
-  await snsClient.send(command);
-};
+const sendSmsOtp = (phone) => sendOtpSms(phone);
 
 // ─── GET /api/settings/account ───────────────────────────────────────────────
 exports.getAccountSettings = async (req, res) => {
@@ -310,18 +280,7 @@ exports.sendPhoneOtp = async (req, res) => {
       return res.status(400).json({ message: 'Phone number is already verified' });
     }
 
-    // Delete any existing OTPs for this user's phone
-    await PhoneOtp.deleteMany({ user_id: req.userId });
-
-    const otp = generateOtp();
-    await PhoneOtp.create({
-      user_id:    req.userId,
-      phone:      user.phone,
-      otp,
-      expires_at: otpExpiry(10),
-    });
-
-    await sendSmsOtp(user.phone, otp);
+    await sendSmsOtp(user.phone);
 
     const masked = user.phone.replace(/(\d{2})\d+(\d{3})/, '$1*****$2');
     res.json({ message: `Verification code sent to ${masked}` });
@@ -402,25 +361,10 @@ exports.confirmPhoneOtp = async (req, res) => {
       return res.status(400).json({ message: 'Phone number is already verified' });
     }
 
-    const record = await PhoneOtp.findOne({
-      user_id: req.userId,
-      phone:   user.phone,
-      used:    false,
-    });
-
-    if (!record) {
-      return res.status(400).json({ message: 'No pending OTP found. Please request a new one.' });
+    const approved = await checkOtpSms(user.phone, otp);
+    if (!approved) {
+      return res.status(400).json({ message: 'Incorrect or expired OTP. Please try again.' });
     }
-    if (new Date() > record.expires_at) {
-      await record.deleteOne();
-      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
-    }
-    if (record.otp !== String(otp)) {
-      return res.status(400).json({ message: 'Incorrect OTP. Please try again.' });
-    }
-
-    record.used = true;
-    await record.save();
 
     await User.findByIdAndUpdate(req.userId, { is_phone_verified: true });
 
