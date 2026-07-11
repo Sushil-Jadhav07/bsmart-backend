@@ -62,6 +62,8 @@ const smsRoutes            = require('./src/routes/sms.routes');            // <
 const supportQueryRoutes   = require('./src/routes/supportQuery.routes');   // <- SUPPORT QUERIES
 const faqRoutes            = require('./src/routes/faq.routes');            // <- FAQ
 const voucherRoutes        = require('./src/routes/voucher.routes');        // <- XOXODAY VOUCHERS
+const policyRoutes         = require('./src/routes/policy.routes');         // <- LEGAL POLICIES
+const seedPolicies         = require('./src/seeds/policy.seed');            // <- LEGAL POLICIES SEED
 
 const app    = express();
 const server = http.createServer(app);
@@ -326,6 +328,7 @@ app.use('/api/support-queries', supportQueryRoutes);   // <- SUPPORT QUERIES
 app.use('/api/location',        locationRoutes);        // <- LOCATION SEARCH
 app.use('/api/faq',             faqRoutes);             // <- FAQ
 app.use('/api/vouchers',        voucherRoutes);         // <- XOXODAY GIFT VOUCHERS
+app.use('/api/policies',        policyRoutes);          // <- LEGAL POLICIES
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
@@ -358,6 +361,7 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
+    await seedPolicies();
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] Running on port ${PORT}`);
     });
