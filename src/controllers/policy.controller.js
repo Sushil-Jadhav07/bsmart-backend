@@ -273,19 +273,31 @@ exports.getPolicyByType = async (req, res) => {
 
 // GET /api/policies/app/member and /api/policies/app/vendor — published
 // policies for that app (plus any marked "both"). Used by the mobile apps.
+// Optional ?type= narrows it down to a single policy within that app.
 exports.getPoliciesByApp = async (req, res) => {
   try {
     const { appSource } = req.params;
+    const { type } = req.query;
+
     if (!['member', 'vendor'].includes(appSource)) {
       return res.status(400).json({ success: false, message: 'appSource must be member or vendor' });
     }
 
-    const docs = await Policy.find({
+    const filter = {
       app_source: { $in: [appSource, 'both'] },
       status: 'published',
-    })
+    };
+    if (type) {
+      filter.type = type.toLowerCase();
+    }
+
+    const docs = await Policy.find(filter)
       .select('-history')
       .sort({ type: 1 });
+
+    if (type && docs.length === 0) {
+      return res.status(404).json({ success: false, message: 'Policy not found' });
+    }
 
     return res.json({ success: true, total: docs.length, data: docs });
   } catch (err) {

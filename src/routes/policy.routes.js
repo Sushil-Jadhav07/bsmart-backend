@@ -238,18 +238,26 @@ router.delete('/:type', auth, requireRole('admin'), deletePolicy);
  * /api/policies/app/{appSource}:
  *   get:
  *     summary: List published policies for one app (public — no auth)
- *     description: Returns published policies where app_source matches the given app, plus any marked "both".
+ *     description: Returns published policies where app_source matches the given app, plus any marked "both". Optionally narrow to a single policy with ?type=.
  *     tags: [Policies]
  *     parameters:
  *       - in: path
  *         name: appSource
  *         required: true
  *         schema: { type: string, enum: [member, vendor] }
+ *       - in: query
+ *         name: type
+ *         required: false
+ *         schema: { type: string }
+ *         description: Filter to a single policy type (e.g. "terms", "community-guidelines")
+ *         example: community-guidelines
  *     responses:
  *       200:
- *         description: List of published policies for that app
+ *         description: List of published policies for that app (or a single-item list when ?type= is used)
  *       400:
  *         description: appSource must be member or vendor
+ *       404:
+ *         description: No published policy found for the given type
  */
 router.get('/app/:appSource', getPoliciesByApp);
 
