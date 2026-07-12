@@ -78,17 +78,14 @@ exports.createPolicy = async (req, res) => {
   }
 };
 
-// PUT /api/policies/:type — save content + optional status change
+// PUT /api/policies/:type — save content only (status is changed via PATCH /:type/status)
 exports.updatePolicy = async (req, res) => {
   try {
     const { type } = req.params;
-    const { content, status } = req.body;
+    const { content } = req.body;
 
     if (!content || typeof content !== 'string' || !content.trim()) {
       return res.status(400).json({ success: false, message: 'content is required' });
-    }
-    if (status && !VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ success: false, message: 'status must be draft or published' });
     }
 
     const doc = await Policy.findOne({ type: type.toLowerCase() });
@@ -96,22 +93,24 @@ exports.updatePolicy = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Policy not found' });
     }
 
-    // Archive current version to history
-    doc.history.push({
-      content:  doc.content,
-      status:   doc.status,
-      version:  doc.version,
-      saved_by: req.user._id,
-      saved_at: new Date(),
-    });
+    // Archive current version to history (skip on first save — empty seed
+    // content would fail the history.content `required` validator)
+    if (doc.content) {
+      doc.history.push({
+        content:  doc.content,
+        status:   doc.status,
+        version:  doc.version,
+        saved_by: req.user._id,
+        saved_at: new Date(),
+      });
 
-    // Keep only last 20 history entries
-    if (doc.history.length > 20) {
-      doc.history = doc.history.slice(-20);
+      // Keep only last 20 history entries
+      if (doc.history.length > 20) {
+        doc.history = doc.history.slice(-20);
+      }
     }
 
     doc.content    = content.trim();
-    doc.status     = status ?? doc.status;
     doc.version    = doc.version + 1;
     doc.updated_by = req.user._id;
 

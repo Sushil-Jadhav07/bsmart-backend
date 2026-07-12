@@ -133,7 +133,6 @@ router.get('/:type/history', auth, requireRole('admin'), getPolicyHistory);
  *             required: [content]
  *             properties:
  *               content: { type: string }
- *               status:  { type: string, enum: [draft, published] }
  *     responses:
  *       200:
  *         description: Policy saved successfully
