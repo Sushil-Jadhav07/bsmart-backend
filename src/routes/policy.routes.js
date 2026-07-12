@@ -10,9 +10,12 @@ const {
   getAllPolicies,
   createPolicy,
   getPolicyByType,
+  getPoliciesByApp,
   updatePolicy,
+  updatePolicyMeta,
   updatePolicyStatus,
   getPolicyHistory,
+  deletePolicy,
 } = require('../controllers/policy.controller');
 
 /**
@@ -79,6 +82,11 @@ router.get('/types', auth, requireRole('admin'), listPolicyTypes);
  *                 type: string
  *                 enum: [draft, published]
  *                 default: draft
+ *               app_source:
+ *                 type: string
+ *                 enum: [member, vendor, both]
+ *                 default: both
+ *                 description: Which app this policy applies to
  *     responses:
  *       201:
  *         description: Policy created
@@ -173,10 +181,77 @@ router.put('/:type', auth, requireRole('admin'), updatePolicy);
  */
 router.patch('/:type/status', auth, requireRole('admin'), updatePolicyStatus);
 
+/**
+ * @swagger
+ * /api/policies/{type}/meta:
+ *   patch:
+ *     summary: Edit policy type metadata — title and/or app_source (admin). Does not touch content, version, history, or status.
+ *     tags: [Policies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: type
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:      { type: string, example: "Terms & Conditions" }
+ *               app_source: { type: string, enum: [member, vendor, both] }
+ *     responses:
+ *       200:
+ *         description: Policy metadata updated
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Policy not found
+ *   delete:
+ *     summary: Delete a policy type permanently — content and history are removed with it (admin)
+ *     tags: [Policies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: type
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Policy deleted
+ *       404:
+ *         description: Policy not found
+ */
+router.patch('/:type/meta', auth, requireRole('admin'), updatePolicyMeta);
+router.delete('/:type', auth, requireRole('admin'), deletePolicy);
+
 // ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC — mobile app reads this to display policy pages. Must be registered
-// last so it never swallows the literal admin routes above (/types, /, etc).
+// PUBLIC — no auth required.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/policies/app/{appSource}:
+ *   get:
+ *     summary: List published policies for one app (public — no auth)
+ *     description: Returns published policies where app_source matches the given app, plus any marked "both".
+ *     tags: [Policies]
+ *     parameters:
+ *       - in: path
+ *         name: appSource
+ *         required: true
+ *         schema: { type: string, enum: [member, vendor] }
+ *     responses:
+ *       200:
+ *         description: List of published policies for that app
+ *       400:
+ *         description: appSource must be member or vendor
+ */
+router.get('/app/:appSource', getPoliciesByApp);
 
 /**
  * @swagger

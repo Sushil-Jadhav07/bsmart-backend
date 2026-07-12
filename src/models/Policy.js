@@ -37,6 +37,12 @@ const PolicySchema = new mongoose.Schema(
       enum: ['draft', 'published'],
       default: 'draft',
     },
+    app_source: {
+      type: String,
+      enum: ['member', 'vendor', 'both'],
+      default: 'both',
+      index: true,
+    },
     version: {
       type: Number,
       default: 1, // auto-increments on every PUT save

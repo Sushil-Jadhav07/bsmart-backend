@@ -4,6 +4,7 @@ const Policy = require('../models/Policy');
 
 const TYPE_PATTERN = /^[a-z0-9_-]+$/;
 const VALID_STATUSES = ['draft', 'published'];
+const VALID_APP_SOURCES = ['member', 'vendor', 'both'];
 
 // ─── ADMIN ───────────────────────────────────────────────────────────────────
 
@@ -11,7 +12,7 @@ const VALID_STATUSES = ['draft', 'published'];
 exports.listPolicyTypes = async (req, res) => {
   try {
     const types = await Policy.find({})
-      .select('type title status version updatedAt')
+      .select('type title status app_source version updatedAt')
       .sort({ type: 1 })
       .lean();
 
@@ -42,7 +43,7 @@ exports.getAllPolicies = async (req, res) => {
 // POST /api/policies — create a new policy type (e.g. "cookies", "shipping")
 exports.createPolicy = async (req, res) => {
   try {
-    const { type, title, content, status } = req.body;
+    const { type, title, content, status, app_source } = req.body;
 
     if (!type || typeof type !== 'string' || !TYPE_PATTERN.test(type.trim().toLowerCase())) {
       return res.status(400).json({
@@ -56,6 +57,9 @@ exports.createPolicy = async (req, res) => {
     if (status && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ success: false, message: 'status must be draft or published' });
     }
+    if (app_source && !VALID_APP_SOURCES.includes(app_source)) {
+      return res.status(400).json({ success: false, message: 'app_source must be member, vendor, or both' });
+    }
 
     const normalizedType = type.trim().toLowerCase();
     const existing = await Policy.findOne({ type: normalizedType });
@@ -68,12 +72,74 @@ exports.createPolicy = async (req, res) => {
       title: title.trim(),
       content: typeof content === 'string' ? content.trim() : '',
       status: status ?? 'draft',
+      app_source: app_source ?? 'both',
       updated_by: req.user._id,
     });
 
     return res.status(201).json({ success: true, message: 'Policy created successfully', data: doc });
   } catch (err) {
     console.error('[createPolicy]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// PATCH /api/policies/:type/meta — edit type metadata (title, app_source) only.
+// Does not touch content, version, history, or status.
+exports.updatePolicyMeta = async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { title, app_source } = req.body;
+
+    const updates = {};
+    if (title !== undefined) {
+      if (typeof title !== 'string' || !title.trim()) {
+        return res.status(400).json({ success: false, message: 'title must be a non-empty string' });
+      }
+      updates.title = title.trim();
+    }
+    if (app_source !== undefined) {
+      if (!VALID_APP_SOURCES.includes(app_source)) {
+        return res.status(400).json({ success: false, message: 'app_source must be member, vendor, or both' });
+      }
+      updates.app_source = app_source;
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: 'Provide title and/or app_source to update' });
+    }
+    updates.updated_by = req.user._id;
+
+    const doc = await Policy.findOneAndUpdate(
+      { type: type.toLowerCase() },
+      { $set: updates },
+      { new: true, runValidators: true }
+    )
+      .select('-history')
+      .populate('updated_by', 'full_name email');
+
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Policy not found' });
+    }
+
+    return res.json({ success: true, message: 'Policy updated successfully', data: doc });
+  } catch (err) {
+    console.error('[updatePolicyMeta]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// DELETE /api/policies/:type — permanently deletes the policy, including its content and history
+exports.deletePolicy = async (req, res) => {
+  try {
+    const { type } = req.params;
+
+    const doc = await Policy.findOneAndDelete({ type: type.toLowerCase() });
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Policy not found' });
+    }
+
+    return res.json({ success: true, message: 'Policy deleted successfully' });
+  } catch (err) {
+    console.error('[deletePolicy]', err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -201,6 +267,29 @@ exports.getPolicyByType = async (req, res) => {
     return res.json({ success: true, data: doc });
   } catch (err) {
     console.error('[getPolicyByType]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/policies/app/member and /api/policies/app/vendor — published
+// policies for that app (plus any marked "both"). Used by the mobile apps.
+exports.getPoliciesByApp = async (req, res) => {
+  try {
+    const { appSource } = req.params;
+    if (!['member', 'vendor'].includes(appSource)) {
+      return res.status(400).json({ success: false, message: 'appSource must be member or vendor' });
+    }
+
+    const docs = await Policy.find({
+      app_source: { $in: [appSource, 'both'] },
+      status: 'published',
+    })
+      .select('-history')
+      .sort({ type: 1 });
+
+    return res.json({ success: true, total: docs.length, data: docs });
+  } catch (err) {
+    console.error('[getPoliciesByApp]', err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
