@@ -39,7 +39,7 @@ function normalizeTerms(terms) {
 exports.createGiftCard = async (req, res) => {
   try {
     const {
-      title, description, media, category,
+      title, description, media, category, type,
       denominations, card_status, vendor, terms_and_conditions,
     } = req.body;
 
@@ -62,6 +62,7 @@ exports.createGiftCard = async (req, res) => {
       description: typeof description === 'string' ? description.trim() : '',
       media: normalizeMedia(media),
       category: typeof category === 'string' ? category.trim() : '',
+      type: typeof type === 'string' ? type.trim() : '',
       denominations: denominations.map((d) => ({ bcoins: Number(d.bcoins), amount: Number(d.amount) })),
       card_status: card_status || 'draft',
       vendor: vendor.trim(),
@@ -84,6 +85,7 @@ exports.getAllGiftCards = async (req, res) => {
       filter.card_status = req.query.card_status;
     }
     if (req.query.category) filter.category = req.query.category;
+    if (req.query.type) filter.type = req.query.type;
 
     const cards = await GiftCard.find(filter)
       .sort({ createdAt: -1 })
@@ -106,7 +108,7 @@ exports.updateGiftCard = async (req, res) => {
     }
 
     const {
-      title, description, media, category,
+      title, description, media, category, type,
       denominations, card_status, vendor, terms_and_conditions,
     } = req.body;
 
@@ -129,6 +131,9 @@ exports.updateGiftCard = async (req, res) => {
     }
     if (category !== undefined) {
       updates.category = typeof category === 'string' ? category.trim() : '';
+    }
+    if (type !== undefined) {
+      updates.type = typeof type === 'string' ? type.trim() : '';
     }
     if (media !== undefined) {
       updates.media = normalizeMedia(media);
@@ -177,6 +182,7 @@ exports.getActiveGiftCards = async (req, res) => {
   try {
     const filter = { card_status: 'active' };
     if (req.query.category) filter.category = req.query.category;
+    if (req.query.type) filter.type = req.query.type;
 
     const cards = await GiftCard.find(filter)
       .select('-created_by -updated_by')

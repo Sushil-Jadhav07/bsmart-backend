@@ -124,6 +124,36 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
+// GET /api/gift-card-orders/:id — get a single order by id (order owner, or admin/sales)
+exports.getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid order id' });
+    }
+
+    const order = await GiftCardOrder.findById(id)
+      .populate('user_id', 'full_name username email')
+      .populate('processed_by', 'full_name email');
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const ownerId = order.user_id?._id || order.user_id;
+    const isOwner = String(ownerId) === String(req.userId);
+    const isStaff = ['admin', 'sales'].includes(req.user?.role);
+    if (!isOwner && !isStaff) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view this order' });
+    }
+
+    return res.json({ success: true, data: order });
+  } catch (err) {
+    console.error('[getOrderById]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // PATCH /api/gift-card-orders/:id/cancel — cancel a pending order, refund coins to wallet
 exports.cancelOrder = async (req, res) => {
   try {
@@ -217,6 +247,42 @@ exports.adminGetAllOrders = async (req, res) => {
     });
   } catch (err) {
     console.error('[adminGetAllOrders]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// DELETE /api/gift-card-orders/:id — permanently delete a cancelled order
+// (the order owner — a member deleting from their own "my orders" list — or admin/sales)
+exports.deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid order id' });
+    }
+
+    const order = await GiftCardOrder.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const isOwner = String(order.user_id) === String(req.userId);
+    const isStaff = ['admin', 'sales'].includes(req.user?.role);
+    if (!isOwner && !isStaff) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this order' });
+    }
+
+    if (order.status !== 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: `Only cancelled orders can be deleted (current status: ${order.status})`,
+      });
+    }
+
+    await order.deleteOne();
+
+    return res.json({ success: true, message: 'Order deleted successfully' });
+  } catch (err) {
+    console.error('[deleteOrder]', err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };

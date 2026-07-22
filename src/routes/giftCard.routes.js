@@ -38,6 +38,10 @@ const uploadGiftCardImage = makeUploader('gift-cards');
  *         name: category
  *         schema: { type: string }
  *         description: Filter by category
+ *       - in: query
+ *         name: type
+ *         schema: { type: string }
+ *         description: Filter by type
  *     responses:
  *       200:
  *         description: List of active gift cards
@@ -115,6 +119,9 @@ router.post('/upload', auth, requireRole('admin', 'sales'), uploadGiftCardImage.
  *       - in: query
  *         name: category
  *         schema: { type: string }
+ *       - in: query
+ *         name: type
+ *         schema: { type: string }
  *     responses:
  *       200:
  *         description: All gift cards
@@ -140,6 +147,7 @@ router.post('/upload', auth, requireRole('admin', 'sales'), uploadGiftCardImage.
  *                   url:  { type: string }
  *                   type: { type: string, enum: [image, video], default: image }
  *               category: { type: string, example: "Shopping" }
+ *               type: { type: string, example: "E-commerce" }
  *               denominations:
  *                 type: array
  *                 items:
@@ -207,6 +215,7 @@ router.post('/', auth, requireRole('admin', 'sales'), createGiftCard);
  *                   url:  { type: string }
  *                   type: { type: string, enum: [image, video] }
  *               category: { type: string }
+ *               type: { type: string }
  *               denominations:
  *                 type: array
  *                 items:

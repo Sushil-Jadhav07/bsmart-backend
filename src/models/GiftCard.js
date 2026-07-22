@@ -40,6 +40,12 @@ const giftCardSchema = new mongoose.Schema(
       default: '',
       index: true,
     },
+    type: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
     denominations: {
       type: [denominationSchema],
       default: [],

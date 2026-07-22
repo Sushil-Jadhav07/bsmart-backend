@@ -8,7 +8,9 @@ const requireRole = require('../middleware/requireRole');
 const {
   createOrder,
   getMyOrders,
+  getOrderById,
   cancelOrder,
+  deleteOrder,
   adminGetAllOrders,
   adminStartProcessing,
   adminCompleteOrder,
@@ -90,6 +92,29 @@ router.get('/my', auth, getMyOrders);
 
 /**
  * @swagger
+ * /api/gift-card-orders/{id}:
+ *   get:
+ *     summary: Get a single order by id (order owner, or admin/sales)
+ *     tags: [GiftCardOrders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order detail
+ *       403:
+ *         description: Not the order owner and not admin/sales
+ *       404:
+ *         description: Order not found
+ */
+router.get('/:id', auth, getOrderById);
+
+/**
+ * @swagger
  * /api/gift-card-orders/{id}/cancel:
  *   patch:
  *     summary: Cancel a pending order — coins are refunded to the wallet immediately
@@ -113,6 +138,32 @@ router.get('/my', auth, getMyOrders);
  *         description: Order not found
  */
 router.patch('/:id/cancel', auth, cancelOrder);
+
+/**
+ * @swagger
+ * /api/gift-card-orders/{id}:
+ *   delete:
+ *     summary: Delete a cancelled order (order owner — e.g. a member deleting from their own "my orders" list — or admin/sales)
+ *     description: Only allowed while status is "cancelled". Cancel the order first (which refunds coins) before deleting it.
+ *     tags: [GiftCardOrders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order deleted
+ *       400:
+ *         description: Order is not in "cancelled" status
+ *       403:
+ *         description: Not the order owner and not admin/sales
+ *       404:
+ *         description: Order not found
+ */
+router.delete('/:id', auth, deleteOrder);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN / SALES
