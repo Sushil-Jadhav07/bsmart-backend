@@ -31,8 +31,8 @@ const giftCardSchema = new mongoose.Schema(
       trim: true,
     },
     media: {
-      type: [giftCardMediaSchema],
-      default: [],
+      type: giftCardMediaSchema,
+      default: null,
     },
     category: {
       type: String,

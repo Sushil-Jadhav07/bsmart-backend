@@ -20,13 +20,12 @@ function validateDenominations(denominations) {
 }
 
 function normalizeMedia(media) {
-  if (!Array.isArray(media)) return [];
-  return media
-    .filter((m) => m && typeof m.url === 'string' && m.url.trim())
-    .map((m) => ({
-      url: m.url.trim(),
-      type: ['image', 'video'].includes(m.type) ? m.type : 'image',
-    }));
+  if (!media || typeof media !== 'object' || Array.isArray(media)) return null;
+  if (typeof media.url !== 'string' || !media.url.trim()) return null;
+  return {
+    url: media.url.trim(),
+    type: ['image', 'video'].includes(media.type) ? media.type : 'image',
+  };
 }
 
 function normalizeTerms(terms) {

@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
+const { makeUploader, getFileUrl, getFileName } = require('../config/multer');
 
 const {
   createGiftCard,
@@ -12,6 +13,8 @@ const {
   getActiveGiftCards,
   getGiftCardById,
 } = require('../controllers/giftCard.controller');
+
+const uploadGiftCardImage = makeUploader('gift-cards');
 
 /**
  * @swagger
@@ -47,6 +50,58 @@ router.get('/active', getActiveGiftCards);
 
 /**
  * @swagger
+ * /api/gift-cards/upload:
+ *   post:
+ *     summary: Upload a gift card image (admin, sales) — returns the media object to use in create/edit
+ *     tags: [GiftCards]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       200:
+ *         description: Image uploaded
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "Image uploaded successfully"
+ *               media: { url: "https://cdn.example.com/uploads/users/.../gift-cards/169...-1.png", type: "image" }
+ *       400:
+ *         description: No file provided or unsupported file type
+ */
+router.post('/upload', auth, requireRole('admin', 'sales'), uploadGiftCardImage.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Please upload an image file' });
+    }
+
+    const media = {
+      url:  getFileUrl(req, req.file),
+      type: req.file.mimetype?.startsWith('video/') ? 'video' : 'image',
+    };
+
+    return res.json({
+      success:  true,
+      message:  'Image uploaded successfully',
+      fileName: getFileName(req.file),
+      media,
+    });
+  } catch (err) {
+    console.error('[uploadGiftCardImage]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * @swagger
  * /api/gift-cards:
  *   get:
  *     summary: List all gift cards, any status (admin, sales)
@@ -79,12 +134,11 @@ router.get('/active', getActiveGiftCards);
  *               title:       { type: string, example: "Amazon Gift Card" }
  *               description: { type: string, example: "Redeemable on amazon.in" }
  *               media:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     url:  { type: string }
- *                     type: { type: string, enum: [image, video], default: image }
+ *                 type: object
+ *                 description: Use the media object returned by POST /api/gift-cards/upload
+ *                 properties:
+ *                   url:  { type: string }
+ *                   type: { type: string, enum: [image, video], default: image }
  *               category: { type: string, example: "Shopping" }
  *               denominations:
  *                 type: array
@@ -148,12 +202,10 @@ router.post('/', auth, requireRole('admin', 'sales'), createGiftCard);
  *               title:       { type: string }
  *               description: { type: string }
  *               media:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     url:  { type: string }
- *                     type: { type: string, enum: [image, video] }
+ *                 type: object
+ *                 properties:
+ *                   url:  { type: string }
+ *                   type: { type: string, enum: [image, video] }
  *               category: { type: string }
  *               denominations:
  *                 type: array
