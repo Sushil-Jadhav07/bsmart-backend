@@ -111,7 +111,7 @@ exports.createOrder = async (req, res) => {
 exports.getMyOrders = async (req, res) => {
   try {
     const userId = req.userId;
-    const filter = { user_id: userId };
+    const filter = { user_id: userId, hidden_from_member: { $ne: true } };
     if (req.query.status && VALID_STATUSES.includes(req.query.status)) {
       filter.status = req.query.status;
     }
@@ -145,6 +145,10 @@ exports.getOrderById = async (req, res) => {
     const isStaff = ['admin', 'sales'].includes(req.user?.role);
     if (!isOwner && !isStaff) {
       return res.status(403).json({ success: false, message: 'Not authorized to view this order' });
+    }
+    // A member who deleted this order should no longer see it — admin/sales still can
+    if (!isStaff && order.hidden_from_member) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
     return res.json({ success: true, data: order });
@@ -251,8 +255,10 @@ exports.adminGetAllOrders = async (req, res) => {
   }
 };
 
-// DELETE /api/gift-card-orders/:id — permanently delete a cancelled order
-// (the order owner — a member deleting from their own "my orders" list — or admin/sales)
+// DELETE /api/gift-card-orders/:id — delete a cancelled order.
+// Member (owner): soft delete — only hidden from their own "my orders" list,
+//                 the record stays intact for admin/sales.
+// Admin/sales:    hard delete — the record is permanently removed everywhere.
 exports.deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
@@ -278,9 +284,14 @@ exports.deleteOrder = async (req, res) => {
       });
     }
 
-    await order.deleteOne();
+    if (isStaff) {
+      await order.deleteOne();
+      return res.json({ success: true, message: 'Order deleted successfully' });
+    }
 
-    return res.json({ success: true, message: 'Order deleted successfully' });
+    order.hidden_from_member = true;
+    await order.save();
+    return res.json({ success: true, message: 'Order removed from your orders' });
   } catch (err) {
     console.error('[deleteOrder]', err);
     return res.status(500).json({ success: false, message: err.message });

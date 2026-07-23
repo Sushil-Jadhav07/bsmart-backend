@@ -64,6 +64,11 @@ const giftCardOrderSchema = new mongoose.Schema(
       default: null,
     },
     cancelled_at: { type: Date, default: null },
+
+    // A member "deleting" an order only hides it from their own my-orders
+    // view — the record stays intact for admin/sales. Only admin/sales can
+    // actually remove the document.
+    hidden_from_member: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

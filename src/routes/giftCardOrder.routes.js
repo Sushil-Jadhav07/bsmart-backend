@@ -143,8 +143,14 @@ router.patch('/:id/cancel', auth, cancelOrder);
  * @swagger
  * /api/gift-card-orders/{id}:
  *   delete:
- *     summary: Delete a cancelled order (order owner — e.g. a member deleting from their own "my orders" list — or admin/sales)
- *     description: Only allowed while status is "cancelled". Cancel the order first (which refunds coins) before deleting it.
+ *     summary: Delete a cancelled order (order owner, or admin/sales)
+ *     description: |
+ *       Only allowed while status is "cancelled" — cancel the order first (which refunds coins) before deleting it.
+ *
+ *       Behavior differs by caller:
+ *       - Member (order owner): soft delete — the order is only hidden from their own
+ *         GET /my list and GET /{id}. The record itself stays intact for admin/sales.
+ *       - Admin/sales: hard delete — the order document is permanently removed everywhere.
  *     tags: [GiftCardOrders]
  *     security:
  *       - bearerAuth: []
