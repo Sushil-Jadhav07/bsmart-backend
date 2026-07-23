@@ -49,6 +49,10 @@ const notificationSchema = new mongoose.Schema({
       'support_reply',   // reply added — sent to the other party
       'support_status',  // status changed — sent to user
       'support_assign',  // query assigned — sent to sales officer
+
+      // ── Gift card orders ─────────────────────────────────────────────────
+      'gift_card_order',        // sent to the member — their order's status changed
+      'gift_card_order_admin',  // sent to admin/sales — an order needs attention or changed
     ],
     required: true
   },

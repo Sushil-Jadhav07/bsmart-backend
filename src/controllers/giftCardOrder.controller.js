@@ -5,9 +5,51 @@ const GiftCard            = require('../models/GiftCard');
 const GiftCardOrder       = require('../models/GiftCardOrder');
 const Wallet              = require('../models/Wallet');
 const WalletTransaction   = require('../models/WalletTransaction');
+const User                = require('../models/User');
 const runMongoTransaction = require('../utils/runMongoTransaction');
+const sendNotification    = require('../utils/sendNotification');
+const { sendGiftCardVoucherEmail } = require('./email.controller');
 
 const VALID_STATUSES = ['pending', 'processing', 'completed', 'cancelled'];
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[GiftCardOrder] ${label} failed:`, err.message));
+};
+
+// Notify the order's owner — in-app/push notification
+const notifyMember = async (app, { recipient, sender = null, message }) => {
+  try {
+    await sendNotification(app, {
+      recipient,
+      sender,
+      type: 'gift_card_order',
+      message,
+      link: '/gift-card-orders',
+    });
+  } catch (err) {
+    console.error('[notifyMember]', err.message);
+  }
+};
+
+// Notify every admin/sales user — in-app/push notification
+const notifyAdmins = async (app, { message, sender = null }) => {
+  try {
+    const admins = await User.find({ role: { $in: ['admin', 'sales'] } }).select('_id').lean();
+    await Promise.allSettled(
+      admins.map((a) =>
+        sendNotification(app, {
+          recipient: a._id,
+          sender,
+          type: 'gift_card_order_admin',
+          message,
+          link: '/admin/gift-card-orders',
+        })
+      )
+    );
+  } catch (err) {
+    console.error('[notifyAdmins]', err.message);
+  }
+};
 
 // ─── MEMBER ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +134,16 @@ exports.createOrder = async (req, res) => {
         order = createdOrder;
       },
     });
+
+    fireAndForget('createOrder member notify', notifyMember(req.app, {
+      recipient: userId,
+      sender:    userId,
+      message:   `Your order for ${giftCard.title} (₹${denomination.amount}) has been placed and is pending.`,
+    }));
+    fireAndForget('createOrder admin notify', notifyAdmins(req.app, {
+      message: `New gift card order — ${giftCard.title} (₹${denomination.amount}) by ${req.user?.full_name || req.user?.username || 'a member'}`,
+      sender:  userId,
+    }));
 
     return res.status(201).json({
       success: true,
@@ -210,6 +262,16 @@ exports.cancelOrder = async (req, res) => {
       },
     });
 
+    fireAndForget('cancelOrder member notify', notifyMember(req.app, {
+      recipient: order.user_id,
+      sender:    req.userId,
+      message:   `Your gift card order for ${order.title} was cancelled and ${order.bcoins} coins were refunded to your wallet.`,
+    }));
+    fireAndForget('cancelOrder admin notify', notifyAdmins(req.app, {
+      message: `Gift card order for ${order.title} was cancelled`,
+      sender:  req.userId,
+    }));
+
     return res.json({ success: true, message: 'Order cancelled and coins refunded to wallet', data: order });
   } catch (err) {
     console.error('[cancelOrder]', err);
@@ -321,6 +383,16 @@ exports.adminStartProcessing = async (req, res) => {
     order.processed_by = req.user._id;
     await order.save();
 
+    fireAndForget('adminStartProcessing member notify', notifyMember(req.app, {
+      recipient: order.user_id,
+      sender:    req.user._id,
+      message:   `Your gift card order for ${order.title} is now being processed.`,
+    }));
+    fireAndForget('adminStartProcessing admin notify', notifyAdmins(req.app, {
+      message: `Gift card order for ${order.title} moved to processing`,
+      sender:  req.user._id,
+    }));
+
     return res.json({ success: true, message: 'Order is now processing', data: order });
   } catch (err) {
     console.error('[adminStartProcessing]', err);
@@ -365,6 +437,33 @@ exports.adminCompleteOrder = async (req, res) => {
       : [];
     order.processed_by = req.user._id;
     await order.save();
+
+    fireAndForget('adminCompleteOrder member notify', notifyMember(req.app, {
+      recipient: order.user_id,
+      sender:    req.user._id,
+      message:   `Your ${order.title} gift card is ready! Check your email for the voucher code.`,
+    }));
+    fireAndForget('adminCompleteOrder admin notify', notifyAdmins(req.app, {
+      message: `Gift card order for ${order.title} completed`,
+      sender:  req.user._id,
+    }));
+
+    fireAndForget('adminCompleteOrder voucher email', (async () => {
+      const buyer = await User.findById(order.user_id).select('email full_name').lean();
+      if (!buyer?.email) return;
+      await sendGiftCardVoucherEmail({
+        email:        buyer.email,
+        full_name:    buyer.full_name,
+        title:        order.title,
+        vendor:       order.vendor,
+        amount:       order.amount,
+        voucher_code: order.voucher_code,
+        voucher_pin:  order.voucher_pin,
+        expiry_date:  order.expiry_date,
+        image_url:    order.media?.url,
+        redeem_steps: order.redeem_steps,
+      });
+    })());
 
     return res.json({ success: true, message: 'Order completed — voucher delivered', data: order });
   } catch (err) {

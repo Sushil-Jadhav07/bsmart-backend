@@ -479,6 +479,62 @@ const walletRechargeTemplate = ({
   `, BRAND_PRIMARY);
 };
 
+const giftCardVoucherTemplate = ({
+  full_name,
+  title,
+  vendor,
+  amount,
+  voucher_code,
+  voucher_pin,
+  expiry_date,
+  image_url,
+  redeem_steps,
+}) => {
+  const expiryText = expiry_date
+    ? new Date(expiry_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'No expiry';
+
+  const steps = Array.isArray(redeem_steps) ? redeem_steps.filter(Boolean) : [];
+
+  return baseTemplate(`
+    ${h2('Your gift card voucher is ready')}
+    ${hi(full_name)}
+    ${p(`Great news! Your <strong>${title}</strong>${vendor ? ` (${vendor})` : ''} voucher is ready to use.`)}
+    ${infoBox(`
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        <tr>
+          <td style="padding:0 0 14px;width:50%;">
+            <p style="margin:0 0 4px;font-size:11px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">Gift Card Code</p>
+            <p style="margin:0;font-size:17px;font-weight:800;color:#1a1a1a;font-family:'Courier New',monospace;letter-spacing:0.5px;">${voucher_code || '-'}</p>
+          </td>
+          ${voucher_pin ? `
+          <td style="padding:0 0 14px;width:50%;text-align:right;">
+            <p style="margin:0 0 4px;font-size:11px;color:#888888;text-transform:uppercase;letter-spacing:0.5px;">PIN</p>
+            <p style="margin:0;font-size:17px;font-weight:800;color:#1a1a1a;font-family:'Courier New',monospace;">${voucher_pin}</p>
+          </td>` : ''}
+        </tr>
+      </table>
+      ${image_url ? `
+      <div style="text-align:center;margin:6px 0 16px;">
+        <img src="${image_url}" alt="${title}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto;" />
+      </div>` : ''}
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Amount', `₹${Number(amount || 0).toLocaleString('en-IN')}`)}
+        ${kvRow('Expiry Date', expiryText)}
+      </table>
+    `, BRAND_LIGHT, BRAND_SECONDARY)}
+    ${steps.length ? `
+      <p style="margin:24px 0 10px;font-size:14px;font-weight:700;color:#1a1a1a;">How to redeem</p>
+      <ol style="margin:0 0 20px;padding-left:20px;color:#444444;font-size:14px;line-height:2;">
+        ${steps.map((s) => `<li>${s}</li>`).join('')}
+      </ol>
+    ` : ''}
+    ${divider()}
+    ${p('Thank you for being with us!')}
+    ${note('Keep your gift card code and PIN safe. Do not share them with anyone.')}
+  `, BRAND_PRIMARY);
+};
+
 module.exports = {
   welcomeMemberTemplate,
   welcomeVendorTemplate,
@@ -497,4 +553,5 @@ module.exports = {
   websiteInquiryAdminTemplate,
   websiteInquiryCustomerTemplate,
   walletRechargeTemplate,
+  giftCardVoucherTemplate,
 };

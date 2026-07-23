@@ -19,6 +19,7 @@ const {
   newAdPendingTemplate,
   customSendEmailTemplate,
   walletRechargeTemplate,
+  giftCardVoucherTemplate,
 } = require('../templates/email.templates');
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
@@ -151,6 +152,24 @@ const sendNewVendorAlert = async ({ adminEmail, company_name, email, registered_
     });
   } catch (err) {
     console.error('[Email] New vendor admin alert failed:', err.message);
+  }
+};
+
+const sendGiftCardVoucherEmail = async ({
+  email, full_name, title, vendor, amount,
+  voucher_code, voucher_pin, expiry_date, image_url, redeem_steps,
+}) => {
+  try {
+    await sendEmail({
+      to: email,
+      subject: `Your ${title} voucher is ready`,
+      html: giftCardVoucherTemplate({
+        full_name, title, vendor, amount,
+        voucher_code, voucher_pin, expiry_date, image_url, redeem_steps,
+      }),
+    });
+  } catch (err) {
+    console.error('[Email] Gift card voucher email failed:', err.message);
   }
 };
 
@@ -399,3 +418,4 @@ module.exports.sendCoinsLowEmail = sendCoinsLowEmail;
 module.exports.sendNewVendorAlert = sendNewVendorAlert;
 module.exports.sendNewAdPendingAlert = sendNewAdPendingAlert;
 module.exports.sendWalletRechargeEmail = sendWalletRechargeEmail;
+module.exports.sendGiftCardVoucherEmail = sendGiftCardVoucherEmail;
