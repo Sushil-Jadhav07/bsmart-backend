@@ -52,7 +52,7 @@ const {
  *                     url:  { type: string }
  *                     type: { type: string, enum: [image, video], default: image }
  *               app_version:  { type: string, example: "2.4.1" }
- *               os_type:      { type: string, enum: [android, ios] }
+ *               os_type:      { type: string, enum: [android, ios, windows, macos, linux, other] }
  *               os_version:   { type: string, example: "14" }
  *               device_model: { type: string, example: "Pixel 7" }
  *               network_type: { type: string, enum: [wifi, mobile_data, other] }

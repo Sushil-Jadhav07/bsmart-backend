@@ -11,7 +11,7 @@ const VALID_CATEGORIES = [
 ];
 const VALID_STATUSES  = ['new', 'in_progress', 'fixed', 'closed'];
 const VALID_PRIORITIES = ['low', 'medium', 'high', 'critical'];
-const VALID_OS_TYPES   = ['android', 'ios'];
+const VALID_OS_TYPES   = ['android', 'ios', 'windows', 'macos', 'linux', 'other'];
 const VALID_NETWORK_TYPES = ['wifi', 'mobile_data', 'other'];
 
 const fireAndForget = (label, promise) => {

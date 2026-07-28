@@ -39,7 +39,7 @@ const bugReportSchema = new mongoose.Schema(
 
     // Auto-captured from the client at submission time
     app_version:  { type: String, default: '' },
-    os_type:      { type: String, enum: ['android', 'ios', ''], default: '' },
+    os_type:      { type: String, enum: ['android', 'ios', 'windows', 'macos', 'linux', 'other', ''], default: '' },
     os_version:   { type: String, default: '' },
     device_model: { type: String, default: '' },
     network_type: { type: String, enum: ['wifi', 'mobile_data', 'other', ''], default: '' },
