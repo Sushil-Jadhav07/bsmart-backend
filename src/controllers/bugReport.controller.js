@@ -78,11 +78,16 @@ exports.createBugReport = async (req, res) => {
     if (!description || typeof description !== 'string' || !description.trim()) {
       return res.status(400).json({ success: false, message: 'description is required' });
     }
-    if (os_type && !VALID_OS_TYPES.includes(os_type)) {
-      return res.status(400).json({ success: false, message: 'os_type must be android or ios' });
+
+    // Normalize case — client platform APIs often report "iOS", "Android", "WiFi", etc.
+    const normalizedOsType = typeof os_type === 'string' ? os_type.trim().toLowerCase() : '';
+    const normalizedNetworkType = typeof network_type === 'string' ? network_type.trim().toLowerCase() : '';
+
+    if (normalizedOsType && !VALID_OS_TYPES.includes(normalizedOsType)) {
+      return res.status(400).json({ success: false, message: `os_type must be one of: ${VALID_OS_TYPES.join(', ')}` });
     }
-    if (network_type && !VALID_NETWORK_TYPES.includes(network_type)) {
-      return res.status(400).json({ success: false, message: 'network_type must be wifi, mobile_data, or other' });
+    if (normalizedNetworkType && !VALID_NETWORK_TYPES.includes(normalizedNetworkType)) {
+      return res.status(400).json({ success: false, message: `network_type must be one of: ${VALID_NETWORK_TYPES.join(', ')}` });
     }
 
     const doc = await BugReport.create({
@@ -91,10 +96,10 @@ exports.createBugReport = async (req, res) => {
       description:  description.trim(),
       attachments:  normalizeAttachments(attachments),
       app_version:  typeof app_version === 'string' ? app_version.trim() : '',
-      os_type:      os_type || '',
+      os_type:      normalizedOsType,
       os_version:   typeof os_version === 'string' ? os_version.trim() : '',
       device_model: typeof device_model === 'string' ? device_model.trim() : '',
-      network_type: network_type || '',
+      network_type: normalizedNetworkType,
     });
 
     doc.ticket_id = `BUG-${doc._id.toString().slice(-8).toUpperCase()}`;
