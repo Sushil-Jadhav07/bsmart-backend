@@ -65,6 +65,7 @@ const policyRoutes         = require('./src/routes/policy.routes');         // <
 const seedPolicies         = require('./src/seeds/policy.seed');            // <- LEGAL POLICIES SEED
 const giftCardRoutes       = require('./src/routes/giftCard.routes');       // <- GIFT CARDS
 const giftCardOrderRoutes  = require('./src/routes/giftCardOrder.routes');  // <- GIFT CARD ORDERS
+const bugReportRoutes      = require('./src/routes/bugReport.routes');      // <- BUG REPORTS
 
 const app    = express();
 const server = http.createServer(app);
@@ -331,6 +332,7 @@ app.use('/api/faq',             faqRoutes);             // <- FAQ
 app.use('/api/policies',        policyRoutes);          // <- LEGAL POLICIES
 app.use('/api/gift-cards',      giftCardRoutes);        // <- GIFT CARDS
 app.use('/api/gift-card-orders', giftCardOrderRoutes);  // <- GIFT CARD ORDERS
+app.use('/api/bug-reports',     bugReportRoutes);       // <- BUG REPORTS
 
 
 // ── Country / State / City / Language routes ──────────────────────────────

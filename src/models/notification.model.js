@@ -53,6 +53,10 @@ const notificationSchema = new mongoose.Schema({
       // ── Gift card orders ─────────────────────────────────────────────────
       'gift_card_order',        // sent to the member — their order's status changed
       'gift_card_order_admin',  // sent to admin/sales — an order needs attention or changed
+
+      // ── Bug reports ───────────────────────────────────────────────────────
+      'bug_report_status',  // sent to the reporter — their bug report's status changed
+      'bug_report_admin',   // sent to admin/sales — a new bug report was submitted
     ],
     required: true
   },
