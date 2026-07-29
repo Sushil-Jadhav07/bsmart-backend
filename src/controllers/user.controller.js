@@ -537,8 +537,18 @@ exports.updateUser = async (req, res) => {
     if (full_name  !== undefined) updateFields.full_name  = full_name;
     if (bio        !== undefined) updateFields.bio        = bio;
     if (avatar_url !== undefined) updateFields.avatar_url = avatar_url;
-    if (phone      !== undefined) updateFields.phone      = phone;
     if (username   !== undefined) updateFields.username   = username;
+
+    if (phone !== undefined) {
+      updateFields.phone = phone;
+      // Changing the number invalidates verification on the old one —
+      // otherwise sendPhoneOtp sees the stale flag and refuses to send an
+      // OTP for the new (actually unverified) number.
+      const currentUser = await User.findById(userId).select('phone').lean();
+      if (currentUser && String(currentUser.phone || '') !== String(phone || '')) {
+        updateFields.is_phone_verified = false;
+      }
+    }
     if (website    !== undefined) updateFields.website    = String(website).trim();
     if (typeof age      !== 'undefined') updateFields.age      = age;
     if (typeof location !== 'undefined') updateFields.location = location;

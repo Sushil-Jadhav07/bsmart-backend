@@ -9,6 +9,7 @@ const {
   createBugReport,
   getMyBugReports,
   getBugReportById,
+  deleteBugReport,
   adminGetAllBugReports,
   adminUpdateBugReport,
 } = require('../controllers/bugReport.controller');
@@ -181,5 +182,28 @@ router.patch('/admin/:id', auth, requireRole('admin', 'sales'), adminUpdateBugRe
  *         description: Bug report not found
  */
 router.get('/:id', auth, getBugReportById);
+
+/**
+ * @swagger
+ * /api/bug-reports/{id}:
+ *   delete:
+ *     summary: Delete a bug report (the reporter who submitted it, or admin/sales)
+ *     tags: [BugReports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Bug report deleted
+ *       403:
+ *         description: Not the reporter and not admin/sales
+ *       404:
+ *         description: Bug report not found
+ */
+router.delete('/:id', auth, deleteBugReport);
 
 module.exports = router;

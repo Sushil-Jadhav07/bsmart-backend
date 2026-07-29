@@ -5,6 +5,7 @@ const StoryItem = require('../models/StoryItem');
 const Ad = require('../models/Ad');
 const Comment = require('../models/Comment');
 const Tweet = require('../models/tweet.model');
+const PromoteReel = require('../models/PromoteReel');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 
@@ -46,6 +47,7 @@ const CONTENT_MODELS = {
   ad: Ad,
   comment: Comment,
   tweet: Tweet,
+  promote_reel: PromoteReel,
 };
 
 async function removeContent(contentType, contentId) {
@@ -125,6 +127,15 @@ const resolveContent = async (contentType, contentId) => {
     }).select('_id author content media').lean();
     if (!item) return { error: { status: 404, message: 'tweet not found' } };
     return { ownerId: item.author, item };
+  }
+
+  if (contentType === 'promote_reel') {
+    const item = await PromoteReel.findOne({
+      _id: objectId,
+      isDeleted: false,
+    }).select('_id user_id caption').lean();
+    if (!item) return { error: { status: 404, message: 'promote_reel not found' } };
+    return { ownerId: item.user_id, item };
   }
 
   return { error: { status: 400, message: 'Invalid content_type' } };
@@ -226,6 +237,34 @@ exports.getMyContentReports = async (req, res) => {
     });
   } catch (error) {
     console.error('[getMyContentReports]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// DELETE /api/content-reports/:id — reporter (own report), or admin/sales (any)
+exports.deleteContentReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid report id' });
+    }
+
+    const report = await ContentReport.findById(id);
+    if (!report) {
+      return res.status(404).json({ message: 'Report not found' });
+    }
+
+    const isOwner = String(report.reporter_id) === String(req.userId);
+    const isStaff = ['admin', 'sales'].includes(req.user?.role);
+    if (!isOwner && !isStaff) {
+      return res.status(403).json({ message: 'Not authorized to delete this report' });
+    }
+
+    await report.deleteOne();
+
+    return res.json({ success: true, message: 'Report deleted successfully' });
+  } catch (error) {
+    console.error('[deleteContentReport]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

@@ -168,6 +168,34 @@ exports.getBugReportById = async (req, res) => {
   }
 };
 
+// DELETE /api/bug-reports/:id — reporter (own report), or admin/sales (any)
+exports.deleteBugReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid bug report id' });
+    }
+
+    const report = await BugReport.findById(id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Bug report not found' });
+    }
+
+    const isOwner = String(report.reporter_id) === String(req.userId);
+    const isStaff = ['admin', 'sales'].includes(req.user?.role);
+    if (!isOwner && !isStaff) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this report' });
+    }
+
+    await report.deleteOne();
+
+    return res.json({ success: true, message: 'Bug report deleted successfully' });
+  } catch (err) {
+    console.error('[deleteBugReport]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // ─── ADMIN / SALES ───────────────────────────────────────────────────────────
 
 // GET /api/bug-reports/admin/all — list every bug report

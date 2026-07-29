@@ -138,6 +138,29 @@ router.get('/my', auth, ctrl.getMyContentReports);
 
 /**
  * @swagger
+ * /api/content-reports/{id}:
+ *   delete:
+ *     summary: Delete a content report (the reporter who submitted it, or admin/sales)
+ *     tags: [Content Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Report deleted
+ *       403:
+ *         description: Not the reporter and not admin/sales
+ *       404:
+ *         description: Report not found
+ */
+router.delete('/:id', auth, ctrl.deleteContentReport);
+
+/**
+ * @swagger
  * /api/content-reports/admin:
  *   get:
  *     summary: List reported content for admin review
@@ -149,7 +172,7 @@ router.get('/my', auth, ctrl.getMyContentReports);
  *         name: content_type
  *         schema:
  *           type: string
- *           enum: [post, reel, story, ad, comment, tweet]
+ *           enum: [post, reel, story, ad, comment, tweet, promote_reel]
  *       - in: query
  *         name: status
  *         schema:

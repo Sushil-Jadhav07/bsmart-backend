@@ -17,7 +17,7 @@ const contentReportSchema = new mongoose.Schema({
   },
   content_type: {
     type: String,
-    enum: ['post', 'reel', 'story', 'ad', 'comment', 'tweet'],
+    enum: ['post', 'reel', 'story', 'ad', 'comment', 'tweet', 'promote_reel'],
     required: true,
     index: true,
   },
