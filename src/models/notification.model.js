@@ -57,6 +57,11 @@ const notificationSchema = new mongoose.Schema({
       // ── Bug reports ───────────────────────────────────────────────────────
       'bug_report_status',  // sent to the reporter — their bug report's status changed
       'bug_report_admin',   // sent to admin/sales — a new bug report was submitted
+
+      // ── Content reports ──────────────────────────────────────────────────
+      'content_report_status',     // sent to the reporter — their report's status changed
+      'content_report_admin',      // sent to admin/sales — a new content report was submitted
+      'content_moderation_action', // sent to the content owner — action was taken on their content/account
     ],
     required: true
   },

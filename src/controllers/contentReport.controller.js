@@ -5,17 +5,74 @@ const StoryItem = require('../models/StoryItem');
 const Ad = require('../models/Ad');
 const Comment = require('../models/Comment');
 const Tweet = require('../models/tweet.model');
+const User = require('../models/User');
+const sendNotification = require('../utils/sendNotification');
 
 const REPORT_REASONS = [
-  'I just don\'t like it',
-  'Bullying or unwanted contact',
-  'Suicide, self-injury or eating disorders',
-  'Violence, hate or exploitation',
-  'Selling or promoting restricted items',
-  'Nudity or sexual activity',
-  'Scam, fraud or spam',
-  'False information',
+  'Spam',
+  'Fake Information',
+  'Hate Speech',
+  'Nudity',
+  'Violence',
+  'Copyright Violation',
+  'Harassment',
+  'Scam/Fraud',
+  'Illegal Content',
+  'Other',
 ];
+
+const VALID_ACTIONS = ['none', 'content_removed', 'warning_issued', 'temporary_suspension', 'permanent_ban'];
+
+const fireAndForget = (label, promise) => {
+  promise.catch((err) => console.error(`[ContentReport] ${label} failed:`, err.message));
+};
+
+function normalizeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .filter((a) => a && typeof a.url === 'string' && a.url.trim())
+    .map((a) => ({
+      url: a.url.trim(),
+      type: ['image', 'video'].includes(a.type) ? a.type : 'image',
+    }));
+}
+
+// Soft-delete the underlying content — every content model already uses an
+// isDeleted flag, so this is a generic dispatch by content_type.
+const CONTENT_MODELS = {
+  post: Post,
+  reel: Post,
+  story: StoryItem,
+  ad: Ad,
+  comment: Comment,
+  tweet: Tweet,
+};
+
+async function removeContent(contentType, contentId) {
+  const Model = CONTENT_MODELS[contentType];
+  if (!Model) return false;
+  const result = await Model.updateOne({ _id: contentId }, { $set: { isDeleted: true } });
+  return result.modifiedCount > 0;
+}
+
+// Suspend/ban the content owner — mirrors PATCH /api/users/:id/status exactly
+async function applyUserPenalty(userId, actionTaken, adminId, adminNote) {
+  const user = await User.findById(userId);
+  if (!user) return;
+
+  const banType = actionTaken === 'permanent_ban' ? 'permanent' : 'temporary';
+  user.is_active = false;
+  user.ban_type = banType;
+  user.ban_until = banType === 'temporary'
+    ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    : null;
+  user.ban_reason = adminNote || (banType === 'temporary'
+    ? 'Banned for 30 days following a content report'
+    : 'Permanently banned following a content report');
+  user.banned_by = adminId;
+  user.banned_at = new Date();
+  await user.save();
+}
 
 const resolveContent = async (contentType, contentId) => {
   if (!mongoose.Types.ObjectId.isValid(contentId)) {
@@ -83,7 +140,7 @@ exports.getReportReasons = async (req, res) => {
 exports.createContentReport = async (req, res) => {
   try {
     const reporterId = req.userId;
-    const { content_type, content_id, reason, details = '' } = req.body;
+    const { content_type, content_id, reason, details = '', attachments } = req.body;
 
     if (!content_type || !content_id || !reason) {
       return res.status(400).json({ message: 'content_type, content_id and reason are required' });
@@ -118,11 +175,25 @@ exports.createContentReport = async (req, res) => {
       owner_id: resolved.ownerId,
       reason,
       details,
+      attachments: normalizeAttachments(attachments),
     });
+
+    fireAndForget('createContentReport admin notify', (async () => {
+      const admins = await User.find({ role: { $in: ['admin', 'sales'] } }).select('_id').lean();
+      await Promise.allSettled(
+        admins.map((a) => sendNotification(req.app, {
+          recipient: a._id,
+          sender: reporterId,
+          type: 'content_report_admin',
+          message: `New ${content_type} report — ${reason}`,
+          link: '/admin/content-reports',
+        }))
+      );
+    })());
 
     return res.status(201).json({
       success: true,
-      message: 'Report submitted successfully',
+      message: 'Thank you. Your report has been submitted successfully.',
       report: {
         _id: report._id,
         reporter_id: report.reporter_id,
@@ -131,6 +202,7 @@ exports.createContentReport = async (req, res) => {
         content_id: report.content_id,
         reason: report.reason,
         details: report.details,
+        attachments: report.attachments,
         status: report.status,
         createdAt: report.createdAt,
       },
@@ -194,13 +266,16 @@ exports.listContentReports = async (req, res) => {
 exports.updateContentReportStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, admin_note = '' } = req.body;
+    const { status, admin_note = '', action_taken } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid report id' });
     }
     if (!['pending', 'reviewed', 'action_taken', 'rejected'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
+    }
+    if (action_taken !== undefined && !VALID_ACTIONS.includes(action_taken)) {
+      return res.status(400).json({ message: `action_taken must be one of: ${VALID_ACTIONS.join(', ')}` });
     }
 
     const report = await ContentReport.findById(id);
@@ -212,7 +287,41 @@ exports.updateContentReportStatus = async (req, res) => {
     report.admin_note = admin_note;
     report.reviewed_by = req.user._id;
     report.reviewed_at = new Date();
+    if (action_taken !== undefined) {
+      report.action_taken = action_taken;
+    }
     await report.save();
+
+    // Apply the real effect of the chosen action
+    if (action_taken === 'content_removed') {
+      await removeContent(report.content_type, report.content_id);
+    } else if (action_taken === 'temporary_suspension' || action_taken === 'permanent_ban') {
+      await applyUserPenalty(report.owner_id, action_taken, req.user._id, admin_note);
+    }
+
+    fireAndForget('updateContentReportStatus reporter notify', sendNotification(req.app, {
+      recipient: report.reporter_id,
+      sender:    req.user._id,
+      type:      'content_report_status',
+      message:   `Your ${report.content_type} report has been ${status.replace(/_/g, ' ')}`,
+      link:      '/content-reports',
+    }));
+
+    if (action_taken && action_taken !== 'none') {
+      const ownerMessages = {
+        content_removed:      'Content you posted was removed for violating our guidelines.',
+        warning_issued:       'You received a warning regarding content you posted.',
+        temporary_suspension: 'Your account has been temporarily suspended following a content report.',
+        permanent_ban:        'Your account has been permanently banned following a content report.',
+      };
+      fireAndForget('updateContentReportStatus owner notify', sendNotification(req.app, {
+        recipient: report.owner_id,
+        sender:    req.user._id,
+        type:      'content_moderation_action',
+        message:   ownerMessages[action_taken],
+        link:      '/notifications',
+      }));
+    }
 
     return res.json({
       success: true,

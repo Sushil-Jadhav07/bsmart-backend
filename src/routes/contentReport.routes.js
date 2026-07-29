@@ -26,14 +26,16 @@ const ctrl = require('../controllers/contentReport.controller');
  *             example:
  *               success: true
  *               reasons:
- *                 - "I just don't like it"
- *                 - "Bullying or unwanted contact"
- *                 - "Suicide, self-injury or eating disorders"
- *                 - "Violence, hate or exploitation"
- *                 - "Selling or promoting restricted items"
- *                 - "Nudity or sexual activity"
- *                 - "Scam, fraud or spam"
- *                 - "False information"
+ *                 - "Spam"
+ *                 - "Fake Information"
+ *                 - "Hate Speech"
+ *                 - "Nudity"
+ *                 - "Violence"
+ *                 - "Copyright Violation"
+ *                 - "Harassment"
+ *                 - "Scam/Fraud"
+ *                 - "Illegal Content"
+ *                 - "Other"
  */
 router.get('/reasons', auth, ctrl.getReportReasons);
 
@@ -62,11 +64,21 @@ router.get('/reasons', auth, ctrl.getReportReasons);
  *                 type: string
  *               details:
  *                 type: string
+ *               attachments:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     url:  { type: string }
+ *                     type: { type: string, enum: [image, video], default: image }
  *           example:
  *             content_type: "post"
  *             content_id: "67e3aa001122334455667801"
- *             reason: "Scam, fraud or spam"
+ *             reason: "Scam/Fraud"
  *             details: "This content looks misleading."
+ *             attachments:
+ *               - url: "https://.../screenshot.png"
+ *                 type: "image"
  *     responses:
  *       201:
  *         description: Report submitted successfully
@@ -217,6 +229,13 @@ router.get('/admin', auth, requireRole('admin'), ctrl.listContentReports);
  *                 enum: [pending, reviewed, action_taken, rejected]
  *               admin_note:
  *                 type: string
+ *               action_taken:
+ *                 type: string
+ *                 enum: [none, content_removed, warning_issued, temporary_suspension, permanent_ban]
+ *                 description: |
+ *                   content_removed soft-deletes the underlying content.
+ *                   temporary_suspension/permanent_ban directly bans the content owner's account
+ *                   (same effect as PATCH /api/users/:id/status).
  *     responses:
  *       200:
  *         description: Report updated successfully
@@ -231,10 +250,11 @@ router.get('/admin', auth, requireRole('admin'), ctrl.listContentReports);
  *                 owner_id: "67e3aa001122334455667712"
  *                 content_type: "post"
  *                 content_id: "67e3aa001122334455667801"
- *                 reason: "Scam, fraud or spam"
+ *                 reason: "Scam/Fraud"
  *                 details: "This content looks misleading."
- *                 status: "reviewed"
- *                 admin_note: "Queued for moderation follow-up."
+ *                 status: "action_taken"
+ *                 action_taken: "content_removed"
+ *                 admin_note: "Confirmed spam, removed."
  *                 reviewed_by: "67e3aa001122334455667700"
  *                 reviewed_at: "2026-03-28T11:00:00.000Z"
  *       400:

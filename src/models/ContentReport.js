@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
 
+const reportAttachmentSchema = new mongoose.Schema(
+  {
+    url:  { type: String, required: true },
+    type: { type: String, enum: ['image', 'video'], default: 'image' },
+  },
+  { _id: false }
+);
+
 const contentReportSchema = new mongoose.Schema({
   reporter_id: {
     type: mongoose.Schema.Types.ObjectId,
@@ -34,11 +42,20 @@ const contentReportSchema = new mongoose.Schema({
     default: '',
     maxlength: 1000,
   },
+  attachments: {
+    type: [reportAttachmentSchema],
+    default: [],
+  },
   status: {
     type: String,
     enum: ['pending', 'reviewed', 'action_taken', 'rejected'],
     default: 'pending',
     index: true,
+  },
+  action_taken: {
+    type: String,
+    enum: ['none', 'content_removed', 'warning_issued', 'temporary_suspension', 'permanent_ban'],
+    default: 'none',
   },
   reviewed_by: {
     type: mongoose.Schema.Types.ObjectId,
