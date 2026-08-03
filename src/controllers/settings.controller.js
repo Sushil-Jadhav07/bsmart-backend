@@ -3,6 +3,11 @@ const User         = require('../models/User');
 const Otp          = require('../models/Otp');
 const PhoneOtp     = require('../models/PhoneOtp');
 const UserSettings = require('../models/UserSettings');
+const Post         = require('../models/Post');
+const Tweet        = require('../models/tweet.model');
+const PromoteReel  = require('../models/PromoteReel');
+const Message      = require('../models/Message');
+const Conversation = require('../models/Conversation');
 const { sendEmail }  = require('../services/email.service');
 const { otpTemplate } = require('../templates/email.templates');
 const { makeUploader, getFileUrl } = require('../config/multer');
@@ -439,6 +444,143 @@ exports.updateNotificationSettings = async (req, res) => {
     res.json(settings);
   } catch (err) {
     console.error('[Settings] updateNotificationSettings error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ─── Data & Privacy ──────────────────────────────────────────────────────────
+
+// ─── DELETE /api/settings/account/clear-content ──────────────────────────────
+// Does NOT delete the account — soft-deletes every post, reel, tweet, and
+// promote reel the user created, and clears their chat data (their own sent
+// messages, and hides every conversation from their own view).
+exports.clearMyContent = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const now = new Date();
+
+    const [posts, tweets, promoteReels, messages, conversations] = await Promise.all([
+      Post.updateMany(
+        { user_id: userId, isDeleted: false },
+        { $set: { isDeleted: true } }
+      ),
+      Tweet.updateMany(
+        { author: userId, isDeleted: false },
+        { $set: { isDeleted: true } }
+      ),
+      PromoteReel.updateMany(
+        { user_id: userId, isDeleted: false },
+        { $set: { isDeleted: true, deletedBy: userId, deletedAt: now } }
+      ),
+      Message.updateMany(
+        { sender: userId, isDeleted: false },
+        { $set: { isDeleted: true, deletedAt: now } }
+      ),
+      Conversation.updateMany(
+        { participants: userId },
+        { $addToSet: { deletedFor: userId } }
+      ),
+    ]);
+
+    res.json({
+      success: true,
+      message: 'All your posts, reels, tweets, promote reels and chat data have been removed. Your account remains active.',
+      removed: {
+        posts_and_reels:      posts.modifiedCount,
+        tweets:                tweets.modifiedCount,
+        promote_reels:         promoteReels.modifiedCount,
+        messages:              messages.modifiedCount,
+        conversations_hidden:  conversations.modifiedCount,
+      },
+    });
+  } catch (err) {
+    console.error('[Settings] clearMyContent error:', err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ─── CSV helpers ──────────────────────────────────────────────────────────────
+function csvEscape(value) {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+function csvRow(fields) {
+  return fields.map(csvEscape).join(',') + '\r\n';
+}
+
+// ─── GET /api/settings/account/export ────────────────────────────────────────
+// Downloads a CSV of the current user's profile info plus every post/reel,
+// tweet, and promote reel they created, each with its likes/comments counts.
+exports.downloadMyData = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    const [user, posts, tweets, promoteReels] = await Promise.all([
+      User.findById(userId)
+        .select('full_name username email phone bio gender date_of_birth location website createdAt')
+        .lean(),
+      Post.find({ user_id: userId })
+        .select('type caption likes_count comments_count isDeleted createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      Tweet.find({ author: userId })
+        .select('content likesCount commentsCount repostsCount isDeleted createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      PromoteReel.find({ user_id: userId })
+        .select('caption likes_count comments_count isDeleted createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    let csv = '';
+
+    csv += '=== PROFILE ===\r\n';
+    csv += csvRow(['field', 'value']);
+    csv += csvRow(['Full Name', user.full_name]);
+    csv += csvRow(['Username', user.username]);
+    csv += csvRow(['Email', user.email]);
+    csv += csvRow(['Phone', user.phone]);
+    csv += csvRow(['Bio', user.bio]);
+    csv += csvRow(['Gender', user.gender]);
+    csv += csvRow(['Date of Birth', user.date_of_birth ? new Date(user.date_of_birth).toISOString().slice(0, 10) : '']);
+    csv += csvRow(['Location', user.location]);
+    csv += csvRow(['Website', user.website]);
+    csv += csvRow(['Account Created', user.createdAt ? user.createdAt.toISOString() : '']);
+    csv += '\r\n';
+
+    csv += '=== POSTS & REELS ===\r\n';
+    csv += csvRow(['id', 'type', 'caption', 'likes_count', 'comments_count', 'is_deleted', 'created_at']);
+    posts.forEach((p) => {
+      csv += csvRow([p._id, p.type, p.caption, p.likes_count, p.comments_count, p.isDeleted, p.createdAt?.toISOString()]);
+    });
+    csv += '\r\n';
+
+    csv += '=== TWEETS ===\r\n';
+    csv += csvRow(['id', 'content', 'likes_count', 'comments_count', 'reposts_count', 'is_deleted', 'created_at']);
+    tweets.forEach((t) => {
+      csv += csvRow([t._id, t.content, t.likesCount, t.commentsCount, t.repostsCount, t.isDeleted, t.createdAt?.toISOString()]);
+    });
+    csv += '\r\n';
+
+    csv += '=== PROMOTE REELS ===\r\n';
+    csv += csvRow(['id', 'caption', 'likes_count', 'comments_count', 'is_deleted', 'created_at']);
+    promoteReels.forEach((r) => {
+      csv += csvRow([r._id, r.caption, r.likes_count, r.comments_count, r.isDeleted, r.createdAt?.toISOString()]);
+    });
+
+    const filename = `bsmart-data-export-${userId}-${Date.now()}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(csv);
+  } catch (err) {
+    console.error('[Settings] downloadMyData error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };

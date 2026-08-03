@@ -14,6 +14,8 @@ const {
   updateMessagingSettings,
   getNotificationSettings,
   updateNotificationSettings,
+  clearMyContent,
+  downloadMyData,
 } = require('../controllers/settings.controller');
 
 /**
@@ -555,5 +557,72 @@ router.get('/notifications', auth, getNotificationSettings);
  *         description: Server error
  */
 router.patch('/notifications', auth, updateNotificationSettings);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA & PRIVACY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/settings/account/clear-content:
+ *   delete:
+ *     summary: Clear all my content and chat data (does NOT delete the account)
+ *     description: |
+ *       Soft-deletes every post, reel, tweet, and promote reel created by the
+ *       current user, and clears their chat data — their own sent messages are
+ *       removed and every conversation is hidden from their own view. The
+ *       account itself, profile, and login remain intact.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Content and chat data cleared
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: "All your posts, reels, tweets, promote reels and chat data have been removed. Your account remains active."
+ *               removed:
+ *                 posts_and_reels: 42
+ *                 tweets: 18
+ *                 promote_reels: 3
+ *                 messages: 210
+ *                 conversations_hidden: 12
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.delete('/account/clear-content', auth, clearMyContent);
+
+/**
+ * @swagger
+ * /api/settings/account/export:
+ *   get:
+ *     summary: Download all my data as a CSV file
+ *     description: |
+ *       Returns a CSV file (Content-Disposition attachment) containing the
+ *       current user's profile information, plus every post/reel, tweet, and
+ *       promote reel they created — each with its likes and comments count.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: CSV file download
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/account/export', auth, downloadMyData);
 
 module.exports = router;
