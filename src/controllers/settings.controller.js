@@ -548,7 +548,7 @@ exports.downloadMyData = async (req, res) => {
 
     const [user, posts, tweets, promoteReels] = await Promise.all([
       User.findById(userId)
-        .select('full_name username email phone bio gender date_of_birth location website createdAt')
+        .select('full_name username email phone bio gender date_of_birth location address website createdAt')
         .lean(),
       Post.find({ user_id: userId })
         .select('type caption likes_count comments_count isDeleted createdAt')
@@ -568,6 +568,16 @@ exports.downloadMyData = async (req, res) => {
 
     const fmtDate = (d) => (d ? new Date(d).toISOString().replace('T', ' ').slice(0, 19) : '');
     const fmtBool = (b) => (b ? 'Yes' : 'No');
+    const fmtLocation = (loc) => loc?.name || '';
+    const fmtAddress = (addr) => {
+      if (!addr) return '';
+      return [addr.address_line1, addr.address_line2, addr.city, addr.state, addr.pincode, addr.country]
+        .filter(Boolean)
+        .join(', ');
+    };
+    // Excel/Sheets auto-detect long digit-only strings as numbers and mangle
+    // them (scientific notation, dropped leading zeros) — this forces text.
+    const forceText = (value) => (value ? `="${String(value).replace(/"/g, '""')}"` : '');
 
     const content = [
       ...posts.map((p) => ({
@@ -613,9 +623,9 @@ exports.downloadMyData = async (req, res) => {
     let csv = '';
 
     // ── Report header ──────────────────────────────────────────────────────
-    csv += csvRow(['B-Smart — Personal Data Export']);
+    csv += csvRow(['B-Smart - Personal Data Export']);
     csv += csvRow(['Generated On', fmtDate(new Date())]);
-    csv += csvRow(['User ID', String(userId)]);
+    csv += csvRow(['User ID', forceText(userId)]);
     csv += '\r\n';
 
     // ── Profile information ────────────────────────────────────────────────
@@ -624,11 +634,12 @@ exports.downloadMyData = async (req, res) => {
     csv += csvRow(['Full Name', user.full_name]);
     csv += csvRow(['Username', user.username]);
     csv += csvRow(['Email', user.email]);
-    csv += csvRow(['Phone', user.phone]);
+    csv += csvRow(['Phone', forceText(user.phone)]);
     csv += csvRow(['Bio', user.bio]);
     csv += csvRow(['Gender', user.gender]);
     csv += csvRow(['Date of Birth', user.date_of_birth ? new Date(user.date_of_birth).toISOString().slice(0, 10) : '']);
-    csv += csvRow(['Location', user.location]);
+    csv += csvRow(['Location', fmtLocation(user.location)]);
+    csv += csvRow(['Address', fmtAddress(user.address)]);
     csv += csvRow(['Website', user.website]);
     csv += csvRow(['Account Created', fmtDate(user.createdAt)]);
     csv += '\r\n';
@@ -672,7 +683,7 @@ exports.downloadMyDataExcel = async (req, res) => {
 
     const [user, posts, tweets, promoteReels] = await Promise.all([
       User.findById(userId)
-        .select('full_name username email phone bio gender date_of_birth location website createdAt')
+        .select('full_name username email phone bio gender date_of_birth location address website createdAt')
         .lean(),
       Post.find({ user_id: userId })
         .select('type caption media likes_count comments_count isDeleted createdAt')
@@ -689,6 +700,20 @@ exports.downloadMyDataExcel = async (req, res) => {
     ]);
 
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const fmtLocationXl = (loc) => loc?.name || '';
+    const fmtAddressXl = (addr) => {
+      if (!addr) return '';
+      return [addr.address_line1, addr.address_line2, addr.city, addr.state, addr.pincode, addr.country]
+        .filter(Boolean)
+        .join(', ');
+    };
+    // Excel auto-detects long digit-only strings as numbers (scientific
+    // notation, dropped leading zeros) — '@' forces the cell to stay text.
+    const asText = (cell, value) => {
+      cell.value = value || '';
+      cell.numFmt = '@';
+    };
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'B-Smart';
@@ -739,18 +764,23 @@ exports.downloadMyDataExcel = async (req, res) => {
     profileSheet.getRow(4).values = ['Field', 'Value'];
     styleHeaderRow(profileSheet.getRow(4));
     [
+      ['User ID', String(userId)],
       ['Full Name', user.full_name || ''],
       ['Username', user.username || ''],
       ['Email', user.email || ''],
-      ['Phone', user.phone || ''],
       ['Bio', user.bio || ''],
       ['Gender', user.gender || ''],
       ['Date of Birth', user.date_of_birth ? new Date(user.date_of_birth).toISOString().slice(0, 10) : ''],
-      ['Location', user.location || ''],
+      ['Location', fmtLocationXl(user.location)],
+      ['Address', fmtAddressXl(user.address)],
       ['Website', user.website || ''],
       ['Account Created', user.createdAt ? user.createdAt.toISOString() : ''],
       ['Generated On', new Date().toISOString()],
     ].forEach((r) => profileSheet.addRow(r));
+    // Phone as its own row so it can be forced to text (avoids Excel turning
+    // it into scientific notation / stripping a leading zero)
+    const phoneRow = profileSheet.addRow(['Phone', '']);
+    asText(phoneRow.getCell(2), user.phone || '');
 
     // ── Sheet: Posts & Reels ────────────────────────────────────────────────
     const postsSheet = workbook.addWorksheet('Posts & Reels');
