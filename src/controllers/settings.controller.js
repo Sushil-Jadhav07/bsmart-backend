@@ -10,6 +10,7 @@ const Tweet        = require('../models/tweet.model');
 const PromoteReel  = require('../models/PromoteReel');
 const Message      = require('../models/Message');
 const Conversation = require('../models/Conversation');
+const Follow       = require('../models/Follow');
 const { sendEmail }  = require('../services/email.service');
 const { otpTemplate } = require('../templates/email.templates');
 const { makeUploader, getFileUrl } = require('../config/multer');
@@ -479,14 +480,25 @@ exports.updateNotificationSettings = async (req, res) => {
 
 // ─── DELETE /api/settings/account/clear-content ──────────────────────────────
 // Does NOT delete the account — soft-deletes every post, reel, tweet, and
-// promote reel the user created, and clears their chat data (their own sent
-// messages, and hides every conversation from their own view).
+// promote reel the user created, clears their chat data (their own sent
+// messages, and hides every conversation from their own view), and removes
+// every follow connection in both directions (people they follow, and
+// people who follow them).
 exports.clearMyContent = async (req, res) => {
   try {
     const userId = req.userId;
     const now = new Date();
 
-    const [posts, tweets, promoteReels, messages, conversations] = await Promise.all([
+    // Snapshot follow relationships before removing them — needed to know
+    // whose followers_count/following_count must be decremented afterward.
+    const [followingDocs, followerDocs] = await Promise.all([
+      Follow.find({ follower_id: userId }).select('followed_id').lean(),
+      Follow.find({ followed_id: userId }).select('follower_id').lean(),
+    ]);
+    const followedIds = followingDocs.map((f) => f.followed_id);
+    const followerIds = followerDocs.map((f) => f.follower_id);
+
+    const [posts, tweets, promoteReels, messages, conversations, followsRemoved] = await Promise.all([
       Post.updateMany(
         { user_id: userId, isDeleted: false },
         { $set: { isDeleted: true } }
@@ -507,17 +519,33 @@ exports.clearMyContent = async (req, res) => {
         { participants: userId },
         { $addToSet: { deletedFor: userId } }
       ),
+      Follow.deleteMany({ $or: [{ follower_id: userId }, { followed_id: userId }] }),
+    ]);
+
+    // Keep everyone else's follower/following counters accurate, same
+    // convention as the regular unfollow flow in follow.controller.js.
+    await Promise.all([
+      followedIds.length
+        ? User.updateMany({ _id: { $in: followedIds } }, { $inc: { followers_count: -1 } })
+        : Promise.resolve(),
+      followerIds.length
+        ? User.updateMany({ _id: { $in: followerIds } }, { $inc: { following_count: -1 } })
+        : Promise.resolve(),
+      User.findByIdAndUpdate(userId, { $set: { following_count: 0, followers_count: 0 } }),
     ]);
 
     res.json({
       success: true,
-      message: 'All your posts, reels, tweets, promote reels and chat data have been removed. Your account remains active.',
+      message: 'All your posts, reels, tweets, promote reels, chat data, and follow connections have been removed. Your account remains active.',
       removed: {
-        posts_and_reels:      posts.modifiedCount,
-        tweets:                tweets.modifiedCount,
-        promote_reels:         promoteReels.modifiedCount,
-        messages:              messages.modifiedCount,
-        conversations_hidden:  conversations.modifiedCount,
+        posts_and_reels:       posts.modifiedCount,
+        tweets:                 tweets.modifiedCount,
+        promote_reels:          promoteReels.modifiedCount,
+        messages:               messages.modifiedCount,
+        conversations_hidden:   conversations.modifiedCount,
+        following_removed:      followedIds.length,
+        followers_removed:      followerIds.length,
+        follow_records_deleted: followsRemoved.deletedCount,
       },
     });
   } catch (err) {

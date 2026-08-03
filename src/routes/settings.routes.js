@@ -567,29 +567,35 @@ router.patch('/notifications', auth, updateNotificationSettings);
  * @swagger
  * /api/settings/account/clear-content:
  *   delete:
- *     summary: Clear all my content and chat data (does NOT delete the account)
+ *     summary: Clear all my content, chat data, and follow connections (does NOT delete the account)
  *     description: |
  *       Soft-deletes every post, reel, tweet, and promote reel created by the
- *       current user, and clears their chat data — their own sent messages are
- *       removed and every conversation is hidden from their own view. The
- *       account itself, profile, and login remain intact.
+ *       current user, clears their chat data (their own sent messages are
+ *       removed and every conversation is hidden from their own view), and
+ *       removes every follow connection in both directions — everyone this
+ *       user follows, and everyone who follows them. followers_count /
+ *       following_count are corrected on every affected user. The account
+ *       itself, profile, and login remain intact.
  *     tags: [Settings]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Content and chat data cleared
+ *         description: Content, chat data, and follow connections cleared
  *         content:
  *           application/json:
  *             example:
  *               success: true
- *               message: "All your posts, reels, tweets, promote reels and chat data have been removed. Your account remains active."
+ *               message: "All your posts, reels, tweets, promote reels, chat data, and follow connections have been removed. Your account remains active."
  *               removed:
  *                 posts_and_reels: 42
  *                 tweets: 18
  *                 promote_reels: 3
  *                 messages: 210
  *                 conversations_hidden: 12
+ *                 following_removed: 30
+ *                 followers_removed: 55
+ *                 follow_records_deleted: 85
  *       401:
  *         description: Unauthorized
  *       500:
