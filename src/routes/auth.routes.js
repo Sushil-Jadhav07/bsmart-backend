@@ -7,6 +7,7 @@ const {
 } = require('../controllers/auth.controller');
 const { getAllUsers } = require('../controllers/user.controller');
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const passport = require('passport');
 const jwt = require('jsonwebtoken');
 
@@ -437,7 +438,7 @@ router.post('/change-password', auth, changePassword);
  *       500:
  *         description: Server error
  */
-router.get('/users', auth, getAllUsers);
+router.get('/users', auth, requireRole('admin'), getAllUsers);
 
 /**
  * @swagger

@@ -9,6 +9,7 @@ const {
   getMutedUsers, muteUser, unmuteUser,
 } = require('../controllers/blockRestrictMute.controller');
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -304,7 +305,7 @@ router.patch('/location', auth, updateLocation);
  *       500:
  *         description: Server error
  */
-router.get('/', auth, listUsersProfiles);
+router.get('/', auth, requireRole('admin'), listUsersProfiles);
 
 /**
  * @swagger

@@ -539,10 +539,61 @@ exports.downloadMyData = async (req, res) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    const fmtDate = (d) => (d ? new Date(d).toISOString().replace('T', ' ').slice(0, 19) : '');
+    const fmtBool = (b) => (b ? 'Yes' : 'No');
+
+    const content = [
+      ...posts.map((p) => ({
+        content_type: p.type === 'reel' ? 'Reel' : 'Post',
+        id: p._id,
+        text: p.caption,
+        likes: p.likes_count || 0,
+        comments: p.comments_count || 0,
+        reposts: '',
+        deleted: fmtBool(p.isDeleted),
+        created_at: fmtDate(p.createdAt),
+      })),
+      ...tweets.map((t) => ({
+        content_type: 'Tweet',
+        id: t._id,
+        text: t.content,
+        likes: t.likesCount || 0,
+        comments: t.commentsCount || 0,
+        reposts: t.repostsCount || 0,
+        deleted: fmtBool(t.isDeleted),
+        created_at: fmtDate(t.createdAt),
+      })),
+      ...promoteReels.map((r) => ({
+        content_type: 'Promote Reel',
+        id: r._id,
+        text: r.caption,
+        likes: r.likes_count || 0,
+        comments: r.comments_count || 0,
+        reposts: '',
+        deleted: fmtBool(r.isDeleted),
+        created_at: fmtDate(r.createdAt),
+      })),
+    ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+    const totals = {
+      Posts:         posts.filter((p) => p.type !== 'reel').length,
+      Reels:         posts.filter((p) => p.type === 'reel').length,
+      Tweets:        tweets.length,
+      'Promote Reels': promoteReels.length,
+    };
+    const sumLikes = (arr, field) => arr.reduce((s, x) => s + (x[field] || 0), 0);
+
     let csv = '';
 
-    csv += '=== PROFILE ===\r\n';
-    csv += csvRow(['field', 'value']);
+    // ── Report header ──────────────────────────────────────────────────────
+    csv += csvRow(['B-Smart — Personal Data Export']);
+    csv += csvRow(['Generated On', fmtDate(new Date())]);
+    csv += csvRow(['User ID', String(userId)]);
+    csv += '\r\n';
+
+    // ── Profile information ────────────────────────────────────────────────
+    csv += csvRow(['PROFILE INFORMATION']);
+    csv += csvRow(['Field', 'Value']);
     csv += csvRow(['Full Name', user.full_name]);
     csv += csvRow(['Username', user.username]);
     csv += csvRow(['Email', user.email]);
@@ -552,33 +603,32 @@ exports.downloadMyData = async (req, res) => {
     csv += csvRow(['Date of Birth', user.date_of_birth ? new Date(user.date_of_birth).toISOString().slice(0, 10) : '']);
     csv += csvRow(['Location', user.location]);
     csv += csvRow(['Website', user.website]);
-    csv += csvRow(['Account Created', user.createdAt ? user.createdAt.toISOString() : '']);
+    csv += csvRow(['Account Created', fmtDate(user.createdAt)]);
     csv += '\r\n';
 
-    csv += '=== POSTS & REELS ===\r\n';
-    csv += csvRow(['id', 'type', 'caption', 'likes_count', 'comments_count', 'is_deleted', 'created_at']);
-    posts.forEach((p) => {
-      csv += csvRow([p._id, p.type, p.caption, p.likes_count, p.comments_count, p.isDeleted, p.createdAt?.toISOString()]);
-    });
+    // ── Content summary ────────────────────────────────────────────────────
+    csv += csvRow(['CONTENT SUMMARY']);
+    csv += csvRow(['Content Type', 'Total Count', 'Total Likes', 'Total Comments']);
+    csv += csvRow(['Posts', totals.Posts, sumLikes(posts.filter((p) => p.type !== 'reel'), 'likes_count'), sumLikes(posts.filter((p) => p.type !== 'reel'), 'comments_count')]);
+    csv += csvRow(['Reels', totals.Reels, sumLikes(posts.filter((p) => p.type === 'reel'), 'likes_count'), sumLikes(posts.filter((p) => p.type === 'reel'), 'comments_count')]);
+    csv += csvRow(['Tweets', totals.Tweets, sumLikes(tweets, 'likesCount'), sumLikes(tweets, 'commentsCount')]);
+    csv += csvRow(['Promote Reels', totals['Promote Reels'], sumLikes(promoteReels, 'likes_count'), sumLikes(promoteReels, 'comments_count')]);
     csv += '\r\n';
 
-    csv += '=== TWEETS ===\r\n';
-    csv += csvRow(['id', 'content', 'likes_count', 'comments_count', 'reposts_count', 'is_deleted', 'created_at']);
-    tweets.forEach((t) => {
-      csv += csvRow([t._id, t.content, t.likesCount, t.commentsCount, t.repostsCount, t.isDeleted, t.createdAt?.toISOString()]);
-    });
-    csv += '\r\n';
-
-    csv += '=== PROMOTE REELS ===\r\n';
-    csv += csvRow(['id', 'caption', 'likes_count', 'comments_count', 'is_deleted', 'created_at']);
-    promoteReels.forEach((r) => {
-      csv += csvRow([r._id, r.caption, r.likes_count, r.comments_count, r.isDeleted, r.createdAt?.toISOString()]);
+    // ── Full content detail — one consistent table ─────────────────────────
+    csv += csvRow(['CONTENT DETAILS']);
+    csv += csvRow(['Content Type', 'ID', 'Caption / Content', 'Likes', 'Comments', 'Reposts', 'Deleted', 'Created At']);
+    content.forEach((c) => {
+      csv += csvRow([c.content_type, c.id, c.text, c.likes, c.comments, c.reposts, c.deleted, c.created_at]);
     });
 
+    // UTF-8 BOM — without it, Excel on Windows can mis-render non-ASCII
+    // characters (₹, accented names, etc.) and sometimes the whole file.
+    const BOM = '﻿';
     const filename = `bsmart-data-export-${userId}-${Date.now()}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.status(200).send(csv);
+    res.status(200).send(BOM + csv);
   } catch (err) {
     console.error('[Settings] downloadMyData error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });

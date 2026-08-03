@@ -458,8 +458,8 @@ exports.getFeed = async (req, res) => {
     }
 
     const postQuery  = tab === 'following'
-      ? { user_id: { $in: followedIds } }
-      : (blockedPrivateUserIds.length > 0 ? { user_id: { $nin: blockedPrivateUserIds } } : {});
+      ? { user_id: { $in: followedIds }, isDeleted: false }
+      : { isDeleted: false, ...(blockedPrivateUserIds.length > 0 ? { user_id: { $nin: blockedPrivateUserIds } } : {}) };
     const tweetQuery = {
       audience:    'everyone',
       isDeleted:   false,
@@ -658,7 +658,7 @@ exports.listReels = async (req, res) => {
     const skip  = (page - 1) * limit;
 
     const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
-    const reelQuery = { type: 'reel' };
+    const reelQuery = { type: 'reel', isDeleted: false };
     if (blockedPrivateUserIds.length > 0) {
       reelQuery.user_id = { $nin: blockedPrivateUserIds };
     }
