@@ -16,6 +16,7 @@ const {
   updateNotificationSettings,
   clearMyContent,
   downloadMyData,
+  downloadMyDataExcel,
 } = require('../controllers/settings.controller');
 
 /**
@@ -624,5 +625,35 @@ router.delete('/account/clear-content', auth, clearMyContent);
  *         description: Server error
  */
 router.get('/account/export', auth, downloadMyData);
+
+/**
+ * @swagger
+ * /api/settings/account/export/excel:
+ *   get:
+ *     summary: Download all my data as a branded, tab-wise .xlsx file
+ *     description: |
+ *       Returns an Excel workbook (Content-Disposition attachment) with 4 tabs —
+ *       Profile, Posts & Reels, Tweets, and Promote Reels. Every tab carries the
+ *       B-Smart logo and brand color, and post/reel/tweet/promote-reel rows
+ *       include a clickable "Photo Link" to the first media item.
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: XLSX file download
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/account/export/excel', auth, downloadMyDataExcel);
 
 module.exports = router;

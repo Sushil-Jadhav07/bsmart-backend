@@ -1,3 +1,5 @@
+const path         = require('path');
+const ExcelJS      = require('exceljs');
 const { sendOtpSms, checkOtpSms } = require('../services/twilio.service');
 const User         = require('../models/User');
 const Otp          = require('../models/Otp');
@@ -11,6 +13,31 @@ const Conversation = require('../models/Conversation');
 const { sendEmail }  = require('../services/email.service');
 const { otpTemplate } = require('../templates/email.templates');
 const { makeUploader, getFileUrl } = require('../config/multer');
+
+const BRAND_ARGB = 'FFFA3F5E';
+const LOGO_PATH  = path.join(__dirname, '../asset/bsmart_logo.png');
+
+// Same convention used elsewhere (user.controller.js's toUploadsUrl) —
+// resolves a stored media fileName/key to a real, loadable URL.
+function resolveMediaUrl(baseUrl, value) {
+  if (!value) return '';
+  const normalized = String(value).trim();
+  if (!normalized) return '';
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL
+    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    : null;
+  const clean = normalized.replace(/^\/+/, '');
+  const key = clean.startsWith('uploads/') ? clean : `uploads/${clean}`;
+  return cloudfront ? `${cloudfront}/${key}` : `${baseUrl}/${key}`;
+}
+
+function firstPhotoLink(baseUrl, mediaArray) {
+  if (!Array.isArray(mediaArray) || mediaArray.length === 0) return '';
+  const first = mediaArray[0] || {};
+  return resolveMediaUrl(baseUrl, first.fileUrl || first.url || first.fileName);
+}
 
 // ─── Multer uploader for profile pictures ────────────────────────────────────
 const profileUploader = makeUploader('profile').single('avatar');
@@ -632,5 +659,179 @@ exports.downloadMyData = async (req, res) => {
   } catch (err) {
     console.error('[Settings] downloadMyData error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ─── GET /api/settings/account/export/excel ──────────────────────────────────
+// Branded, tab-wise .xlsx version of the data export — B-Smart logo + brand
+// color on every sheet, plus a clickable Photo Link column for media posts.
+exports.downloadMyDataExcel = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const [user, posts, tweets, promoteReels] = await Promise.all([
+      User.findById(userId)
+        .select('full_name username email phone bio gender date_of_birth location website createdAt')
+        .lean(),
+      Post.find({ user_id: userId })
+        .select('type caption media likes_count comments_count isDeleted createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      Tweet.find({ author: userId })
+        .select('content media likesCount commentsCount repostsCount isDeleted createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      PromoteReel.find({ user_id: userId })
+        .select('caption media likes_count comments_count isDeleted createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'B-Smart';
+    workbook.created = new Date();
+
+    const logoImageId = workbook.addImage({ filename: LOGO_PATH, extension: 'png' });
+
+    const addBrandedHeader = (sheet, subtitle, colSpan) => {
+      sheet.addImage(logoImageId, { tl: { col: 0, row: 0 }, ext: { width: 64, height: 64 } });
+
+      sheet.mergeCells(1, 2, 1, colSpan);
+      const titleCell = sheet.getCell(1, 2);
+      titleCell.value = 'B-Smart';
+      titleCell.font = { bold: true, size: 18, color: { argb: BRAND_ARGB } };
+      titleCell.alignment = { vertical: 'middle' };
+
+      sheet.mergeCells(2, 2, 2, colSpan);
+      const subCell = sheet.getCell(2, 2);
+      subCell.value = subtitle;
+      subCell.font = { bold: true, size: 12, color: { argb: 'FF555555' } };
+      subCell.alignment = { vertical: 'middle' };
+
+      sheet.getRow(1).height = 26;
+      sheet.getRow(2).height = 20;
+      sheet.getRow(3).height = 8;
+    };
+
+    const styleHeaderRow = (row) => {
+      row.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_ARGB } };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      });
+      row.height = 22;
+    };
+
+    const addLinkCell = (row, colIndex, link) => {
+      if (!link) return;
+      const cell = row.getCell(colIndex);
+      cell.value = { text: 'View Photo', hyperlink: link };
+      cell.font = { color: { argb: 'FF0563C1' }, underline: true };
+    };
+
+    // ── Sheet: Profile ─────────────────────────────────────────────────────
+    const profileSheet = workbook.addWorksheet('Profile');
+    profileSheet.columns = [{ width: 22 }, { width: 55 }];
+    addBrandedHeader(profileSheet, 'Personal Data Export', 2);
+    profileSheet.getRow(4).values = ['Field', 'Value'];
+    styleHeaderRow(profileSheet.getRow(4));
+    [
+      ['Full Name', user.full_name || ''],
+      ['Username', user.username || ''],
+      ['Email', user.email || ''],
+      ['Phone', user.phone || ''],
+      ['Bio', user.bio || ''],
+      ['Gender', user.gender || ''],
+      ['Date of Birth', user.date_of_birth ? new Date(user.date_of_birth).toISOString().slice(0, 10) : ''],
+      ['Location', user.location || ''],
+      ['Website', user.website || ''],
+      ['Account Created', user.createdAt ? user.createdAt.toISOString() : ''],
+      ['Generated On', new Date().toISOString()],
+    ].forEach((r) => profileSheet.addRow(r));
+
+    // ── Sheet: Posts & Reels ────────────────────────────────────────────────
+    const postsSheet = workbook.addWorksheet('Posts & Reels');
+    postsSheet.columns = [
+      { width: 10 }, { width: 26 }, { width: 40 }, { width: 16 },
+      { width: 10 }, { width: 12 }, { width: 10 }, { width: 22 },
+    ];
+    addBrandedHeader(postsSheet, 'Posts & Reels', 8);
+    postsSheet.getRow(4).values = ['Type', 'ID', 'Caption', 'Photo Link', 'Likes', 'Comments', 'Deleted', 'Created At'];
+    styleHeaderRow(postsSheet.getRow(4));
+    posts.forEach((p) => {
+      const link = firstPhotoLink(baseUrl, p.media);
+      const row = postsSheet.addRow([
+        p.type === 'reel' ? 'Reel' : 'Post',
+        String(p._id),
+        p.caption || '',
+        link ? 'View Photo' : '',
+        p.likes_count || 0,
+        p.comments_count || 0,
+        p.isDeleted ? 'Yes' : 'No',
+        p.createdAt ? p.createdAt.toISOString() : '',
+      ]);
+      addLinkCell(row, 4, link);
+    });
+
+    // ── Sheet: Tweets ───────────────────────────────────────────────────────
+    const tweetsSheet = workbook.addWorksheet('Tweets');
+    tweetsSheet.columns = [
+      { width: 26 }, { width: 50 }, { width: 16 }, { width: 10 },
+      { width: 12 }, { width: 12 }, { width: 10 }, { width: 22 },
+    ];
+    addBrandedHeader(tweetsSheet, 'Tweets', 8);
+    tweetsSheet.getRow(4).values = ['ID', 'Content', 'Photo Link', 'Likes', 'Comments', 'Reposts', 'Deleted', 'Created At'];
+    styleHeaderRow(tweetsSheet.getRow(4));
+    tweets.forEach((t) => {
+      const link = firstPhotoLink(baseUrl, t.media);
+      const row = tweetsSheet.addRow([
+        String(t._id),
+        t.content || '',
+        link ? 'View Photo' : '',
+        t.likesCount || 0,
+        t.commentsCount || 0,
+        t.repostsCount || 0,
+        t.isDeleted ? 'Yes' : 'No',
+        t.createdAt ? t.createdAt.toISOString() : '',
+      ]);
+      addLinkCell(row, 3, link);
+    });
+
+    // ── Sheet: Promote Reels ────────────────────────────────────────────────
+    const promoSheet = workbook.addWorksheet('Promote Reels');
+    promoSheet.columns = [
+      { width: 26 }, { width: 40 }, { width: 16 }, { width: 10 },
+      { width: 12 }, { width: 10 }, { width: 22 },
+    ];
+    addBrandedHeader(promoSheet, 'Promote Reels', 7);
+    promoSheet.getRow(4).values = ['ID', 'Caption', 'Photo Link', 'Likes', 'Comments', 'Deleted', 'Created At'];
+    styleHeaderRow(promoSheet.getRow(4));
+    promoteReels.forEach((r) => {
+      const link = firstPhotoLink(baseUrl, r.media);
+      const row = promoSheet.addRow([
+        String(r._id),
+        r.caption || '',
+        link ? 'View Photo' : '',
+        r.likes_count || 0,
+        r.comments_count || 0,
+        r.isDeleted ? 'Yes' : 'No',
+        r.createdAt ? r.createdAt.toISOString() : '',
+      ]);
+      addLinkCell(row, 3, link);
+    });
+
+    const filename = `bsmart-data-export-${userId}-${Date.now()}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('[Settings] downloadMyDataExcel error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Server error', error: err.message });
+    }
   }
 };
