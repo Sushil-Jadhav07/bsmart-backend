@@ -9,6 +9,8 @@ const {
   getGeographicReport,
   getPerformanceSummaryReport,
   getAdminSummaryReport,
+  getConversionReport,
+  getFinancialReport,
 } = require('../controllers/report.controller');
 
 // Both vendor AND admin can access report routes
@@ -391,6 +393,153 @@ router.get('/clicks', auth, allowReports, getClickReport);
  *         description: Server error
  */
 router.get('/engagement', auth, allowReports, getEngagementReport);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSION REPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/reports/conversions:
+ *   get:
+ *     summary: Conversion Report — conversion rate per ad
+ *     description: |
+ *       Returns one row per ad with the following metrics:
+ *       - **conversions** — unique clicks in the date window (same definition
+ *         used by /api/reports/summary's `conversions` field — there is no
+ *         separate purchase/conversion event tracked in this platform)
+ *       - **conversion_rate** — conversions / total_clicks × 100
+ *       - **cost_per_conversion** — coins_spent / conversions
+ *
+ *       Vendors see only their own ads. Admins see all ads (or filter by vendor_id).
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/reportStartDate'
+ *       - $ref: '#/components/parameters/reportEndDate'
+ *       - $ref: '#/components/parameters/reportAdId'
+ *       - $ref: '#/components/parameters/reportVendorId'
+ *       - $ref: '#/components/parameters/reportCountry'
+ *       - $ref: '#/components/parameters/reportGender'
+ *       - $ref: '#/components/parameters/reportLanguage'
+ *       - $ref: '#/components/parameters/reportPage'
+ *       - $ref: '#/components/parameters/reportLimit'
+ *     responses:
+ *       200:
+ *         description: Conversion report data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total: { type: integer, example: 4 }
+ *                 page: { type: integer, example: 1 }
+ *                 limit: { type: integer, example: 20 }
+ *                 totalPages: { type: integer, example: 1 }
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       ad_id: { type: string, example: "664f1a2b3c4d5e6f7a8b9c0a" }
+ *                       ad_name: { type: string, example: "Summer Sale" }
+ *                       status: { type: string, enum: [pending, active, paused, rejected] }
+ *                       category: { type: string, example: "Fashion" }
+ *                       impressions: { type: integer, example: 38750 }
+ *                       total_clicks: { type: integer, example: 1240 }
+ *                       conversions: { type: integer, example: 980 }
+ *                       conversion_rate: { type: number, example: 79.03 }
+ *                       coins_spent: { type: number, example: 2852 }
+ *                       cost_per_conversion: { type: number, example: 2.91 }
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden — role not allowed
+ *       500:
+ *         description: Server error
+ */
+router.get('/conversions', auth, allowReports, getConversionReport);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINANCIAL REPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/reports/financial:
+ *   get:
+ *     summary: Financial Report — spend, budget & billing summary
+ *     description: |
+ *       Returns an overview of total spend/budget across every ad matching the
+ *       filters, plus one paginated row per ad with its debit amount:
+ *       - **total_coins_spent** — the ad's lifetime coins debited (the
+ *         "debit amount" per ad)
+ *       - **period_coins_spent** — coins debited within the selected date window only
+ *       - **spend_breakdown** — debit amount split by deduction type
+ *         (view/like/comment/reply/save)
+ *
+ *       Vendors see only their own ads. Admins see all ads (or filter by vendor_id).
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/reportStartDate'
+ *       - $ref: '#/components/parameters/reportEndDate'
+ *       - $ref: '#/components/parameters/reportAdId'
+ *       - $ref: '#/components/parameters/reportVendorId'
+ *       - $ref: '#/components/parameters/reportPage'
+ *       - $ref: '#/components/parameters/reportLimit'
+ *     responses:
+ *       200:
+ *         description: Financial report data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 filters: { type: object }
+ *                 overview:
+ *                   type: object
+ *                   properties:
+ *                     total_budget_coins: { type: number, example: 50000 }
+ *                     total_coins_spent: { type: number, example: 12500 }
+ *                     coins_used: { type: number, example: 12500 }
+ *                     remaining_budget_coins: { type: number, example: 37500 }
+ *                     period_coins_spent: { type: number, example: 3200 }
+ *                 total: { type: integer, example: 4 }
+ *                 page: { type: integer, example: 1 }
+ *                 limit: { type: integer, example: 20 }
+ *                 totalPages: { type: integer, example: 1 }
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       ad_id: { type: string }
+ *                       ad_name: { type: string }
+ *                       status: { type: string }
+ *                       category: { type: string }
+ *                       total_budget_coins: { type: number, example: 10000 }
+ *                       total_coins_spent: { type: number, example: 2852 }
+ *                       remaining_budget_coins: { type: number, example: 7148 }
+ *                       period_coins_spent: { type: number, example: 640 }
+ *                       spend_breakdown:
+ *                         type: object
+ *                         properties:
+ *                           view_deduction: { type: number, example: 400 }
+ *                           like_deduction: { type: number, example: 120 }
+ *                           comment_deduction: { type: number, example: 60 }
+ *                           reply_deduction: { type: number, example: 30 }
+ *                           save_deduction: { type: number, example: 30 }
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden — role not allowed
+ *       500:
+ *         description: Server error
+ */
+router.get('/financial', auth, allowReports, getFinancialReport);
 
 /**
  * @swagger

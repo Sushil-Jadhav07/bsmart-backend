@@ -911,6 +911,324 @@ exports.getGeographicReport = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CONVERSION REPORT
+// GET /api/reports/conversions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @desc   Conversion report — one row per ad with conversion-rate metrics.
+ *         A "conversion" is defined as a unique click (same definition already
+ *         used by getSummaryReport's overview.conversions field) since there is
+ *         no separate purchase/conversion event tracked in this platform.
+ * @access Vendor (own ads) | Admin (all or filtered by vendor_id)
+ *
+ * Query params
+ * ────────────
+ *  startDate   string   ISO date  e.g. "2025-01-01"
+ *  endDate     string   ISO date  e.g. "2025-03-31"
+ *  ad_id       string   Filter to a single ad
+ *  vendor_id   string   Admin only — scope to a specific vendor
+ *  country     string   Filter clicks by viewer country
+ *  gender      string   Filter clicks by viewer gender  (male|female|other)
+ *  language    string   Filter clicks by viewer language
+ *  page        number   Default 1
+ *  limit       number   Default 20, max 100
+ *
+ * Response shape (per ad row)
+ * ───────────────────────────
+ *  ad_id, ad_name, status, category
+ *  impressions, total_clicks
+ *  conversions          → unique clicks in the date window
+ *  conversion_rate      → conversions / total_clicks * 100  (0 if no clicks)
+ *  coins_spent          → total coins spent on clicks for this ad
+ *  cost_per_conversion  → coins_spent / conversions  (0 if no conversions)
+ */
+exports.getConversionReport = async (req, res) => {
+  try {
+    const {
+      startDate, endDate,
+      ad_id,
+      country, gender, language,
+      page = 1, limit = 20,
+    } = req.query;
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, parseInt(limit, 10) || 20);
+    const skip     = (pageNum - 1) * limitNum;
+
+    // ── 1. Resolve vendor scope ───────────────────────────────────────────
+    let vendorId;
+    try {
+      vendorId = await resolveVendorId(req);
+    } catch (e) {
+      return res.status(e.status || 500).json({ message: e.message });
+    }
+
+    // ── 2. Build AdClick match stage ─────────────────────────────────────
+    const clickMatch = {};
+    if (vendorId)  clickMatch.vendor_id  = vendorId;
+    if (ad_id && mongoose.Types.ObjectId.isValid(ad_id)) {
+      clickMatch.ad_id = new mongoose.Types.ObjectId(ad_id);
+    }
+    if (country)  clickMatch.country  = new RegExp(country, 'i');
+    if (gender)   clickMatch.gender   = gender.toLowerCase();
+    if (language) clickMatch.language = new RegExp(language, 'i');
+
+    const dateFilter = buildDateFilter(startDate, endDate);
+    if (dateFilter) clickMatch.createdAt = dateFilter;
+
+    // ── 3. Aggregate clicks/conversions → group by ad_id ──────────────────
+    const clickAgg = await AdClick.aggregate([
+      { $match: clickMatch },
+      {
+        $group: {
+          _id:          '$ad_id',
+          total_clicks: { $sum: 1 },
+          conversions:  { $sum: { $cond: ['$is_unique', 1, 0] } },
+          coins_spent:  { $sum: '$coins_spent' },
+        },
+      },
+    ]);
+    const clickMap = {};
+    for (const row of clickAgg) clickMap[row._id.toString()] = row;
+
+    // ── 4. Fetch the ads themselves ────────────────────────────────────────
+    const adFilter = { isDeleted: false };
+    if (vendorId) adFilter.vendor_id = vendorId;
+    if (ad_id && mongoose.Types.ObjectId.isValid(ad_id)) {
+      adFilter._id = new mongoose.Types.ObjectId(ad_id);
+    }
+    const totalAds = await Ad.countDocuments(adFilter);
+    const ads = await Ad.find(adFilter, { _id: 1, caption: 1, status: 1, category: 1 })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // ── 5. Impressions from AdView ─────────────────────────────────────────
+    const adIds = ads.map((a) => a._id);
+    const viewMatch = { ad_id: { $in: adIds } };
+    if (dateFilter) viewMatch.createdAt = dateFilter;
+
+    const viewAgg = await AdView.aggregate([
+      { $match: viewMatch },
+      { $group: { _id: '$ad_id', impressions: { $sum: '$view_count' } } },
+    ]);
+    const viewMap = {};
+    for (const v of viewAgg) viewMap[v._id.toString()] = v.impressions;
+
+    // ── 6. Compose final rows ─────────────────────────────────────────────
+    const rows = ads.map((ad) => {
+      const idStr        = ad._id.toString();
+      const clicks        = clickMap[idStr] || {};
+      const total_clicks  = clicks.total_clicks || 0;
+      const conversions   = clicks.conversions  || 0;
+      const coins_spent    = clicks.coins_spent  || 0;
+      const impressions    = viewMap[idStr]      || 0;
+
+      const conversion_rate     = total_clicks > 0 ? +((conversions / total_clicks) * 100).toFixed(2) : 0;
+      const cost_per_conversion = conversions  > 0 ? +(coins_spent / conversions).toFixed(2) : 0;
+
+      return {
+        ad_id: ad._id,
+        ad_name: ad.caption || '(Untitled)',
+        status: ad.status,
+        category: ad.category,
+        impressions,
+        total_clicks,
+        conversions,
+        conversion_rate,
+        coins_spent,
+        cost_per_conversion,
+      };
+    });
+
+    return res.json({
+      total:      totalAds,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.ceil(totalAds / limitNum),
+      data:       rows,
+    });
+  } catch (err) {
+    console.error('[ConversionReport]', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINANCIAL REPORT
+// GET /api/reports/financial
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @desc   Financial report — per-ad coin spend / budget / billing breakdown,
+ *         plus an overview of totals across every ad matching the filters.
+ * @access Vendor (own ads) | Admin (all or filtered by vendor_id)
+ *
+ * Query params
+ * ────────────
+ *  startDate   string   ISO date — scopes period_coins_spent + spend_breakdown
+ *  endDate     string   ISO date
+ *  ad_id       string   Filter to a single ad
+ *  vendor_id   string   Admin only — scope to a specific vendor
+ *  page        number   Default 1
+ *  limit       number   Default 20, max 100
+ *
+ * Response shape
+ * ──────────────
+ *  overview.total_budget_coins   → sum of every matching ad's budget
+ *  overview.total_coins_spent    → sum of every matching ad's lifetime spend (= coins_used)
+ *  overview.remaining_budget_coins
+ *  overview.period_coins_spent   → spend within the date window only, across all matching ads
+ *
+ *  data[] (per ad, paginated)
+ *    ad_id, ad_name, status, category
+ *    total_budget_coins, total_coins_spent   → the ad's lifetime debit amount
+ *    remaining_budget_coins
+ *    period_coins_spent                      → debit within the date window
+ *    spend_breakdown: { view_deduction, like_deduction, comment_deduction, reply_deduction, save_deduction }
+ */
+exports.getFinancialReport = async (req, res) => {
+  try {
+    const {
+      startDate, endDate,
+      ad_id,
+      page = 1, limit = 20,
+    } = req.query;
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, parseInt(limit, 10) || 20);
+    const skip     = (pageNum - 1) * limitNum;
+
+    // ── 1. Resolve vendor scope ───────────────────────────────────────────
+    let vendorId;
+    try {
+      vendorId = await resolveVendorId(req);
+    } catch (e) {
+      return res.status(e.status || 500).json({ message: e.message });
+    }
+
+    const adFilter = { isDeleted: false };
+    if (vendorId) adFilter.vendor_id = vendorId;
+    if (ad_id && mongoose.Types.ObjectId.isValid(ad_id)) {
+      adFilter._id = new mongoose.Types.ObjectId(ad_id);
+    }
+
+    const dateFilter = buildDateFilter(startDate, endDate);
+    const DEDUCTION_TYPES = [
+      'AD_VIEW_DEDUCTION', 'AD_LIKE_DEDUCTION', 'AD_COMMENT_DEDUCTION',
+      'AD_REPLY_DEDUCTION', 'AD_SAVE_DEDUCTION',
+    ];
+
+    // ── 2. Totals across every matching ad (not just the current page) ────
+    const [totalAds, allMatchingAds, overviewAgg] = await Promise.all([
+      Ad.countDocuments(adFilter),
+      Ad.find(adFilter).select('_id').lean(),
+      Ad.aggregate([
+        { $match: adFilter },
+        {
+          $group: {
+            _id: null,
+            total_budget_coins: { $sum: { $ifNull: ['$total_budget_coins', 0] } },
+            total_coins_spent:  { $sum: { $ifNull: ['$total_coins_spent', 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const allAdIds = allMatchingAds.map((a) => a._id);
+    const periodSpendMatch = { ad_id: { $in: allAdIds }, type: { $in: DEDUCTION_TYPES } };
+    if (dateFilter) periodSpendMatch.createdAt = dateFilter;
+
+    const periodSpendAgg = await WalletTransaction.aggregate([
+      { $match: periodSpendMatch },
+      { $group: { _id: null, period_spent: { $sum: { $abs: '$amount' } } } },
+    ]);
+
+    const overviewBudget = overviewAgg[0]?.total_budget_coins || 0;
+    const overviewSpent  = overviewAgg[0]?.total_coins_spent  || 0;
+
+    // ── 3. Fetch the current page of ads for the per-ad breakdown table ───
+    const ads = await Ad.find(adFilter, {
+      _id: 1, caption: 1, status: 1, category: 1,
+      total_budget_coins: 1, total_coins_spent: 1,
+    })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    const pagedAdIds = ads.map((a) => a._id);
+    const pagedSpendMatch = { ad_id: { $in: pagedAdIds }, type: { $in: DEDUCTION_TYPES } };
+    if (dateFilter) pagedSpendMatch.createdAt = dateFilter;
+
+    const spendAgg = await WalletTransaction.aggregate([
+      { $match: pagedSpendMatch },
+      { $group: { _id: { ad_id: '$ad_id', type: '$type' }, amount: { $sum: { $abs: '$amount' } } } },
+    ]);
+
+    const spendMap = {}; // adIdStr -> { view, like, comment, reply, save }
+    for (const row of spendAgg) {
+      const idStr = row._id.ad_id.toString();
+      if (!spendMap[idStr]) spendMap[idStr] = { view: 0, like: 0, comment: 0, reply: 0, save: 0 };
+      const key = row._id.type.replace('AD_', '').replace('_DEDUCTION', '').toLowerCase();
+      if (key in spendMap[idStr]) spendMap[idStr][key] = row.amount;
+    }
+
+    // ── 4. Compose final rows ─────────────────────────────────────────────
+    const rows = ads.map((ad) => {
+      const idStr    = ad._id.toString();
+      const breakdown = spendMap[idStr] || { view: 0, like: 0, comment: 0, reply: 0, save: 0 };
+      const budget    = ad.total_budget_coins || 0;
+      const spent     = ad.total_coins_spent  || 0; // lifetime debit amount for this ad
+      const periodSpent = breakdown.view + breakdown.like + breakdown.comment + breakdown.reply + breakdown.save;
+
+      return {
+        ad_id: ad._id,
+        ad_name: ad.caption || '(Untitled)',
+        status: ad.status,
+        category: ad.category,
+        total_budget_coins: budget,
+        total_coins_spent: spent,
+        remaining_budget_coins: Math.max(0, budget - spent),
+        period_coins_spent: periodSpent,
+        spend_breakdown: {
+          view_deduction:    breakdown.view    || 0,
+          like_deduction:    breakdown.like    || 0,
+          comment_deduction: breakdown.comment || 0,
+          reply_deduction:   breakdown.reply   || 0,
+          save_deduction:    breakdown.save    || 0,
+        },
+      };
+    });
+
+    return res.json({
+      filters: {
+        startDate: startDate || null,
+        endDate:   endDate   || null,
+        ad_id:     ad_id     || null,
+      },
+      overview: {
+        total_budget_coins:     overviewBudget,
+        total_coins_spent:      overviewSpent,
+        coins_used:             overviewSpent,
+        remaining_budget_coins: Math.max(0, overviewBudget - overviewSpent),
+        period_coins_spent:     periodSpendAgg[0]?.period_spent || 0,
+      },
+      total:      totalAds,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.ceil(totalAds / limitNum),
+      data:       rows,
+    });
+  } catch (err) {
+    console.error('[FinancialReport]', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PERFORMANCE SUMMARY REPORT  (date-wise)
 // GET /api/reports/performance-summary
 // ─────────────────────────────────────────────────────────────────────────────
