@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -306,6 +306,34 @@ router.patch('/location', auth, updateLocation);
  *         description: Server error
  */
 router.get('/', auth, requireRole('admin'), listUsersProfiles);
+
+/**
+ * @swagger
+ * /api/users/tag-list:
+ *   get:
+ *     summary: Lightweight user list/search for tagging people in a post (any logged-in user)
+ *     description: |
+ *       Returns only `_id, username, full_name, avatar_url` — no email, phone,
+ *       ban status, or posts. Safe for member/vendor use, unlike GET /api/users
+ *       above which is the admin-only full dashboard listing.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: Filter by username or full name (case-insensitive)
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 30, maximum: 50 }
+ *     responses:
+ *       200:
+ *         description: List of taggable users
+ *       401:
+ *         description: Not authorized
+ */
+router.get('/tag-list', auth, listTagCandidates);
 
 /**
  * @swagger

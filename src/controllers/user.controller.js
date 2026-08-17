@@ -504,6 +504,35 @@ exports.listUsersProfiles = async (req, res) => {
   }
 };
 
+// @desc    Lightweight user list/search for tagging people — no PII, no posts.
+//          Safe for any logged-in user (member/vendor), unlike listUsersProfiles
+//          above which is the admin-only full dashboard listing.
+// @route   GET /api/users/tag-list?q=&limit=
+// @access  Private
+exports.listTagCandidates = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 50);
+
+    const filter = { isDeleted: { $ne: true }, is_active: { $ne: false } };
+    if (q) {
+      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ username: regex }, { full_name: regex }];
+    }
+
+    const users = await User.find(filter)
+      .select('_id username full_name avatar_url')
+      .sort({ username: 1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ success: true, data: users });
+  } catch (error) {
+    console.error('[User] listTagCandidates error:', error.message);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 exports.updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
