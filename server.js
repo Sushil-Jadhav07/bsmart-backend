@@ -66,6 +66,7 @@ const seedPolicies         = require('./src/seeds/policy.seed');            // <
 const giftCardRoutes       = require('./src/routes/giftCard.routes');       // <- GIFT CARDS
 const giftCardOrderRoutes  = require('./src/routes/giftCardOrder.routes');  // <- GIFT CARD ORDERS
 const bugReportRoutes      = require('./src/routes/bugReport.routes');      // <- BUG REPORTS
+const razorpayRoutes       = require('./src/routes/razorpay.routes');       // <- RAZORPAY DIRECT API
 
 const app    = express();
 const server = http.createServer(app);
@@ -333,6 +334,7 @@ app.use('/api/policies',        policyRoutes);          // <- LEGAL POLICIES
 app.use('/api/gift-cards',      giftCardRoutes);        // <- GIFT CARDS
 app.use('/api/gift-card-orders', giftCardOrderRoutes);  // <- GIFT CARD ORDERS
 app.use('/api/bug-reports',     bugReportRoutes);       // <- BUG REPORTS
+app.use('/api/razorpay',        razorpayRoutes);        // <- RAZORPAY DIRECT API
 
 
 // ── Country / State / City / Language routes ──────────────────────────────
