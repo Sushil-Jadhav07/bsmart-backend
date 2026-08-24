@@ -1,0 +1,22 @@
+name: Deploy to Dev Server
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 Dev Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_EC2_HOST }}
+          username: ${{ secrets.DEV_EC2_USERNAME }}
+          key: ${{ secrets.DEV_EC2_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEV_APP_DIR }}
+            git pull origin dev
+            npm install
+            pm2 restart bsmart-dev-api
