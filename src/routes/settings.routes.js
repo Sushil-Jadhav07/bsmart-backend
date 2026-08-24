@@ -70,6 +70,7 @@ const {
  *                   properties:
  *                     email:             { type: string, format: email, example: "riya@example.com" }
  *                     phone:             { type: string, example: "+919876543210" }
+ *                     profession:        { type: string, example: "Software Engineer" }
  *                     is_email_verified: { type: boolean, example: true }
  *                     is_phone_verified: { type: boolean, example: false }
  *       401:
@@ -240,6 +241,9 @@ router.post('/account/avatar', auth, uploadProfilePicture);
  *                 type: string
  *                 example: "+919876543210"
  *                 description: Provide in E.164 format or 10-digit Indian number (auto-prefixed with +91)
+ *               profession:
+ *                 type: string
+ *                 example: "Software Engineer"
  *     responses:
  *       200:
  *         description: Contact information updated
@@ -250,6 +254,7 @@ router.post('/account/avatar', auth, uploadProfilePicture);
  *               contact:
  *                 email: "newemail@example.com"
  *                 phone: "+919876543210"
+ *                 profession: "Software Engineer"
  *                 is_email_verified: false
  *                 is_phone_verified: false
  *       400:

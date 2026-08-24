@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createPost, getFeed, getPost, deletePost, createReel, listReels, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
+const { createPost, getFeed, getPost, deletePost, createReel, listReels, getMixedReelsFeed, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 const { savePost, unsavePost, listMySavedPosts, savePromoteReel, unsavePromoteReel, saveAd, unsaveAd, getSavedItems } = require('../controllers/saved.controller');
 const { getPostStats } = require('../controllers/poststats.controller');
@@ -493,6 +493,49 @@ router.post('/reels', verifyToken, createReel);
  *               retry_after_ms: 45000
  */
 router.get('/reels', verifyToken, reelsRateLimit, listReels);
+
+/**
+ * @swagger
+ * /api/posts/reels/mixed:
+ *   get:
+ *     summary: Reels feed interleaved with ads and promote reels (fixed cycle)
+ *     description: |
+ *       Cycle repeats forever: 3 reels → 1 ad → 2 reels → 1 promote reel.
+ *       Pagination is stable across pages — page 2 continues the cycle exactly
+ *       where page 1 left off rather than restarting the pattern. If a source
+ *       (e.g. active ads) runs out of items, that slot is simply skipped.
+ *     tags: [Reels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 50 }
+ *     responses:
+ *       200:
+ *         description: Mixed feed page
+ *         content:
+ *           application/json:
+ *             example:
+ *               page: 1
+ *               limit: 20
+ *               data:
+ *                 - item_type: "reel"
+ *                 - item_type: "reel"
+ *                 - item_type: "reel"
+ *                 - item_type: "ad"
+ *                 - item_type: "reel"
+ *                 - item_type: "reel"
+ *                 - item_type: "promote_reel"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/reels/mixed', verifyToken, reelsRateLimit, getMixedReelsFeed);
 
 /**
  * @swagger

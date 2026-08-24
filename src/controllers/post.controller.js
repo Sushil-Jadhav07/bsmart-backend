@@ -285,6 +285,190 @@ const loadFeedAds = async (req, feedItems, baseUrl, blockedPrivateUserIds = []) 
   return mixed;
 };
 
+// ─── Reels + Ads + Promote Reels — fixed interleave cycle ────────────────────
+// Cycle (repeats forever): 3 reels → 1 ad → 2 reels → 1 promote reel
+const REELS_MIX_CYCLE = ['reel', 'reel', 'reel', 'ad', 'reel', 'reel', 'promote_reel'];
+const REELS_MIX_CYCLE_COUNTS = REELS_MIX_CYCLE.reduce((acc, t) => {
+  acc[t] = (acc[t] || 0) + 1;
+  return acc;
+}, {});
+
+// For a global 0-indexed feed position, returns which 0-indexed item of its
+// own type (reel / ad / promote_reel) that position corresponds to — e.g.
+// globalIndex 10 might be "the 7th reel overall". This is what lets a page
+// far into the feed (page 5, 6, 7...) skip/limit each source collection
+// correctly instead of restarting the cycle from scratch every request.
+function reelsMixOffsetAt(globalIndex, type) {
+  const cycleLen = REELS_MIX_CYCLE.length;
+  const fullCycles = Math.floor(globalIndex / cycleLen);
+  const remainder = globalIndex % cycleLen;
+  let offset = fullCycles * (REELS_MIX_CYCLE_COUNTS[type] || 0);
+  for (let i = 0; i < remainder; i++) {
+    if (REELS_MIX_CYCLE[i] === type) offset++;
+  }
+  return offset;
+}
+
+// ─── getMixedReelsFeed ────────────────────────────────────────────────────────
+exports.getMixedReelsFeed = async (req, res) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const globalStart = (page - 1) * limit;
+
+    const blockedPrivateUserIds = await getBlockedPrivateUserIds(req.userId);
+
+    // Work out which type, and which offset within that type's own list,
+    // every slot in this page needs.
+    const slots = [];
+    for (let k = 0; k < limit; k++) {
+      const globalIndex = globalStart + k;
+      const type = REELS_MIX_CYCLE[globalIndex % REELS_MIX_CYCLE.length];
+      slots.push({ type, offset: reelsMixOffsetAt(globalIndex, type) });
+    }
+
+    const ranges = {};
+    for (const s of slots) {
+      if (!ranges[s.type]) ranges[s.type] = { min: s.offset, max: s.offset };
+      else {
+        ranges[s.type].min = Math.min(ranges[s.type].min, s.offset);
+        ranges[s.type].max = Math.max(ranges[s.type].max, s.offset);
+      }
+    }
+
+    const reelQuery = { type: 'reel', isDeleted: false };
+    if (blockedPrivateUserIds.length > 0) reelQuery.user_id = { $nin: blockedPrivateUserIds };
+
+    const adQuery = { status: 'active', isDeleted: false };
+    if (blockedPrivateUserIds.length > 0) adQuery.user_id = { $nin: blockedPrivateUserIds };
+
+    const [reelsRaw, saved, adsRaw, rewarded, promoteReelsRaw, followedIds] = await Promise.all([
+      ranges.reel
+        ? Post.find(reelQuery)
+            .sort({ createdAt: -1 })
+            .skip(ranges.reel.min)
+            .limit(ranges.reel.max - ranges.reel.min + 1)
+            .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate')
+        : [],
+      SavedPost.find({ user_id: req.userId }).select('post_id').lean(),
+      ranges.ad
+        ? Ad.find(adQuery)
+            .sort({ createdAt: -1 })
+            .skip(ranges.ad.min)
+            .limit(ranges.ad.max - ranges.ad.min + 1)
+            .populate('vendor_id', 'business_name logo_url validated')
+            .populate('user_id', 'username full_name avatar_url gender location isPrivate')
+            .lean()
+        : [],
+      AdView.find({ user_id: req.userId, rewarded: true }).select('ad_id').lean(),
+      ranges.promote_reel
+        ? PromoteReel.find({ isDeleted: false })
+            .sort({ createdAt: -1 })
+            .skip(ranges.promote_reel.min)
+            .limit(ranges.promote_reel.max - ranges.promote_reel.min + 1)
+            .populate('user_id', 'username full_name avatar_url isPrivate')
+            .lean()
+        : [],
+      getFollowedUserIds(req.userId),
+    ]);
+
+    const baseUrl      = `${req.protocol}://${req.get('host')}`;
+    const savedSet      = new Set(saved.map(s => s.post_id.toString()));
+    const followedSet   = new Set(followedIds.map((id) => String(id)));
+    const rewardedSet   = new Set(rewarded.map(r => r.ad_id.toString()));
+    const viewerId      = String(req.userId);
+
+    // ── reels — reuse transformPost, keyed by offset for O(1) lookup ────────
+    const reelMap = {};
+    reelsRaw.forEach((p, i) => {
+      const transformed = transformPost(p, baseUrl, req.userId, savedSet);
+      const authorId    = String(transformed?.user_id?._id || transformed?.user_id?.id || '');
+      const isFollowed  = authorId ? followedSet.has(authorId) : false;
+      transformed.item_type                = 'reel';
+      transformed.is_author_followed_by_me = isFollowed;
+      transformed.can_view_by_me           = !transformed?.user_id?.isPrivate || authorId === viewerId || isFollowed;
+      reelMap[ranges.reel.min + i] = transformed;
+    });
+
+    // ── ads — same normalization loadFeedAds uses, for response-shape consistency
+    const adMap = {};
+    adsRaw.forEach((ad, i) => {
+      const normalizedMedia = Array.isArray(ad.media)
+        ? ad.media.map((m) => {
+            const fileUrl = m.fileUrl
+              ? (String(m.fileUrl).startsWith('http') ? m.fileUrl : `${baseUrl}${String(m.fileUrl).startsWith('/') ? '' : '/'}${m.fileUrl}`)
+              : (resolveMediaUrl(m.fileName, m.fileUrl, baseUrl));
+            const thumbnails = Array.isArray(m.thumbnails)
+              ? m.thumbnails.map((t) => {
+                  const thumbUrl = t.fileUrl
+                    ? (String(t.fileUrl).startsWith('http') ? t.fileUrl : `${baseUrl}${String(t.fileUrl).startsWith('/') ? '' : '/'}${t.fileUrl}`)
+                    : (t.fileName ? resolveMediaUrl(t.fileName, t.fileUrl, baseUrl) : '');
+                  return { ...t, fileUrl: thumbUrl };
+                })
+              : [];
+            return { ...m, fileUrl, thumbnails };
+          })
+        : [];
+      const authorId   = String(ad?.user_id?._id || ad?.user_id?.id || '');
+      const isFollowed = authorId ? followedSet.has(authorId) : false;
+      adMap[ranges.ad.min + i] = {
+        item_type:                'ad',
+        ...ad,
+        media:                    normalizedMedia,
+        is_rewarded_by_me:        rewardedSet.has(ad._id.toString()),
+        is_liked_by_me:           Array.isArray(ad.likes) && ad.likes.some(id => id.toString() === req.userId.toString()),
+        is_author_followed_by_me: isFollowed,
+        can_view_by_me:           !ad?.user_id?.isPrivate || authorId === viewerId || isFollowed,
+      };
+    });
+
+    // ── promote reels — same normalization loadFeedAds uses ────────────────
+    const promoMap = {};
+    promoteReelsRaw.forEach((pr, i) => {
+      const toAbsolute = (val) => {
+        if (!val) return val;
+        const s = String(val);
+        return s.startsWith('http') ? s : `${baseUrl}${s.startsWith('/') ? '' : '/'}${s}`;
+      };
+      const normalizedMedia = Array.isArray(pr.media)
+        ? pr.media.map((m) => {
+            const fileUrl = m.fileName
+              ? resolveMediaUrl(m.fileName, m.fileUrl, baseUrl)
+              : toAbsolute(m.fileUrl);
+            const thumbnails = Array.isArray(m.thumbnails)
+              ? m.thumbnails.map(t => ({ ...t, fileUrl: resolveMediaUrl(t.fileName, t.fileUrl, baseUrl) }))
+              : (m.thumbnail?.fileName
+                  ? [{ ...m.thumbnail, fileUrl: resolveMediaUrl(m.thumbnail.fileName, m.thumbnail.fileUrl, baseUrl) }]
+                  : []);
+            return { ...m, type: 'video', media_type: 'video', fileUrl, url: fileUrl, thumbnails };
+          })
+        : [];
+      const authorId   = String(pr?.user_id?._id || pr?.user_id?.id || '');
+      const isFollowed = authorId ? followedSet.has(authorId) : false;
+      promoMap[ranges.promote_reel.min + i] = {
+        item_type:                'promote_reel',
+        ...pr,
+        promote_reel_id:          pr._id,
+        media:                    normalizedMedia,
+        is_liked_by_me:           Array.isArray(pr.likes) && pr.likes.some(id => id.toString() === req.userId.toString()),
+        is_author_followed_by_me: isFollowed,
+        can_view_by_me:           !pr?.user_id?.isPrivate || authorId === viewerId || isFollowed,
+      };
+    });
+
+    // Slots where that source ran out of items (e.g. fewer promote reels than
+    // slots requested) are simply dropped rather than erroring.
+    const data = slots
+      .map((s) => (s.type === 'reel' ? reelMap[s.offset] : s.type === 'ad' ? adMap[s.offset] : promoMap[s.offset]))
+      .filter(Boolean);
+
+    res.json({ page, limit, data });
+  } catch (error) {
+    console.error('[Post] getMixedReelsFeed error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // ─── notifySubscribers ────────────────────────────────────────────────────────
 const notifySubscribers = async (app, authorId, authorUsername, postId, postType) => {
   try {

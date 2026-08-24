@@ -166,6 +166,11 @@ followRequests: [
     type: String,
     default: '',
   },
+  profession: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   date_of_birth: {
     type: Date,
     default: null,

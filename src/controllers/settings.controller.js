@@ -56,7 +56,7 @@ exports.getAccountSettings = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select(
       'avatar_url full_name username bio website date_of_birth gender ad_interests location ' +
-      'email phone is_email_verified is_phone_verified'
+      'email phone profession is_email_verified is_phone_verified'
     ).lean();
 
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -76,6 +76,7 @@ exports.getAccountSettings = async (req, res) => {
       contact: {
         email:             user.email             || '',
         phone:             user.phone             || '',
+        profession:        user.profession         || '',
         is_email_verified: user.is_email_verified ?? false,
         is_phone_verified: user.is_phone_verified ?? false,
       },
@@ -172,7 +173,7 @@ exports.uploadProfilePicture = (req, res) => {
 // ─── PATCH /api/settings/account/contact ─────────────────────────────────────
 exports.updateContactInfo = async (req, res) => {
   try {
-    const { email, phone } = req.body;
+    const { email, phone, profession } = req.body;
     const updates = {};
     const cleared = {};
 
@@ -194,21 +195,26 @@ exports.updateContactInfo = async (req, res) => {
       cleared.is_phone_verified = false; // changing phone resets verification
     }
 
+    if (profession !== undefined) {
+      updates.profession = String(profession).trim();
+    }
+
     if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ message: 'Provide email or phone to update' });
+      return res.status(400).json({ message: 'Provide email, phone, or profession to update' });
     }
 
     const user = await User.findByIdAndUpdate(
       req.userId,
       { $set: { ...updates, ...cleared } },
       { new: true }
-    ).select('email phone is_email_verified is_phone_verified');
+    ).select('email phone profession is_email_verified is_phone_verified');
 
     res.json({
       message: 'Contact information updated. Please verify your new email/phone.',
       contact: {
         email:             user.email,
         phone:             user.phone,
+        profession:        user.profession,
         is_email_verified: user.is_email_verified,
         is_phone_verified: user.is_phone_verified,
       },
