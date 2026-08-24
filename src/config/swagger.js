@@ -19,6 +19,10 @@ const options = {
       {
         url: 'http://localhost:5000',
         description: 'Local Development Server',
+      },
+       {
+        url: 'https://api.bebsmart.online/',
+        description: 'Dev Server',
       }
     ],
     components: {
