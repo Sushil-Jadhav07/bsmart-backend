@@ -560,7 +560,28 @@ router.get('/apple', passport.authenticate('apple'));
  */
 router.post(
   '/apple/callback',
-  passport.authenticate('apple', { session: false, failureRedirect: '/login' }),
+  (req, res, next) => {
+    passport.authenticate('apple', { session: false }, (err, user, info) => {
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+
+      if (err) {
+        // Log the real Apple OAuth error (code/message) — the generic
+        // "TokenError" stack trace alone doesn't show which check failed.
+        console.error('[Apple OAuth] Token exchange failed:', {
+          message: err.message,
+          code: err.code,
+          oauthError: err.oauthError,
+        });
+        return res.redirect(`${clientUrl}/auth/apple/success?error=${encodeURIComponent(err.code || err.message || 'apple_auth_failed')}`);
+      }
+      if (!user) {
+        return res.redirect(`${clientUrl}/auth/apple/success?error=${encodeURIComponent(info?.message || 'apple_auth_failed')}`);
+      }
+
+      req.user = user;
+      next();
+    })(req, res, next);
+  },
   (req, res) => {
     const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, {
       expiresIn: '30d',
