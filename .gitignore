@@ -11,3 +11,7 @@ uploads/
 *bsmart-*-firebase-adminsdk-*.json
 firebase-adminsdk*.json
 serviceAccountKey.json
+
+# Apple Sign in private key + any other local secrets
+secrets/
+*.p8

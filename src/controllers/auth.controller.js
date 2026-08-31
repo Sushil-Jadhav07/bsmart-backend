@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const appleSignin = require('apple-signin-auth');
 const { sendOtpSms, checkOtpSms } = require('../services/twilio.service');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
@@ -401,6 +402,104 @@ exports.googleLogin = async (req, res) => {
 
   } catch (error) {
     console.error('Google login error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Login or register with an Apple identity token (native app flow)
+// @route   POST /api/auth/apple/token
+// @access  Public
+exports.appleLogin = async (req, res) => {
+  try {
+    const { identity_token, full_name, email: bodyEmail } = req.body;
+    if (!identity_token) {
+      return res.status(400).json({ message: 'identity_token is required' });
+    }
+
+    // Native iOS sign-in issues tokens with aud = app bundle id; the web
+    // flow issues tokens with aud = the Services ID. Accept either.
+    const audiences = [process.env.APPLE_CLIENT_ID, process.env.APPLE_BUNDLE_ID].filter(Boolean);
+
+    let payload;
+    try {
+      payload = await appleSignin.verifyIdToken(identity_token, {
+        audience: audiences.length ? audiences : undefined,
+      });
+    } catch (e) {
+      console.error('Apple token verification failed:', e.message);
+      return res.status(401).json({ message: 'Invalid Apple token' });
+    }
+
+    const { sub: appleId, email: tokenEmail } = payload;
+    const email = tokenEmail || bodyEmail || null;
+
+    let user = await User.findOne({ appleId });
+    if (!user && email) {
+      user = await User.findOne({ email });
+      if (user) {
+        user.appleId = appleId;
+        await user.save();
+      }
+    }
+
+    const bannedApple = await denyIfBanned(res, user);
+    if (bannedApple) return;
+
+    if (!user) {
+      // Apple only sends an email the first time a user authorizes this app
+      // (unless "Hide My Email" gives a stable private-relay address).
+      // Without one there's no way to create or later look up the account.
+      if (!email) {
+        return res.status(400).json({ message: 'Apple token does not contain an email and none was provided' });
+      }
+
+      const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      const baseUsername = (full_name || email.split('@')[0]).replace(/\s+/g, '').toLowerCase();
+      const username = `${baseUsername}${Math.floor(Math.random() * 1000)}`;
+
+      user = await User.create({
+        appleId,
+        email,
+        username,
+        full_name: full_name || username,
+        password: hashedPassword,
+        provider: 'apple',
+        role: 'member'
+      });
+
+      await Wallet.create({ user_id: user._id, balance: 0 });
+      await Member.create({ user_id: user._id });
+
+      fireAndForget('Welcome email', sendWelcomeEmail(user));
+    }
+
+    const token = generateToken(user._id);
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        age: user.age,
+        gender: user.gender,
+        location: user.location,
+        role: user.role,
+        isPrivate: user.isPrivate ?? false,
+        twoFA: {
+          enabled: !!user.twoFA?.enabled
+        },
+        createdAt: user.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Apple login error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
