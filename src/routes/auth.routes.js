@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-  register, login, googleLogin, getMe, changePassword,
+  register, login, googleLogin, appleLogin, getMe, changePassword,
   forgotPasswordCheck, forgotPasswordVerifyAndReset,
   getSessions, deleteSession, getLoginHistory, logoutAll,
 } = require('../controllers/auth.controller');
@@ -231,6 +231,48 @@ router.post('/register', register);
  *         description: Server error
  */
 router.post('/google/token', googleLogin);
+
+/**
+ * @swagger
+ * /api/auth/apple/token:
+ *   post:
+ *     summary: Login or Register with Apple Identity Token (native app flow)
+ *     description: |
+ *       For native iOS apps using Apple's AuthenticationServices SDK. The app
+ *       obtains an identity_token from Apple directly and sends it here.
+ *       full_name is only ever available from Apple on a user's very first
+ *       authorization ever — the client must forward it that one time since
+ *       there is no other way for the backend to receive it.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - identity_token
+ *             properties:
+ *               identity_token:
+ *                 type: string
+ *                 description: The identityToken JWT returned by Apple's native sign-in
+ *               full_name:
+ *                 type: string
+ *                 description: Only present/needed on the very first sign-in
+ *               email:
+ *                 type: string
+ *                 description: Fallback if not present in the token payload
+ *     responses:
+ *       200:
+ *         description: Login/registration successful, returns JWT and user
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Invalid Apple token
+ *       500:
+ *         description: Server error
+ */
+router.post('/apple/token', appleLogin);
 
 /**
  * @swagger
@@ -484,6 +526,48 @@ router.get(
     // Redirect to client with token
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
     res.redirect(`${clientUrl}/auth/google/success?token=${token}`);
+  }
+);
+
+/**
+ * @swagger
+ * /api/auth/apple:
+ *   get:
+ *     summary: Initiate Apple Authentication (web)
+ *     description: Redirects user to Apple's Sign in with Apple consent page. NOTE - This cannot be tested directly in Swagger UI as it causes a redirect. Open in browser.
+ *     tags: [Auth]
+ *     responses:
+ *       302:
+ *         description: Redirects to Apple
+ */
+router.get('/apple', passport.authenticate('apple'));
+
+/**
+ * @swagger
+ * /api/auth/apple/callback:
+ *   post:
+ *     summary: Apple Authentication Callback
+ *     description: |
+ *       Handles Apple's callback. Apple uses response_mode=form_post, so this
+ *       is a POST endpoint (unlike Google's GET callback). Redirects to the
+ *       frontend with a JWT token.
+ *     tags: [Auth]
+ *     responses:
+ *       302:
+ *         description: Redirects to frontend with JWT token
+ *       401:
+ *         description: Authentication failed
+ */
+router.post(
+  '/apple/callback',
+  passport.authenticate('apple', { session: false, failureRedirect: '/login' }),
+  (req, res) => {
+    const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, {
+      expiresIn: '30d',
+    });
+
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    res.redirect(`${clientUrl}/auth/apple/success?token=${token}`);
   }
 );
 
