@@ -3,7 +3,7 @@ const Comment           = require('../models/Comment');
 const User              = require('../models/User');
 const SavedPromoteReel  = require('../models/SavedPromoteReel');
 const sendNotification  = require('../utils/sendNotification');
-const { canViewAuthorContent, getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
+const { canViewAuthorContent, getBlockedPrivateUserIds, getAllPrivateUserIds } = require('../utils/privacyVisibility');
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
 // ─── Background HLS for PromoteReel ──────────────────────────────────────────
@@ -273,6 +273,34 @@ exports.listPromoteReels = async (req, res) => {
     res.json({ page, limit, data });
   } catch (error) {
     console.error('[PromoteReel] listPromoteReels error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── List promote reels — guest preview (no auth) ──────────────────────────
+// Public preview for unauthenticated visitors — no saved-state personalization,
+// private accounts excluded outright, capped small.
+exports.listPromoteReelsGuest = async (req, res) => {
+  try {
+    const limit = Math.min(12, Math.max(1, parseInt(req.query.limit) || 6));
+    const privateUserIds = await getAllPrivateUserIds();
+
+    const query = { isDeleted: false };
+    if (privateUserIds.length > 0) {
+      query.user_id = { $nin: privateUserIds };
+    }
+
+    const docs = await PromoteReel.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const data    = docs.map((d) => transformPromoteReel(d, baseUrl, null, new Set()));
+
+    res.json({ limit, data, guest: true });
+  } catch (error) {
+    console.error('[PromoteReel] listPromoteReelsGuest error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

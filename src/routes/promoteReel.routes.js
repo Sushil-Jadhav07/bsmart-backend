@@ -1,10 +1,22 @@
 const express    = require('express');
 const router     = express.Router();
 const verifyToken = require('../middleware/auth');
+const { dynamicRateLimit } = require('../middleware/rateLimit');
+
+// Guest (unauthenticated) preview endpoint — keyed by IP, tighter default cap
+// since there's no per-user identity to rate-limit against.
+const guestPreviewRateLimit = dynamicRateLimit({
+  keyPrefix:    'guest-preview-promote',
+  envMaxKey:    'GUEST_PREVIEW_RATE_LIMIT_MAX',
+  envWindowKey: 'GUEST_PREVIEW_RATE_LIMIT_WINDOW_MS',
+  defaultMax:    20,
+  defaultWindow: 60 * 1000,
+});
 
 const {
   createPromoteReel,
   listPromoteReels,
+  listPromoteReelsGuest,
   getPromoteReelById,
   updatePromoteReel,
   deletePromoteReel,
@@ -184,6 +196,22 @@ router.post('/', verifyToken, createPromoteReel);
  *                     $ref: '#/components/schemas/PromoteReel'
  */
 router.get('/', verifyToken, listPromoteReels);
+
+/**
+ * @swagger
+ * /api/promote-reels/guest:
+ *   get:
+ *     summary: Public preview of promote reels for unauthenticated visitors (limited, no personalization)
+ *     tags: [PromoteReels]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 6, maximum: 12 }
+ *     responses:
+ *       200:
+ *         description: Preview promote reel items
+ */
+router.get('/guest', guestPreviewRateLimit, listPromoteReelsGuest);
 
 /**
  * @swagger

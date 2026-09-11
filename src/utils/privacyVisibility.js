@@ -23,6 +23,17 @@ const getBlockedPrivateUserIds = async (viewerId) => {
   }).distinct('_id');
 };
 
+// Used for guest/unauthenticated previews — a guest follows nobody, so every
+// private account must be excluded outright (unlike getBlockedPrivateUserIds,
+// which allows accounts the viewer already follows).
+const getAllPrivateUserIds = async () => {
+  return User.find({
+    isPrivate: true,
+    isDeleted: { $ne: true },
+    is_active: true,
+  }).distinct('_id');
+};
+
 const canViewAuthorContent = async (viewerId, authorId) => {
   if (!viewerId || !authorId) return false;
   if (toId(viewerId) === toId(authorId)) return true;
@@ -38,6 +49,7 @@ const canViewAuthorContent = async (viewerId, authorId) => {
 module.exports = {
   getFollowedUserIds,
   getBlockedPrivateUserIds,
+  getAllPrivateUserIds,
   canViewAuthorContent,
 };
 

@@ -11,7 +11,7 @@ const TweetRepost  = require('../models/tweetRepost.model');
 const PromoteReel  = require('../models/PromoteReel');
 const sendNotification = require('../utils/sendNotification');
 const UserNotificationPreference = require('../models/UserNotificationPreference');
-const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
+const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds, getAllPrivateUserIds } = require('../utils/privacyVisibility');
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
 // ─── URL Helper ───────────────────────────────────────────────────────────────
@@ -698,6 +698,34 @@ exports.getFeed = async (req, res) => {
   }
 };
 
+// ─── getFeedGuest ─────────────────────────────────────────────────────────────
+// Public preview of the feed for unauthenticated visitors — no personalization
+// (no saved/following state), private accounts excluded outright, capped small.
+exports.getFeedGuest = async (req, res) => {
+  try {
+    const limit = Math.min(12, Math.max(1, parseInt(req.query.limit) || 6));
+    const privateUserIds = await getAllPrivateUserIds();
+
+    const postQuery = {
+      isDeleted: false,
+      ...(privateUserIds.length > 0 ? { user_id: { $nin: privateUserIds } } : {}),
+    };
+
+    const posts = await Post.find(postQuery)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const data    = posts.map((post) => transformPost(post, baseUrl, null, new Set()));
+
+    res.json({ limit, data, guest: true });
+  } catch (error) {
+    console.error('[Post] getFeedGuest error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // ─── getPost ──────────────────────────────────────────────────────────────────
 exports.getPost = async (req, res) => {
   try {
@@ -863,6 +891,34 @@ exports.listReels = async (req, res) => {
     res.json({ page, limit, data: transformed });
   } catch (error) {
     console.error('[Post] listReels error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── listReelsGuest ───────────────────────────────────────────────────────────
+// Public preview of reels for unauthenticated visitors — same rules as getFeedGuest.
+exports.listReelsGuest = async (req, res) => {
+  try {
+    const limit = Math.min(12, Math.max(1, parseInt(req.query.limit) || 6));
+    const privateUserIds = await getAllPrivateUserIds();
+
+    const reelQuery = {
+      type: 'reel',
+      isDeleted: false,
+      ...(privateUserIds.length > 0 ? { user_id: { $nin: privateUserIds } } : {}),
+    };
+
+    const posts = await Post.find(reelQuery)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location isPrivate');
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const data    = posts.map((p) => transformPost(p, baseUrl, null, new Set()));
+
+    res.json({ limit, data, guest: true });
+  } catch (error) {
+    console.error('[Post] listReelsGuest error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createPost, getFeed, getPost, deletePost, createReel, listReels, getMixedReelsFeed, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
+const { createPost, getFeed, getFeedGuest, getPost, deletePost, createReel, listReels, listReelsGuest, getMixedReelsFeed, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 const { savePost, unsavePost, listMySavedPosts, savePromoteReel, unsavePromoteReel, saveAd, unsaveAd, getSavedItems } = require('../controllers/saved.controller');
 const { getPostStats } = require('../controllers/poststats.controller');
@@ -24,6 +24,16 @@ const reelsRateLimit = dynamicRateLimit({
   envMaxKey:    'REELS_RATE_LIMIT_MAX',
   envWindowKey: 'REELS_RATE_LIMIT_WINDOW_MS',
   defaultMax:    60,
+  defaultWindow: 60 * 1000,
+});
+
+// Guest (unauthenticated) preview endpoints — keyed by IP, tighter default cap
+// since there's no per-user identity to rate-limit against.
+const guestPreviewRateLimit = dynamicRateLimit({
+  keyPrefix:    'guest-preview',
+  envMaxKey:    'GUEST_PREVIEW_RATE_LIMIT_MAX',
+  envWindowKey: 'GUEST_PREVIEW_RATE_LIMIT_WINDOW_MS',
+  defaultMax:    20,
   defaultWindow: 60 * 1000,
 });
 
@@ -399,6 +409,22 @@ router.get('/feed', verifyToken, feedRateLimit, getFeed);
 
 /**
  * @swagger
+ * /api/posts/feed/guest:
+ *   get:
+ *     summary: Public preview of the feed for unauthenticated visitors (limited, no personalization)
+ *     tags: [Posts]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 6, maximum: 12 }
+ *     responses:
+ *       200:
+ *         description: Preview feed items
+ */
+router.get('/feed/guest', guestPreviewRateLimit, getFeedGuest);
+
+/**
+ * @swagger
  * /api/posts/reels:
  *   post:
  *     summary: Create a new reel
@@ -536,6 +562,22 @@ router.get('/reels', verifyToken, reelsRateLimit, listReels);
  *         description: Server error
  */
 router.get('/reels/mixed', verifyToken, reelsRateLimit, getMixedReelsFeed);
+
+/**
+ * @swagger
+ * /api/posts/reels/guest:
+ *   get:
+ *     summary: Public preview of reels for unauthenticated visitors (limited, no personalization)
+ *     tags: [Reels]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 6, maximum: 12 }
+ *     responses:
+ *       200:
+ *         description: Preview reel items
+ */
+router.get('/reels/guest', guestPreviewRateLimit, listReelsGuest);
 
 /**
  * @swagger
