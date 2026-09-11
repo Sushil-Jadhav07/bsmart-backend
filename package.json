@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test ./test/ad_wallet_transactions.test.js"
+    "test": "node --test ./test/ad_wallet_transactions.test.js",
+    "test:feed": "node --test \"test/feed/*.test.js\""
   },
   "keywords": [],
   "author": "",

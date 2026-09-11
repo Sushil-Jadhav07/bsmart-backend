@@ -949,3 +949,7 @@ exports.updateReelMetadata = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+// Shared with the personalized feed (src/feed/hydrate.js)
+exports.transformPost   = transformPost;
+exports.resolveMediaUrl = resolveMediaUrl;
