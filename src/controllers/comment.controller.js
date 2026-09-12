@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const sendNotification = require('../utils/sendNotification');
+const { trackFeedEvent } = require('../feed/track');
 
 /**
  * Add a comment to a post
@@ -83,6 +84,8 @@ exports.addComment = async (req, res) => {
     });
 
     await newComment.save();
+
+    trackFeedEvent(userId, { itemId: postId, itemType: 'post', event: 'comment' });
 
     // Notify post owner when someone comments (skip if commenter is owner)
     if (post.user_id.toString() !== userId.toString()) {

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   normalizeTerm, expandTerm, extractHashtags, extractTopics,
-  detectLanguage, languageMatch, normalizeLanguage, parseAcceptLanguage,
+  detectLanguage, languageModelReady, languageMatch, normalizeLanguage, parseAcceptLanguage,
 } = require('../../src/feed/text');
 
 test('normalizeTerm lowercases, strips # and characters unsafe as Mongo keys', () => {
@@ -33,14 +33,31 @@ test('extractTopics combines hashtags, tags and ad categories', () => {
   for (const t of ['sports & fitness', 'sports', 'fitness', 'running']) assert.ok(topics.includes(t), t);
 });
 
-test('detectLanguage recognises Indic scripts, English and Hinglish', () => {
+test('detectLanguage recognises Indic scripts, English and Hinglish', async () => {
+  await languageModelReady;
   assert.equal(detectLanguage('आज का मैच बहुत शानदार था'), 'hi');
   assert.equal(detectLanguage('இன்று நல்ல நாள்'), 'ta');
   assert.equal(detectLanguage('Today the match was really amazing'), 'en');
   assert.equal(detectLanguage('yaar ye match bahut accha tha bhai'), 'hi-Latn');
+  assert.equal(detectLanguage('Mera phone kho gaya kal'), 'hi-Latn');
   assert.equal(detectLanguage('🔥🔥🔥'), null);
   // Hashtags and links do not count towards the language.
-  assert.equal(detectLanguage('#travel https://example.com आज का दिन'), 'hi');
+  assert.equal(detectLanguage('#travel https://example.com आज का दिन बहुत अच्छा है'), 'hi');
+});
+
+// Checks that Devanagari goes through the CLD3 model. Accuracy on short
+// captions is measured separately (see feed.routes.md, "Language detection").
+test('detectLanguage tells Hindi, Marathi and Nepali apart (same script)', async () => {
+  await languageModelReady;
+  assert.equal(detectLanguage('हम कल दिल्ली जा रहे हैं और वहाँ बहुत मज़ा करेंगे'), 'hi');
+  assert.equal(detectLanguage('आम्ही उद्या पुण्याला जाणार आहोत आणि तिथे खूप मजा करणार आहोत'), 'mr');
+  assert.equal(detectLanguage('हामी भोलि काठमाडौं जाँदैछौं र त्यहाँ धेरै रमाइलो गर्नेछौं'), 'ne');
+});
+
+test('English with a stray Hindi-looking word stays English', async () => {
+  await languageModelReady;
+  assert.equal(detectLanguage('Weekend plans with the family, so excited'), 'en');
+  assert.equal(detectLanguage('Can anyone suggest a good book?'), 'en');
 });
 
 test('languageMatch scores exact, same-script, Hinglish and unknown cases', () => {

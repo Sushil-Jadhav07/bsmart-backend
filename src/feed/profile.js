@@ -25,7 +25,7 @@ const TtlCache = require('./cache');
 // Signal strength per interaction. Negative values push topics/authors down.
 const EVENT_WEIGHTS = {
   impression: 0, view: 0.2, dwell: 0.3, complete: 1.5,
-  like: 2, comment: 3, share: 4, save: 3, click: 2, follow: 3,
+  like: 2, comment: 3, share: 4, repost: 4, save: 3, click: 2, follow: 3,
   skip: -0.5, hide: -4, not_interested: -5,
 };
 
@@ -119,7 +119,7 @@ const rebuildHistory = async (user, config) => {
   const userId = user._id;
   const since = new Date(Date.now() - config.profile.historyDays * 864e5);
 
-  const [saved, views, tweetLikes, tweetReposts, likedPosts, ownPosts, ownTweets] = await Promise.all([
+  const [savedAll, viewsAll, tweetLikesAll, tweetRepostsAll, likedPostsAll, ownPosts, ownTweets, tracked] = await Promise.all([
     SavedPost.find({ user_id: userId, createdAt: { $gte: since } }).sort({ createdAt: -1 }).limit(300).select('post_id').lean(),
     PostView.find({ user_id: userId, updatedAt: { $gte: since } }).sort({ updatedAt: -1 }).limit(500)
       .select('post_id completed watchTimeMs view_count').lean(),
@@ -130,7 +130,19 @@ const rebuildHistory = async (user, config) => {
       .select(POST_FIELDS).lean(),
     Post.find({ user_id: userId, isDeleted: false }).sort({ createdAt: -1 }).limit(50).select(POST_FIELDS).lean(),
     Tweet.find({ author: userId, isDeleted: false }).sort({ createdAt: -1 }).limit(50).select(TWEET_FIELDS).lean(),
+    // Interactions the server already logged as feed events (track.js) are
+    // learned from those events; they are skipped below so nothing counts twice.
+    FeedEvent.find({ user_id: userId, source: 'server', event: { $in: ['like', 'save', 'repost', 'view', 'complete'] } })
+      .sort({ createdAt: -1 }).limit(5000).select('item_id event').lean(),
   ]);
+
+  const trackedKeys = new Set(tracked.map((t) => `${t.event === 'complete' ? 'view' : t.event}:${t.item_id}`));
+  const untracked = (event, idOf) => (row) => !trackedKeys.has(`${event}:${idOf(row)}`);
+  const saved = savedAll.filter(untracked('save', (s) => s.post_id));
+  const views = viewsAll.filter(untracked('view', (v) => v.post_id));
+  const tweetLikes = tweetLikesAll.filter(untracked('like', (l) => l.tweet));
+  const tweetReposts = tweetRepostsAll.filter(untracked('repost', (r) => r.tweet));
+  const likedPosts = likedPostsAll.filter(untracked('like', (p) => p._id));
 
   const postIds = [...saved.map((s) => s.post_id), ...views.map((v) => v.post_id)];
   const tweetIds = [...tweetLikes.map((l) => l.tweet), ...tweetReposts.map((r) => r.tweet)];

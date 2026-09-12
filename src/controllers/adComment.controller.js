@@ -6,6 +6,7 @@ const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const sendNotification = require('../utils/sendNotification');
 const runMongoTransaction = require('../utils/runMongoTransaction');
+const { trackFeedEvent } = require('../feed/track');
 
 async function rewardAdEngagement({ userId, adOwnerId, adId, rewardAmount, userTxType, ownerTxType }) {
   if (!rewardAmount || rewardAmount <= 0) return 0;
@@ -187,6 +188,7 @@ exports.addAdComment = async (req, res) => {
 
     // Increment comment count
     await Ad.findByIdAndUpdate(adId, { $inc: { comments_count: 1 } });
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'comment' });
 
     // Populate user info for immediate display
     await newComment.populate('user_id', 'username full_name avatar_url gender location');

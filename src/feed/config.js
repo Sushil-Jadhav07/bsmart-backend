@@ -100,6 +100,8 @@ const DEFAULT_CONFIG = {
   },
   events: {
     maxBatch: 100,
+    // Record likes, comments, saves, views … from the existing APIs (track.js).
+    serverTracking: true,
   },
 };
 

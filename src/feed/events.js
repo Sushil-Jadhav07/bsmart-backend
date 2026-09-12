@@ -1,8 +1,13 @@
 // ─── Feed event ingestion ───────────────────────────────────────────────────
-// Clients batch what happened in the feed (impressions, dwell, likes, hides …).
-// Each batch is stored raw, rolled into per-item counters, and folded into the
+// Two sources feed this pipeline:
+//   client — the app batches what only it can see: impressions, dwell and
+//            watch time, skips, hides, external shares (POST /api/feed/events)
+//   server — the existing APIs report likes, comments, saves, reposts, reel and
+//            ad views, completions and ad clicks as they happen (track.js)
+// Each event is stored raw, rolled into per-item counters, and folded into the
 // viewer's learned profile.
 
+const mongoose = require('mongoose');
 const FeedEvent = require('../models/FeedEvent');
 const FeedItemStats = require('../models/FeedItemStats');
 const Post = require('../models/Post');
@@ -16,9 +21,13 @@ const { FEED_ITEM_TYPES, FEED_SURFACES, FEED_EVENT_TYPES } = FeedEvent;
 const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
 const MAX_MS = 60 * 60 * 1000;
 
+// Events the app may send. Everything else is recorded by the backend when the
+// existing API is called — if the app sent those too they would count twice.
+const CLIENT_EVENTS = new Set(['impression', 'dwell', 'skip', 'hide', 'not_interested', 'share', 'click']);
+
 const STAT_FIELD = {
   impression: 'impressions', view: 'views', complete: 'completions', like: 'likes',
-  comment: 'comments', share: 'shares', save: 'saves', click: 'clicks',
+  comment: 'comments', share: 'shares', repost: 'shares', save: 'saves', click: 'clicks',
   skip: 'skips', hide: 'hides', not_interested: 'not_interested',
 };
 
@@ -31,7 +40,7 @@ const clamp = (value, min, max, integer = false) => {
 };
 
 // Returns normalized events plus { index, reason } for each rejected one.
-const validateEvents = (raw) => {
+const validateEvents = (raw, { source = 'client' } = {}) => {
   const valid = [];
   const rejected = [];
   (Array.isArray(raw) ? raw : []).forEach((event, index) => {
@@ -40,6 +49,14 @@ const validateEvents = (raw) => {
     if (!OBJECT_ID_RE.test(String(event.item_id || ''))) return reject('item_id must be a valid id');
     if (!FEED_ITEM_TYPES.includes(event.item_type)) return reject(`item_type must be one of: ${FEED_ITEM_TYPES.join(', ')}`);
     if (!FEED_EVENT_TYPES.includes(event.event)) return reject(`event must be one of: ${FEED_EVENT_TYPES.join(', ')}`);
+    if (source === 'client') {
+      if (!CLIENT_EVENTS.has(event.event)) {
+        return reject(`${event.event} is recorded by the server when the API is called; do not send it`);
+      }
+      if (event.event === 'click' && event.item_type === 'ad') {
+        return reject('ad clicks are recorded by POST /api/ads/:id/click; do not send them');
+      }
+    }
     valid.push({
       item_id: String(event.item_id),
       item_type: event.item_type,
@@ -55,13 +72,19 @@ const validateEvents = (raw) => {
   return { valid, rejected };
 };
 
-// How strongly one event says "more like this" (or "less").
+// How strongly one event says "more like this" (negative: "less like this").
+// Video completion rides on dwell (from the app) or view (from the server).
 const interactionWeight = (event) => {
-  if (event.event === 'dwell') return EVENT_WEIGHTS.dwell * Math.min((event.dwell_ms || 0) / 10000, 3);
-  if (event.event === 'view') {
-    return EVENT_WEIGHTS.view + (event.completion_pct != null ? event.completion_pct / 100 : 0);
+  let weight;
+  if (event.event === 'dwell' || event.event === 'view') {
+    const base = event.event === 'dwell'
+      ? EVENT_WEIGHTS.dwell * Math.min((event.dwell_ms || 0) / 10000, 3)
+      : EVENT_WEIGHTS.view;
+    weight = base + (event.completion_pct != null ? event.completion_pct / 100 : 0);
+  } else {
+    weight = EVENT_WEIGHTS[event.event] || 0;
   }
-  return EVENT_WEIGHTS[event.event] || 0;
+  return event.undo ? -weight : weight;
 };
 
 const ITEM_SOURCES = [
@@ -77,7 +100,7 @@ const ITEM_SOURCES = [
 ];
 
 // Posts and reels share a collection, so the stored type comes from the
-// document, not from what the client claimed.
+// document, not from what the caller claimed.
 const loadItems = async (events) => {
   const items = new Map();
   await Promise.all(ITEM_SOURCES.map(async ({ types, model, select, typeOf }) => {
@@ -89,40 +112,75 @@ const loadItems = async (events) => {
   return items;
 };
 
-const recordEvents = async (userId, events, config) => {
+const updateStats = async (docs) => {
+  const increments = new Map();
+  const decrements = new Map();
+  for (const doc of docs) {
+    const target = doc.undo ? decrements : increments;
+    const entry = target.get(doc.item_id) || { type: doc.item_type, inc: {} };
+    const field = STAT_FIELD[doc.event];
+    if (field) entry.inc[field] = (entry.inc[field] || 0) + 1;
+    if (!doc.undo && doc.dwell_ms) entry.inc.dwell_ms_total = (entry.inc.dwell_ms_total || 0) + doc.dwell_ms;
+    if (!doc.undo && doc.watch_ms) entry.inc.watch_ms_total = (entry.inc.watch_ms_total || 0) + doc.watch_ms;
+    target.set(doc.item_id, entry);
+  }
+
+  const now = new Date();
+  if (increments.size) {
+    await FeedItemStats.bulkWrite([...increments].map(([itemId, { type, inc }]) => ({
+      updateOne: {
+        filter: { item_id: itemId },
+        update: {
+          ...(Object.keys(inc).length ? { $inc: inc } : {}),
+          $set: { item_type: type, last_event_at: now },
+        },
+        upsert: true,
+      },
+    })), { ordered: false });
+  }
+
+  // Undo never takes a counter below zero (the original event may predate tracking).
+  const undoOps = [...decrements]
+    .filter(([, { inc }]) => Object.keys(inc).length)
+    .map(([itemId, { inc }]) => ({
+      updateOne: {
+        filter: { item_id: new mongoose.Types.ObjectId(itemId) },
+        update: [{
+          $set: {
+            ...Object.fromEntries(Object.entries(inc).map(([field, n]) => [
+              field,
+              { $max: [0, { $subtract: [{ $ifNull: [`$${field}`, 0] }, n] }] },
+            ])),
+            last_event_at: now,
+            updatedAt: now,
+          },
+        }],
+      },
+    }));
+  if (undoOps.length) await FeedItemStats.collection.bulkWrite(undoOps, { ordered: false });
+};
+
+const recordEvents = async (userId, events, config, { source = 'client' } = {}) => {
   const items = await loadItems(events);
   const known = events.filter((e) => items.has(e.item_id));
   if (!known.length) return { accepted: 0, unknown: events.length, learning: Promise.resolve() };
 
   const docs = known.map((e) => {
     const item = items.get(e.item_id);
-    return { ...e, user_id: userId, item_type: item.type, author_id: item.authorId };
+    return {
+      ...e,
+      undo: Boolean(e.undo),
+      source,
+      user_id: userId,
+      item_type: item.type,
+      author_id: item.authorId,
+    };
   });
   await FeedEvent.insertMany(docs, { ordered: false });
-
-  const increments = new Map();
-  for (const doc of docs) {
-    const entry = increments.get(doc.item_id) || { type: doc.item_type, inc: {} };
-    const field = STAT_FIELD[doc.event];
-    if (field) entry.inc[field] = (entry.inc[field] || 0) + 1;
-    if (doc.dwell_ms) entry.inc.dwell_ms_total = (entry.inc.dwell_ms_total || 0) + doc.dwell_ms;
-    if (doc.watch_ms) entry.inc.watch_ms_total = (entry.inc.watch_ms_total || 0) + doc.watch_ms;
-    increments.set(doc.item_id, entry);
-  }
-  const now = new Date();
-  await FeedItemStats.bulkWrite([...increments].map(([itemId, { type, inc }]) => ({
-    updateOne: {
-      filter: { item_id: itemId },
-      update: {
-        ...(Object.keys(inc).length ? { $inc: inc } : {}),
-        $set: { item_type: type, last_event_at: now },
-      },
-      upsert: true,
-    },
-  })), { ordered: false });
+  await updateStats(docs);
 
   // A hide should take effect on the very next feed request.
-  if (docs.some((d) => d.event === 'hide' || d.event === 'not_interested')) invalidateViewer(userId);
+  if (docs.some((d) => !d.undo && (d.event === 'hide' || d.event === 'not_interested'))) invalidateViewer(userId);
 
   const interactions = docs
     .map((d) => ({ item: items.get(d.item_id), weight: interactionWeight(d) }))
@@ -132,4 +190,4 @@ const recordEvents = async (userId, events, config) => {
   return { accepted: docs.length, unknown: events.length - known.length, learning };
 };
 
-module.exports = { validateEvents, interactionWeight, recordEvents };
+module.exports = { CLIENT_EVENTS, validateEvents, interactionWeight, recordEvents };

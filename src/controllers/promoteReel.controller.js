@@ -5,6 +5,7 @@ const SavedPromoteReel  = require('../models/SavedPromoteReel');
 const sendNotification  = require('../utils/sendNotification');
 const { canViewAuthorContent, getBlockedPrivateUserIds } = require('../utils/privacyVisibility');
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
+const { trackFeedEvent } = require('../feed/track');
 
 // ─── Background HLS for PromoteReel ──────────────────────────────────────────
 async function runPromoteHlsInBackground(app, docId, rawS3Key) {
@@ -405,6 +406,7 @@ exports.likePromoteReel = async (req, res) => {
     doc.likes.push(req.userId);
     doc.likes_count = doc.likes.length;
     await doc.save();
+    trackFeedEvent(req.userId, { itemId: doc._id, itemType: 'promote_reel', event: 'like' });
 
     // Notify owner
     try {
@@ -445,6 +447,7 @@ exports.unlikePromoteReel = async (req, res) => {
     doc.likes      = doc.likes.filter(id => id.toString() !== req.userId.toString());
     doc.likes_count = doc.likes.length;
     await doc.save();
+    trackFeedEvent(req.userId, { itemId: doc._id, itemType: 'promote_reel', event: 'like', undo: true });
 
     res.json({ liked: false, likes_count: doc.likes_count });
   } catch (error) {
@@ -512,6 +515,8 @@ exports.addComment = async (req, res) => {
       },
       text
     });
+
+    trackFeedEvent(req.userId, { itemId: promoteReelId, itemType: 'promote_reel', event: 'comment' });
 
     // Notify promote reel owner
     try {

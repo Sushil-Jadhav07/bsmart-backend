@@ -2,6 +2,7 @@ const TweetComment = require('../models/tweetComment.model');
 const Tweet = require('../models/tweet.model');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
+const { trackFeedEvent } = require('../feed/track');
 
 const toCommentResponse = (commentDoc, currentUserId, replyCount = 0) => {
   const comment = commentDoc.toObject ? commentDoc.toObject() : commentDoc;
@@ -76,6 +77,7 @@ exports.addTweetComment = async (req, res) => {
     });
 
     await Tweet.findByIdAndUpdate(tweetId, { $inc: { commentsCount: 1 } });
+    trackFeedEvent(userId, { itemId: tweetId, itemType: 'tweet', event: 'comment' });
 
     try {
       if (parentComment && parentComment.user.id.toString() !== userId.toString()) {

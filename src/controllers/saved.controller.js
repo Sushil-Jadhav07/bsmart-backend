@@ -7,6 +7,7 @@ const Ad = require('../models/Ad');
 const PromoteReel = require('../models/PromoteReel');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
+const { trackFeedEvent } = require('../feed/track');
 
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
   const cloudfront = process.env.CLOUDFRONT_BASE_URL
@@ -78,6 +79,7 @@ exports.savePost = async (req, res) => {
     }
 
     await User.findByIdAndUpdate(userId, { $inc: { saved_posts_count: 1 } }).catch(() => {});
+    trackFeedEvent(userId, { itemId: postId, itemType: 'post', event: 'save' });
 
     if (String(post.user_id) !== String(userId)) {
       const saver = await User.findById(userId).select('username').lean();
@@ -110,6 +112,7 @@ exports.unsavePost = async (req, res) => {
     const rel = await SavedPost.findOneAndDelete({ user_id: userId, post_id: postId });
     if (!rel) return res.status(400).json({ message: 'Not saved yet' });
     await User.findByIdAndUpdate(userId, { $inc: { saved_posts_count: -1 } }).catch(() => {});
+    trackFeedEvent(userId, { itemId: postId, itemType: 'post', event: 'save', undo: true });
     const saved_count = await SavedPost.countDocuments({ post_id: postId });
     return res.json({ success: true, message: 'Post unsaved', saved: false, saved_count });
   } catch (error) {
@@ -137,6 +140,7 @@ exports.savePromoteReel = async (req, res) => {
       throw e;
     }
 
+    trackFeedEvent(userId, { itemId: promoteReelId, itemType: 'promote_reel', event: 'save' });
     const saved_count = await SavedPromoteReel.countDocuments({ promote_reel_id: promoteReelId });
     return res.json({ success: true, message: 'Promote reel saved', saved: true, saved_count });
   } catch (error) {
@@ -154,6 +158,7 @@ exports.unsavePromoteReel = async (req, res) => {
     }
     const rel = await SavedPromoteReel.findOneAndDelete({ user_id: userId, promote_reel_id: promoteReelId });
     if (!rel) return res.status(400).json({ message: 'Not saved yet' });
+    trackFeedEvent(userId, { itemId: promoteReelId, itemType: 'promote_reel', event: 'save', undo: true });
     const saved_count = await SavedPromoteReel.countDocuments({ promote_reel_id: promoteReelId });
     return res.json({ success: true, message: 'Promote reel unsaved', saved: false, saved_count });
   } catch (error) {
@@ -181,6 +186,7 @@ exports.saveAd = async (req, res) => {
       throw e;
     }
 
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'save' });
     const saved_count = await SavedAd.countDocuments({ ad_id: adId });
     return res.json({ success: true, message: 'Ad saved', saved: true, saved_count });
   } catch (error) {
@@ -198,6 +204,7 @@ exports.unsaveAd = async (req, res) => {
     }
     const rel = await SavedAd.findOneAndDelete({ user_id: userId, ad_id: adId });
     if (!rel) return res.status(400).json({ message: 'Not saved yet' });
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'save', undo: true });
     const saved_count = await SavedAd.countDocuments({ ad_id: adId });
     return res.json({ success: true, message: 'Ad unsaved', saved: false, saved_count });
   } catch (error) {

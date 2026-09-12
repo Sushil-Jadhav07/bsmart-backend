@@ -1,15 +1,16 @@
 const mongoose = require('mongoose');
 
-// One document per client-reported feed interaction. This is the raw signal
-// the personalized feed learns from (impressions, dwell, hides, …), and the
-// only place impressions are recorded — without it engagement *rates* cannot
-// be computed.
+// One document per feed interaction — the raw signal the personalized feed
+// learns from, and the training log for future ranking models. Recorded from
+// two sources: the app (impressions, dwell, hides …) and the existing APIs on
+// the server (likes, comments, saves, views …). This is the only place
+// impressions are recorded; without them engagement *rates* cannot be computed.
 
 const FEED_ITEM_TYPES = ['post', 'reel', 'tweet', 'ad', 'promote_reel'];
 const FEED_SURFACES = ['home', 'sparks', 'buzz', 'spotlight', 'promotions', 'other'];
 const FEED_EVENT_TYPES = [
   'impression', 'view', 'dwell', 'complete',
-  'like', 'comment', 'share', 'save', 'click', 'follow',
+  'like', 'comment', 'share', 'repost', 'save', 'click', 'follow',
   'skip', 'hide', 'not_interested',
 ];
 
@@ -24,6 +25,10 @@ const feedEventSchema = new mongoose.Schema({
   author_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   surface: { type: String, enum: FEED_SURFACES, default: 'other' },
   event: { type: String, enum: FEED_EVENT_TYPES, required: true },
+  // 'client' = reported by the app, 'server' = recorded by an existing API.
+  source: { type: String, enum: ['client', 'server'], default: 'client' },
+  // Reverses an earlier server event (unlike, unsave, un-repost).
+  undo: { type: Boolean, default: false },
   position: { type: Number, default: null },
   dwell_ms: { type: Number, default: null },
   watch_ms: { type: Number, default: null },

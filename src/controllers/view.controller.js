@@ -3,6 +3,7 @@ const Post = require('../models/Post');
 const PostView = require('../models/PostView');
 const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
+const { trackFeedEvent } = require('../feed/track');
 
 exports.addView = async (req, res) => {
   try {
@@ -26,6 +27,7 @@ exports.addView = async (req, res) => {
       await Post.findByIdAndUpdate(postId, { $inc: { views_count: 1 } });
     }
 
+    trackFeedEvent(userId, { itemId: postId, itemType: 'reel', event: 'view' });
     const updated = await Post.findById(postId).select('views_count unique_views_count');
     return res.json({ success: true, views_count: updated.views_count, unique_views_count: updated.unique_views_count });
   } catch (error) {
@@ -58,6 +60,7 @@ exports.completeView = async (req, res) => {
       completedChanged = true;
       await pv.save();
       await Post.findByIdAndUpdate(postId, { $inc: { completed_views_count: 1 } });
+      trackFeedEvent(userId, { itemId: postId, itemType: 'reel', event: 'complete', watchMs: watchTimeMs });
     }
 
     let rewarded = pv.rewarded;

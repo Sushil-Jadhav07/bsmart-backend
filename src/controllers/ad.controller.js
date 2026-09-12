@@ -10,6 +10,7 @@ const runMongoTransaction = require('../utils/runMongoTransaction');
 const sendNotification = require('../utils/sendNotification');
 const { getBlockedPrivateUserIds, canViewAuthorContent, getFollowedUserIds } = require('../utils/privacyVisibility');
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
+const { trackFeedEvent } = require('../feed/track');
 
 // ─── URL resolver — always returns CloudFront URL ─────────────────────────────
 function resolveAdMediaUrl(fileName, fileUrl) {
@@ -550,6 +551,7 @@ exports.recordAdView = async (req, res) => {
     if (rewarded) adInc.total_coins_spent = rewardAmount;
     if (isFirstView) adInc.unique_views_count = 1;
     const updatedAd = await Ad.findByIdAndUpdate(id, { $inc: adInc }, { new: true });
+    trackFeedEvent(userId, { itemId: id, itemType: 'ad', event: 'view' });
 
     return res.json({
       message: rewarded ? 'View recorded and reward credited' : 'View recorded',
@@ -568,6 +570,7 @@ exports.recordClick = async (req, res) => {
     const { id } = req.params;
     const ad = await Ad.findByIdAndUpdate(id, { $inc: { clicks_count: 1 } }, { new: true });
     if (!ad) return res.status(404).json({ message: 'Ad not found' });
+    trackFeedEvent(req.userId, { itemId: ad._id, itemType: 'ad', event: 'click' });
     res.json({ message: 'Click recorded', clicks_count: ad.clicks_count });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -952,6 +955,7 @@ exports.likeAd = async (req, res) => {
       },
     });
 
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'like' });
     const adOwnerId = String(result.ad?.user_id || '');
     if (adOwnerId && adOwnerId !== userId) {
       sendNotification(req.app, {
@@ -1003,6 +1007,8 @@ exports.dislikeAd = async (req, res) => {
       },
     });
 
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'like', undo: true });
+
     return res.json({
       likes_count: result.ad.likes_count,
       is_disliked: true,
@@ -1048,6 +1054,8 @@ exports.saveAd = async (req, res) => {
 
     await SavedAd.create({ user_id: userId, ad_id: adId });
 
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'save' });
+
     return res.json({ success: true, message: 'Ad saved successfully', is_saved: true });
   } catch (error) {
     console.error('[Ad] saveAd error:', error);
@@ -1071,6 +1079,8 @@ exports.unsaveAd = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: 'Saved ad not found', is_saved: false });
     }
+
+    trackFeedEvent(userId, { itemId: adId, itemType: 'ad', event: 'save', undo: true });
 
     return res.json({ success: true, message: 'Ad removed from saved', is_saved: false });
   } catch (error) {

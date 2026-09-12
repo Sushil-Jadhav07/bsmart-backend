@@ -7,6 +7,7 @@ const Follow = require('../models/Follow');
 const User = require('../models/User');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
 const sendNotification = require('../utils/sendNotification');
+const { trackFeedEvent } = require('../feed/track');
 
 const TWEET_AUTHOR_SELECT = 'username full_name avatar_url';
 
@@ -366,6 +367,7 @@ const createTweet = async (req, res) => {
       }
 
       await TweetRepost.create({ user: req.userId, tweet: repostOfId });
+      trackFeedEvent(req.userId, { itemId: repostOfId, itemType: 'tweet', event: 'repost' });
       await Tweet.findByIdAndUpdate(repostOfId, { $inc: { repostsCount: 1 } });
 
       sendTweetRepostedEvent(req, originalTweet);
@@ -403,6 +405,12 @@ const createTweet = async (req, res) => {
 
     if (parentTweet) {
       await sendTweetReplyEvent(req, parentTweet, tweet);
+    }
+    if (parentTweet) {
+      trackFeedEvent(req.userId, { itemId: parentTweet._id, itemType: 'tweet', event: 'comment' });
+    }
+    if (repostTarget && isQuoteRepost) {
+      trackFeedEvent(req.userId, { itemId: repostTarget._id, itemType: 'tweet', event: 'repost' });
     }
 
     if (repostTarget && isQuoteRepost) {
@@ -624,6 +632,7 @@ const likeTweet = async (req, res) => {
 
     if (existingLike) {
       await TweetLike.deleteOne({ _id: existingLike._id });
+      trackFeedEvent(req.userId, { itemId: tweetId, itemType: 'tweet', event: 'like', undo: true });
       tweet.likes = tweet.likes.filter((id) => id.toString() !== req.userId.toString());
       tweet.likesCount = Math.max(0, (tweet.likesCount || 0) - 1);
       await tweet.save();
@@ -643,6 +652,7 @@ const likeTweet = async (req, res) => {
     await tweet.save();
 
     await sendTweetLikeEvent(req, tweet, req.userId);
+    trackFeedEvent(req.userId, { itemId: tweetId, itemType: 'tweet', event: 'like' });
 
     if (tweet.author.toString() !== req.userId.toString()) {
       const liker = await User.findById(req.userId).select('username avatar_url').lean();
@@ -686,6 +696,7 @@ const unlikeTweet = async (req, res) => {
     }
 
     await TweetLike.deleteOne({ _id: existingLike._id });
+    trackFeedEvent(req.userId, { itemId: tweetId, itemType: 'tweet', event: 'like', undo: true });
     tweet.likes = tweet.likes.filter((id) => id.toString() !== req.userId.toString());
     tweet.likesCount = Math.max(0, (tweet.likesCount || 0) - 1);
     await tweet.save();
@@ -730,6 +741,7 @@ const repostTweet = async (req, res) => {
       }
 
       const [decoratedTweet] = await decorateTweets([result.tweet], req.userId);
+      trackFeedEvent(req.userId, { itemId: tweetId, itemType: 'tweet', event: 'repost' });
       sendTweetRepostedEvent(req, result.repostTarget, {
         quoteTweetId: result.tweet._id,
         quoted: true,
@@ -752,6 +764,7 @@ const repostTweet = async (req, res) => {
 
     if (existingRepost) {
       await TweetRepost.deleteOne({ _id: existingRepost._id });
+      trackFeedEvent(req.userId, { itemId: tweetId, itemType: 'tweet', event: 'repost', undo: true });
       tweet.repostsCount = Math.max(0, (tweet.repostsCount || 0) - 1);
       await tweet.save();
 
@@ -762,6 +775,7 @@ const repostTweet = async (req, res) => {
     }
 
     await TweetRepost.create({ user: req.userId, tweet: tweetId });
+    trackFeedEvent(req.userId, { itemId: tweetId, itemType: 'tweet', event: 'repost' });
     tweet.repostsCount = (tweet.repostsCount || 0) + 1;
     await tweet.save();
 

@@ -44,10 +44,18 @@ test('personalized feed API', { skip, timeout: 120000 }, async (t) => {
     await mongod.stop();
   });
 
+  // tweet.routes loads the S3 upload config, which needs a bucket name at require time.
+  process.env.S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || 'feed-test-bucket';
+  const { flushFeedTracking } = require('../../src/feed/track');
+  const { rebuildHistory } = require('../../src/feed/profile');
+  const { DEFAULT_CONFIG } = require('../../src/feed/config');
+
   const app = express();
   app.use(express.json());
   app.use('/api/feed', require('../../src/routes/feed.routes'));
   app.use('/api/posts', require('../../src/routes/post.routes'));
+  app.use('/api/tweets', require('../../src/routes/tweet.routes'));
+  app.use('/api/views', require('../../src/routes/view.routes'));
 
   // ─── Seed ────────────────────────────────────────────────────────────────
   const now = Date.now();
@@ -275,34 +283,83 @@ test('personalized feed API', { skip, timeout: 120000 }, async (t) => {
     assert.equal(new Set(all).size, all.length);
   });
 
-  await t.test('events are stored, counted, learned from, and hides apply immediately', async () => {
+  const learnedProfile = async () => (await FeedProfile.findOne({ user_id: u.viewer._id }).lean())?.learned || {};
+  const waitFor = async (check) => {
+    for (let i = 0; i < 100; i++) {
+      const value = await check();
+      if (value) return value;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error('timed out waiting for background work');
+  };
+
+  await t.test('client events are stored, counted, learned from, and hides apply immediately', async () => {
     const res = await send('post', '/api/feed/events', {
       events: [
         { item_id: id(p.far), item_type: 'post', event: 'hide', surface: 'home' },
         { item_id: id(p.friend), item_type: 'post', event: 'impression', surface: 'home', position: 1 },
-        { item_id: id(r.far), item_type: 'post', event: 'like', surface: 'sparks' }, // client says post, it is a reel
-        { item_id: 'bad', item_type: 'post', event: 'like' },
+        // client says post, it is a reel
+        { item_id: id(r.far), item_type: 'post', event: 'dwell', surface: 'sparks', dwell_ms: 20000, completion_pct: 100 },
+        { item_id: 'bad', item_type: 'post', event: 'impression' },
+        { item_id: id(r.far), item_type: 'reel', event: 'like' }, // likes come from the like API, not the app
       ],
     });
     assert.equal(res.status, 202);
-    assert.deepEqual({ accepted: res.body.accepted, rejected: res.body.rejected }, { accepted: 3, rejected: 1 });
+    assert.deepEqual({ accepted: res.body.accepted, rejected: res.body.rejected }, { accepted: 3, rejected: 2 });
+    assert.match(res.body.errors.find((e) => e.index === 4).reason, /recorded by the server/);
 
     const stored = await FeedEvent.findOne({ item_id: r.far._id }).lean();
     assert.equal(stored.item_type, 'reel');
+    assert.equal(stored.source, 'client');
     assert.equal(String(stored.author_id), id(u.far));
     const stats = await FeedItemStats.findOne({ item_id: p.friend._id }).lean();
     assert.equal(stats.impressions, 1);
 
-    let learned;
-    for (let i = 0; i < 50 && !learned?.interests?.food; i++) {
-      learned = (await FeedProfile.findOne({ user_id: u.viewer._id }).lean())?.learned;
-      if (!learned?.interests?.food) await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    assert.ok(learned.interests.food > 1.9, 'liking a #food reel teaches "food"');
-    assert.ok(learned.authors[id(u.far)] < 0, 'hide outweighs like for that author');
+    const learned = await waitFor(async () => {
+      const value = await learnedProfile();
+      return value.interests?.food ? value : null;
+    });
+    assert.ok(learned.interests.food > 1.5, 'watching a #food reel to the end teaches "food"');
+    assert.ok(learned.authors[id(u.far)] < 0, 'hide outweighs the watch for that author');
 
     const again = await get('/api/feed/home?limit=50');
     assert.ok(!ids(again).includes(id(p.far)), 'hidden post is gone');
+  });
+
+  await t.test('existing APIs record server events the feed learns from, and undo reverses them', async () => {
+    assert.equal((await send('post', `/api/posts/${id(p.cricket)}/like`, {})).status, 200);
+    assert.equal((await send('post', `/api/posts/${id(p.local)}/save`, {})).status, 200);
+    assert.equal((await send('post', `/api/tweets/${id(tw.en)}/like`, {})).status, 200);
+    assert.equal((await send('post', '/api/views', { postId: id(r.friend) })).status, 200);
+    assert.equal((await send('post', '/api/views/complete', { postId: id(r.friend), watchTimeMs: 9000 })).status, 200);
+    await flushFeedTracking();
+
+    const server = await FeedEvent.find({ user_id: u.viewer._id, source: 'server' }).lean();
+    assert.deepEqual(
+      server.map((e) => `${e.event}:${e.item_type}`).sort(),
+      ['complete:reel', 'like:post', 'like:tweet', 'save:post', 'view:reel']
+    );
+    assert.equal(server.find((e) => e.event === 'complete').watch_ms, 9000);
+    assert.equal((await FeedItemStats.findOne({ item_id: p.local._id }).lean()).saves, 1);
+    assert.ok((await learnedProfile()).interests.cricket > 1.9, 'the like API taught "cricket"');
+
+    assert.equal((await send('post', `/api/posts/${id(p.cricket)}/unlike`, {})).status, 200);
+    assert.equal((await send('post', `/api/posts/${id(p.local)}/unsave`, {})).status, 200);
+    await flushFeedTracking();
+
+    assert.ok(Math.abs((await learnedProfile()).interests.cricket || 0) < 0.1, 'unlike reverses the like');
+    assert.equal((await FeedItemStats.findOne({ item_id: p.local._id }).lean()).saves, 0);
+    assert.ok(await FeedEvent.exists({ source: 'server', event: 'save', undo: true }));
+  });
+
+  await t.test('profile history skips interactions already learned from server events', async () => {
+    // r.far is now liked in Post.likes *and* logged as a server event.
+    assert.equal((await send('post', `/api/posts/${id(r.far)}/like`, {})).status, 200);
+    await flushFeedTracking();
+
+    const history = await rebuildHistory(u.viewer, DEFAULT_CONFIG);
+    assert.equal(history.interests.food, undefined, 'the tracked like and reel views are not counted again');
+    assert.ok(history.interests.cricket > 0, 'likes from before tracking still count');
   });
 
   await t.test('events endpoint validates the batch', async () => {

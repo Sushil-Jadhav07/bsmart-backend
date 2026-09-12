@@ -1,6 +1,7 @@
 const Post = require('../models/Post');
 const sendNotification = require('../utils/sendNotification');
 const User = require('../models/User'); // Need User model to get username
+const { trackFeedEvent } = require('../feed/track');
 
 // @desc    Like a post
 // @route   POST /api/posts/:id/like
@@ -25,6 +26,8 @@ exports.likePost = async (req, res) => {
     post.likes.push(userId);
     post.likes_count = post.likes.length;
     await post.save();
+
+    trackFeedEvent(userId, { itemId: post._id, itemType: 'post', event: 'like' });
 
     // Notify post owner when someone likes (skip if liker is owner)
     if (post.user_id.toString() !== userId.toString()) {
@@ -75,6 +78,8 @@ exports.unlikePost = async (req, res) => {
     post.likes = post.likes.filter(id => id.toString() !== userId.toString());
     post.likes_count = post.likes.length;
     await post.save();
+
+    trackFeedEvent(userId, { itemId: post._id, itemType: 'post', event: 'like', undo: true });
 
     res.json({
       message: 'Unliked',

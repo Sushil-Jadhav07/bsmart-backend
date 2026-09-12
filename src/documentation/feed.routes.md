@@ -64,16 +64,40 @@ Query: `limit` (page size, ≤ 50, default 20), `page`, `cursor`, `lang`, `debug
   `recommended`. Useful for "Why am I seeing this?".
 * `?debug=true` adds `score`, `terms` and `penalty` to `feed_meta` — **admins only**.
 
-### `POST /api/feed/events` — clients must send these
+### Where feed signals come from
 
-The ranker learns from what people actually do in the feed. Batch up to 100
-events per request (every few seconds while scrolling, and on app background).
+The feed learns from two sources. Both land in the `feedevents` collection
+(field `source`: `server` or `client`), which is also the training log for
+future ranking models.
+
+**Recorded automatically by the backend** — the existing APIs log these the
+moment they are called, so the app does **not** send them:
+
+| Existing API                                              | Feed event          |
+|-----------------------------------------------------------|---------------------|
+| `POST /api/posts/:id/like`, `/unlike`                     | `like` / undo       |
+| `POST /api/posts/:postId/comments`                        | `comment`           |
+| save / unsave of posts, promote reels, ads (all routes)   | `save` / undo       |
+| `POST /api/views`, `POST /api/views/complete` (reels)     | `view`, `complete` (with watch time) |
+| `POST /api/tweets/:tweetId/like`, `/unlike`               | `like` / undo       |
+| `POST /api/tweets/repost`, reposts and quotes via `POST /api/tweets` | `repost` / undo |
+| replies via `POST /api/tweets`, `POST /api/tweets/:tweetId/comments` | `comment`   |
+| `POST /api/promote-reels/:id/like`, `/unlike`, `/:id/comments` | `like` / undo, `comment` |
+| `POST /api/ads/:id/view`, `/:id/click`, `/:id/comments`   | `view`, `click`, `comment` |
+| ad like / like reversal (`likeAd` / `dislikeAd`)          | `like` / undo       |
+
+These are queued in memory and written once a second per user, so they never
+slow the API down. Admins can switch them off with `events.serverTracking`.
+
+### `POST /api/feed/events` — what the app sends
+
+Only what the backend cannot see. Batch up to 100 events per request (every few
+seconds while scrolling, and on app background):
 
 ```json
 { "events": [
   { "item_id": "…", "item_type": "reel", "event": "impression", "surface": "sparks", "position": 3 },
-  { "item_id": "…", "item_type": "reel", "event": "view", "surface": "sparks", "watch_ms": 8200, "completion_pct": 75 },
-  { "item_id": "…", "item_type": "post", "event": "dwell", "surface": "home", "dwell_ms": 4200 },
+  { "item_id": "…", "item_type": "reel", "event": "dwell", "surface": "sparks", "dwell_ms": 8200, "completion_pct": 75 },
   { "item_id": "…", "item_type": "post", "event": "hide", "surface": "home" }
 ] }
 ```
@@ -81,14 +105,15 @@ events per request (every few seconds while scrolling, and on app background).
 | Event            | When to send                                                    |
 |------------------|-----------------------------------------------------------------|
 | `impression`     | item ≥ 50% visible for the first time in a session              |
-| `dwell`          | item leaves the screen, with `dwell_ms`                         |
-| `view`           | video stopped, with `watch_ms` and `completion_pct`             |
-| `complete`       | video watched to the end                                        |
-| `like` `comment` `share` `save` `click` `follow` | the action, from the feed               |
+| `dwell`          | item leaves the screen, with `dwell_ms`; for videos also `completion_pct` |
 | `skip`           | scrolled past in under ~1 second                                |
 | `hide` / `not_interested` | user feedback; the item disappears on the next request |
+| `share`          | shared outside the app (system share sheet)                     |
+| `click`          | opened a post/reel/tweet detail (ad clicks go to `POST /api/ads/:id/click`) |
 
-Response `202 { accepted, rejected, errors }`. Events for unknown items are ignored.
+Response `202 { accepted, rejected, errors }`. Events the backend records itself
+(`like`, `comment`, `save`, `repost`, `view`, `complete`, ad `click`) are rejected
+with a reason, so nothing is counted twice. Events for unknown items are ignored.
 **Impressions matter most:** without them engagement can only be measured as raw
 counts, not rates, and the "seen" penalty cannot work.
 
@@ -98,13 +123,13 @@ counts, not rates, and the "seen" penalty cannot work.
 { "preferred_languages": ["hi", "en"], "interests": ["cricket", "travel"] }
 ```
 
-For onboarding and settings. Languages accept codes (`hi`, `en`, `ta`, `hi-Latn`
-for Hinglish) or names (`Hindi`). Explicit languages override inference; send `[]`
-to go back to inferred. `GET` also returns what the feed has inferred.
+For onboarding and settings. Languages accept codes (`hi`, `en`, `mr`, `ta`,
+`hi-Latn` for Hinglish) or names (`Hindi`). Explicit languages override inference;
+send `[]` to go back to inferred. `GET` also returns what the feed has inferred.
 
 ### `GET / PUT /api/feed/admin/config` (admin only)
 
-Tune weights, half-lives, caps and surface mappings **without a deploy**:
+Tune weights, half-lives, caps, surface mappings and server tracking **without a deploy**:
 
 ```json
 { "overrides": { "surfaces": { "home": { "weights": { "affinity": 0.35 } } }, "exploration": { "rate": 0.1 } } }
@@ -168,29 +193,57 @@ viewer per day. Exhausted budgets are down-ranked, or removed when the vendor se
 |-------------------|--------------------------------------------------------------------------------------|
 | Following         | `Follow`                                                                             |
 | Location          | `User.address` (city/state/country), `User.location` (lat/lng, name), `Post.location` |
-| Language          | detected from captions/tweets by script (Devanagari, Tamil, Bengali … and Hinglish); viewer languages from preferences, else inferred from engagement, else `Accept-Language` |
+| Language          | detected from captions/tweets (see below); viewer languages from preferences, else inferred from engagement, else `Accept-Language` |
 | Interests         | hashtags and `tags` on content; `User.ad_interests`; declared interests              |
-| Watch behaviour   | `PostView` (completion, watch time, rewatches) and feed `view`/`dwell` events        |
-| Engagement        | likes/comments/reposts counters, `SavedPost`, `TweetLike`, `TweetRepost`, feed events |
+| Watch behaviour   | reel views/completions (`/api/views`), `PostView` history, and app `dwell` events    |
+| Engagement        | likes, comments, saves, reposts (server events), counters on the content             |
 | Negative feedback | `hide`/`not_interested`/`skip` events, `ContentReport`, `Block`, `Mute`              |
 
 New users are personalised from their first request: the profile is bootstrapped
 from existing likes, saves, reel watches, tweet likes/reposts and their own posts
-(last 90 days), and rebuilt daily. Feed events are folded in continuously and decay
-with a 14-day half-life.
+(last 90 days), and rebuilt daily. Anything already logged as a server event is
+skipped by the rebuild, so it is never counted twice. Events are folded in as they
+arrive and decay with a 14-day half-life; unlike/unsave/un-repost reverse them.
+
+### Language detection (`src/feed/text.js`)
+
+1. **Script** — Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam,
+   Odia and Urdu are identified by their script alone.
+2. **Devanagari** — Google's CLD3 model (`cld3-asm`, WebAssembly) decides Hindi,
+   Marathi or Nepali.
+3. **Latin script** — Hinglish (`hi-Latn`) when the text has enough common Hindi
+   function words or CLD3 says so; otherwise English.
+
+Results are memoised (~3 µs per repeated caption, ~0.3 ms for a new one). If the
+model fails to load, Devanagari falls back to Hindi and the feed keeps working.
+
+Measured on short, hand-written social captions (hard cases only: Hindi, Marathi,
+Nepali, English, Hinglish):
+
+| Detector                    | Tuning set (76) | Held-out set (40) |
+|-----------------------------|-----------------|-------------------|
+| Script-only (previous)      | 49%             | 55%               |
+| **Hybrid (current)**        | **97%**         | **85%**           |
+
+Held-out detail: English 12/12, Hinglish 10/12, Hindi 7/8, Marathi 5/8. Very
+short Marathi captions are the weak spot. These sentences were written for the
+test, not taken from bSmart — measure again on real captions.
 
 ---
 
-## 5. New collections
+## 5. New collections, config and dependency
 
 | Collection      | Purpose                                                     |
 |-----------------|-------------------------------------------------------------|
-| `feedevents`    | raw client events; TTL index, 90 days (`FEED_EVENT_RETENTION_DAYS`) |
-| `feeditemstats` | per-item counters (impressions, completions, hides …)       |
+| `feedevents`    | server + client events (`source`, `undo`); TTL index, 90 days (`FEED_EVENT_RETENTION_DAYS`) |
+| `feeditemstats` | per-item counters (impressions, saves, completions, hides …) |
 | `feedprofiles`  | per-user history + learned signals, preferences             |
 | `feedsettings`  | admin overrides for the ranking config                      |
 
 Indexes on these are created automatically. **No existing schema was changed.**
+The existing controllers only gained one-line `trackFeedEvent(...)` calls.
+
+New dependency: `cld3-asm` (MIT, WebAssembly build of Google's CLD3, no native build step).
 
 Environment variables (all optional): `FEED_EVENT_RETENTION_DAYS`,
 `PERSONALIZED_FEED_RATE_LIMIT_MAX` / `_WINDOW_MS` (default 90/min per user),
@@ -204,19 +257,21 @@ Environment variables (all optional): `FEED_EVENT_RETENTION_DAYS`,
   blocks and mutes, but there is no moderation status on posts yet. When the
   moderation service lands, add its "approved" condition to `baseFilter` in
   `candidates.js` and to `hydrate.js`.
-* **Caches are per process** (viewer context, ranked sessions, settings) — same
-  trade-off as `middleware/rateLimit.js`. Fine for a single PM2 process; move to
-  Redis before running several API instances.
+* **Caches and the server-event queue are per process** (viewer context, ranked
+  sessions, settings, events waiting to be written — at most ~1 second of events
+  is lost on a restart). Fine for a single PM2 process; move to Redis before
+  running several API instances.
 * **Recommended indexes** on existing collections (not added automatically,
   to avoid index builds on large production collections during deploy):
   `posts {type:1, isDeleted:1, createdAt:-1}`, `posts {likes:1}`,
   `tweets {parentTweet:1, isDeleted:1, createdAt:-1}`, `blocks {blocked_id:1}`,
   `users {"address.city":1}`.
-* Language detection is script-based: it cannot tell Hindi from Marathi (both
-  Devanagari) or English from other Latin-script languages.
+* Language detection is weakest on very short Marathi captions, and only knows
+  Hinglish as romanised Hindi (not romanised Marathi, Tamil …).
 * Ad `device_types` targeting is not applied (the API does not know the device).
-* Phase 2 ideas: collaborative filtering ("people like you watched"), learned
-  ranking model (LightGBM) trained on `feedevents`, A/B testing of configs.
+* Next AI/ML steps: content embeddings (text + image) for topic understanding
+  beyond hashtags, collaborative filtering, A/B testing, and a learned ranking
+  model (LightGBM) trained on `feedevents` once a few weeks of data exist.
 
 ---
 
@@ -228,7 +283,8 @@ npm run test:feed
 
 Unit tests cover scoring, text/language, geo, diversity, targeting, config
 validation and event handling. `test/feed/feed.integration.test.js` runs the whole
-API against an in-memory MongoDB; it is skipped unless the tooling is installed:
+API against an in-memory MongoDB — including the real like, save, tweet and reel
+view APIs for server tracking; it is skipped unless the tooling is installed:
 
 ```bash
 npm install --no-save mongodb-memory-server supertest
