@@ -12,18 +12,21 @@ Existing endpoints (`/api/posts/feed`, `/api/posts/reels/mixed`, `/api/tweets/fe
 
 ## 1. Surfaces
 
-| Surface      | Content                                   | Ranking emphasis                        | Promotions             |
-|--------------|-------------------------------------------|-----------------------------------------|------------------------|
-| `home`       | posts, reels, tweets                      | following, interests, freshness         | 1 every 5 (after 3rd)  |
-| `sparks`     | reels (short video)                       | watch completion, interests, engagement | video only, 1 every 4  |
-| `buzz`       | tweet-style posts                         | freshness, following                    | none                   |
-| `spotlight`  | posts, reels, tweets from **unfollowed** creators | engagement / trending, interests  | none                   |
-| `promotions` | ads + promote reels                       | targeting fit, interests, locale        | —                      |
+Named as in the app:
 
-> **Assumption to confirm with product:** the scope named Sparks, Buzz, Spotlight
-> and Promotions without defining them. The mapping above is a best guess and is
-> pure configuration — `surfaces.<name>.sources` in `src/feed/config.js` (or the
-> admin config API) changes it without code changes.
+| Surface      | App page     | Content                                    | Ranking emphasis                        | Mixed-in promotions    |
+|--------------|--------------|--------------------------------------------|-----------------------------------------|------------------------|
+| `home`       | Home         | posts, reels, tweets                       | following, interests, freshness         | 1 every 5 (after 3rd)  |
+| `moments`    | Moments      | photo posts                                | following, interests, freshness         | 1 every 5 (after 3rd)  |
+| `bsparks`    | bSparks      | reels (short video) — `sparks` also accepted | watch completion, interests, engagement | video only, 1 every 4  |
+| `buzz`       | Buzz         | tweet-style posts                          | freshness, following                    | none                   |
+| `spotlights` | Spotlights   | vendor ads; `?category=` for one tab       | targeting fit, interests, locale        | —                      |
+| `campaigns`  | Campaigns    | promote reels with products                | targeting fit, interests, locale        | —                      |
+| `explore`    | (not in the app yet) | posts, reels, tweets from **unfollowed** creators | engagement / trending, interests | none          |
+| `promotions` | —            | ads + promote reels (what is mixed into the organic feeds) | targeting fit, interests, locale | —         |
+
+Which content each surface lists is configuration —
+`surfaces.<name>.sources` in `src/feed/config.js`, or the admin config API.
 
 ---
 
@@ -182,8 +185,10 @@ the viewer does not follow, so new posts get measured at all.
 
 **Promotions** (`src/feed/promotions.js`): only `active` ads inside their
 `budget.start_date`/`end_date`, matching `targeting` (geo, age, gender) and
-`scheduling.delivery_time_slots` (IST by default), capped at 3 impressions per
-viewer per day. Exhausted budgets are down-ranked, or removed when the vendor set
+`scheduling.delivery_time_slots` (IST by default). Ads mixed into Home, Moments
+and bSparks are capped at 3 impressions per viewer per day; the Spotlights and
+Campaigns pages are not capped, because people browse them on purpose.
+Exhausted budgets are down-ranked, or removed when the vendor set
 `auto_stop_on_budget_exhausted`. Language targeting is a soft boost.
 
 ---

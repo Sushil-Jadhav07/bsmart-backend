@@ -31,7 +31,7 @@ const feedEventsRateLimit = rateLimit({
  * tags:
  *   name: Personalized Feed
  *   description: |
- *     Per-user ranked feeds (Home, Sparks, Buzz, Spotlight, Promotions) personalised by location,
+ *     Per-user ranked feeds (Home, Moments, bSparks, Buzz, Spotlights, Campaigns, Explore) personalised by location,
  *     language, interests, following, watch behaviour, engagement, freshness and trending.
  *     Clients should report impressions and interactions to `POST /api/feed/events`.
  */
@@ -91,7 +91,7 @@ const feedEventsRateLimit = rateLimit({
  *         event:
  *           type: string
  *           enum: [impression, view, dwell, complete, like, comment, share, save, click, follow, skip, hide, not_interested]
- *         surface: { type: string, enum: [home, sparks, buzz, spotlight, promotions, other] }
+ *         surface: { type: string, enum: [home, moments, bsparks, buzz, spotlights, campaigns, explore, promotions, other] }
  *         position: { type: integer, description: 1-based position in the feed }
  *         dwell_ms: { type: number, description: Time the item was on screen }
  *         watch_ms: { type: number, description: Video watch time }
@@ -233,12 +233,15 @@ router.put('/admin/config', requireAdmin, updateFeedAdminConfig);
  *   get:
  *     summary: Get a personalized feed
  *     description: |
- *       Surfaces:
+ *       Surfaces (named as in the app):
  *       - `home` — posts, reels and tweets, with promotions interleaved
- *       - `sparks` — reels (short video), with video promotions interleaved
+ *       - `moments` — photo posts, with promotions interleaved
+ *       - `bsparks` — reels (short video), with video promotions interleaved (`sparks` also accepted)
  *       - `buzz` — tweet-style posts
- *       - `spotlight` — trending / discovery from creators the viewer does not follow
- *       - `promotions` — ads and promote reels ranked by targeting and interest
+ *       - `spotlights` — vendor ads, optionally one `category` (the Spotlights tabs)
+ *       - `campaigns` — promote reels with products
+ *       - `explore` — trending / discovery from creators the viewer does not follow
+ *       - `promotions` — ads and promote reels together (what is mixed into the organic feeds)
  *
  *       Page 1 always re-ranks (pull-to-refresh). Continue with `cursor` (preferred) or `page`;
  *       both read from the same cached ranking for ~10 minutes, so pages never overlap.
@@ -250,7 +253,7 @@ router.put('/admin/config', requireAdmin, updateFeedAdminConfig);
  *       - in: path
  *         name: surface
  *         required: true
- *         schema: { type: string, enum: [home, sparks, buzz, spotlight, promotions] }
+ *         schema: { type: string, enum: [home, moments, bsparks, buzz, spotlights, campaigns, explore, promotions] }
  *       - in: query
  *         name: limit
  *         schema: { type: integer, default: 20, maximum: 50 }
@@ -266,6 +269,10 @@ router.put('/admin/config', requireAdmin, updateFeedAdminConfig);
  *         name: lang
  *         schema: { type: string, example: "hi,en" }
  *         description: Language hint (defaults to the Accept-Language header). Ignored when the user set preferred languages.
+ *       - in: query
+ *         name: category
+ *         schema: { type: string, example: "Beauty & Personal Care" }
+ *         description: Spotlights only — one ad category (as in the Spotlights tabs); "All" or empty for every category
  *       - in: query
  *         name: debug
  *         schema: { type: boolean }

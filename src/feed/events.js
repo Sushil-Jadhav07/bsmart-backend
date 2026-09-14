@@ -17,10 +17,16 @@ const PromoteReel = require('../models/PromoteReel');
 const { describeItem, postItemType } = require('./items');
 const { EVENT_WEIGHTS, learnFromInteractions, invalidateViewer } = require('./profile');
 const { loadAutoTopics, mergeTopics } = require('./autoTopics');
+const { SURFACE_ALIASES } = require('./config');
 
 const { FEED_ITEM_TYPES, FEED_SURFACES, FEED_EVENT_TYPES } = FeedEvent;
 const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
 const MAX_MS = 60 * 60 * 1000;
+
+const canonicalSurface = (name) => {
+  const surface = SURFACE_ALIASES[name] || name;
+  return FEED_SURFACES.includes(surface) ? surface : 'other';
+};
 
 // Events the app may send. Everything else is recorded by the backend when the
 // existing API is called — if the app sent those too they would count twice.
@@ -62,7 +68,7 @@ const validateEvents = (raw, { source = 'client' } = {}) => {
       item_id: String(event.item_id),
       item_type: event.item_type,
       event: event.event,
-      surface: FEED_SURFACES.includes(event.surface) ? event.surface : 'other',
+      surface: canonicalSurface(event.surface),
       position: clamp(event.position, 0, 10000, true),
       dwell_ms: clamp(event.dwell_ms, 0, MAX_MS),
       watch_ms: clamp(event.watch_ms, 0, MAX_MS),

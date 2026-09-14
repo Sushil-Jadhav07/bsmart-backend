@@ -5,9 +5,11 @@ content is about — from its caption **and** its image — and uses that to
 personalise the feed:
 
 1. **Embeddings.** Every post, reel, tweet, ad and promote reel gets a 512-number
-   vector. Captions (about 50 languages, including Hindi, Marathi and Tamil) and
-   images share one space (CLIP ViT-B/32 + its multilingual text encoder), so a
-   cricket photo and the caption "कल का मैच" land close together.
+   vector. Captions and images share one space (CLIP ViT-B/32 + its multilingual
+   text encoder), so a cricket photo and the caption "कल का मैच" land close
+   together. The text encoder was trained on about 50 languages, including
+   Hindi, Marathi, Gujarati and Urdu. Telugu, Tamil, Bengali, Kannada, Malayalam
+   and Punjabi captions still work, but less well; images are unaffected.
 2. **Auto-tags.** Each item is compared with an interest list
    (`app/taxonomy.json`) and tagged, e.g. `food 0.82`. Posts without hashtags,
    or with no caption at all, still get topics.

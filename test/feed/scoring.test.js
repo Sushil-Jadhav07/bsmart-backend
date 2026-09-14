@@ -120,11 +120,11 @@ test('scoreCandidate: reasons explain the ranking', () => {
   assert.ok(!own.reasons.includes('following'));
 });
 
-test('scoreCandidate: spotlight ignores affinity', () => {
+test('scoreCandidate: explore ignores affinity', () => {
   const ctxFollow = context({ followedSet: new Set(['author-1']) });
-  assert.equal(score(candidate(), ctxFollow, 'spotlight').terms.affinity > 0, true);
+  assert.equal(score(candidate(), ctxFollow, 'explore').terms.affinity > 0, true);
   assert.equal(
-    score(candidate(), ctxFollow, 'spotlight').score,
-    score(candidate(), context(), 'spotlight').score
+    score(candidate(), ctxFollow, 'explore').score,
+    score(candidate(), context(), 'explore').score
   );
 });

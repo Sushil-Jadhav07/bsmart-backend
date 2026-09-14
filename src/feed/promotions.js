@@ -1,6 +1,8 @@
 // ─── Promotions: ads + promote reels ────────────────────────────────────────
 // Ads carry targeting (geo, age, gender, language, interests, schedule) that
 // is enforced here; promote reels have none and are ranked on relevance only.
+// Used for the Spotlights (ads) and Campaigns (promote reels) pages, and for
+// the promotions mixed into Home, Moments and bSparks.
 
 const Ad = require('../models/Ad');
 const PromoteReel = require('../models/PromoteReel');
@@ -12,6 +14,9 @@ const { normalizeLanguage } = require('./text');
 const { norm } = require('./geo');
 const { AUTHOR_SELECT, oids } = require('./candidates');
 const { loadItemStats } = require('./stats');
+
+const escapeRe = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const exactRe = (value) => new RegExp(`^\\s*${escapeRe(value)}\\s*$`, 'i');
 
 // ─── Targeting (pure) ───────────────────────────────────────────────────────
 const DEFAULT_AGE_RANGE = { min: 13, max: 65 };
@@ -88,45 +93,51 @@ const budgetFactor = (ad, cfg) => {
 };
 
 // ─── Ranking ────────────────────────────────────────────────────────────────
-const rankPromotions = async (ctx, config, { limit, videoOnly = false } = {}) => {
+// surfaceCfg decides what is listed (ads, promote reels or both), the weights,
+// and whether the daily frequency cap applies (it does for promotions mixed
+// into other feeds, not for pages where people browse ads on purpose).
+const rankPromotions = async (ctx, config, {
+  limit, videoOnly = false, surfaceCfg = config.surfaces.promotions, category = '',
+} = {}) => {
   const now = Date.now();
   const nowDate = new Date(now);
   const cfg = config.promotions;
-  const surfaceCfg = config.surfaces.promotions;
   const pool = config.candidates.promotionPoolLimit;
 
   const exclude = [...ctx.excludedAuthorIds];
   if (!surfaceCfg.includeOwn) exclude.push(ctx.userId);
   const authorFilter = exclude.length ? { user_id: { $nin: oids(exclude) } } : {};
 
+  const adClauses = [
+    { $or: [{ 'budget.start_date': null }, { 'budget.start_date': { $lte: nowDate } }] },
+    { $or: [{ 'budget.end_date': null }, { 'budget.end_date': { $gte: nowDate } }] },
+  ];
+  if (category) adClauses.push({ $or: [{ category: exactRe(category) }, { sub_category: exactRe(category) }] });
+
   const [ads, promoteReels, impressions] = await Promise.all([
     surfaceCfg.sources.includes('ad')
-      ? Ad.find({
-        status: 'active',
-        isDeleted: false,
-        ...authorFilter,
-        $and: [
-          { $or: [{ 'budget.start_date': null }, { 'budget.start_date': { $lte: nowDate } }] },
-          { $or: [{ 'budget.end_date': null }, { 'budget.end_date': { $gte: nowDate } }] },
-        ],
-      }).sort({ createdAt: -1 }).limit(pool).select('-likes -dislikes').populate('user_id', AUTHOR_SELECT).lean()
+      ? Ad.find({ status: 'active', isDeleted: false, ...authorFilter, $and: adClauses })
+        .sort({ createdAt: -1 }).limit(pool).select('-likes -dislikes').populate('user_id', AUTHOR_SELECT).lean()
       : [],
-    surfaceCfg.sources.includes('promote_reel')
+    // Promote reels have no category, so a category filter leaves them out.
+    surfaceCfg.sources.includes('promote_reel') && !category
       ? PromoteReel.find({ isDeleted: false, ...authorFilter })
         .sort({ createdAt: -1 }).limit(pool).select('-likes -latest_comments -people_tags')
         .populate('user_id', AUTHOR_SELECT).lean()
       : [],
-    FeedEvent.aggregate([
-      {
-        $match: {
-          user_id: ctx.userObjectId,
-          event: 'impression',
-          item_type: { $in: ['ad', 'promote_reel'] },
-          createdAt: { $gte: new Date(now - 864e5) },
+    surfaceCfg.frequencyCap
+      ? FeedEvent.aggregate([
+        {
+          $match: {
+            user_id: ctx.userObjectId,
+            event: 'impression',
+            item_type: { $in: ['ad', 'promote_reel'] },
+            createdAt: { $gte: new Date(now - 864e5) },
+          },
         },
-      },
-      { $group: { _id: '$item_id', n: { $sum: 1 } } },
-    ]),
+        { $group: { _id: '$item_id', n: { $sum: 1 } } },
+      ])
+      : [],
   ]);
 
   const capped = new Set(impressions.filter((i) => i.n >= cfg.frequencyCapPerDay).map((i) => String(i._id)));

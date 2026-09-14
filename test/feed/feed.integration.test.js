@@ -158,7 +158,8 @@ test('personalized feed API', { skip, timeout: 120000 }, async (t) => {
 
   // ─── Tests ───────────────────────────────────────────────────────────────
   await t.test('rejects an unknown surface and an invalid cursor', async () => {
-    assert.equal((await get('/api/feed/explore')).status, 400);
+    assert.equal((await get('/api/feed/stories')).status, 400);
+    assert.equal((await get('/api/feed/spotlight')).status, 400, 'the old discovery name is retired');
     assert.equal((await get('/api/feed/home?cursor=nonsense')).status, 400);
   });
 
@@ -218,8 +219,8 @@ test('personalized feed API', { skip, timeout: 120000 }, async (t) => {
     assert.equal(viewerRes.body.data[0].feed_meta.score, undefined);
   });
 
-  await t.test('sparks is reels only', async () => {
-    const res = await get('/api/feed/sparks?limit=50');
+  await t.test('bsparks is reels only, and the old name "sparks" still works', async () => {
+    const res = await get('/api/feed/bsparks?limit=50');
     assert.equal(res.status, 200);
     for (const item of res.body.data) {
       assert.ok(item.item_type === 'reel' || item.feed_meta.reasons.includes('sponsored'), item.item_type);
@@ -227,10 +228,56 @@ test('personalized feed API', { skip, timeout: 120000 }, async (t) => {
     const shown = ids(res);
     assert.ok(shown.includes(id(r.friend)) && shown.includes(id(r.far)));
     assert.ok(!shown.includes(id(r.blocked)));
+
+    const alias = await get('/api/feed/sparks?limit=5');
+    assert.equal(alias.status, 200);
+    assert.equal(alias.body.surface, 'bsparks');
   });
 
-  await t.test('spotlight only shows creators the viewer does not follow', async () => {
-    const res = await get('/api/feed/spotlight?limit=50');
+  await t.test('moments is photo posts only', async () => {
+    const res = await get('/api/feed/moments?limit=50');
+    assert.equal(res.status, 200);
+    const organic = res.body.data.filter((item) => !item.feed_meta.reasons.includes('sponsored'));
+    assert.ok(organic.length > 0);
+    assert.ok(organic.every((item) => item.item_type === 'post'));
+    assert.ok(ids(res).includes(id(p.friend)));
+  });
+
+  await t.test('spotlights is ads only, and filters by category', async () => {
+    const all = await get('/api/feed/spotlights?limit=50');
+    assert.equal(all.status, 200);
+    assert.ok(all.body.data.every((item) => item.item_type === 'ad'));
+    const shown = ids(all);
+    assert.ok(shown.includes(id(a.pune)) && shown.includes(id(a.general)));
+    for (const doc of [a.delhi, a.female, a.young, a.paused, a.expired, a.blocked]) {
+      assert.ok(!shown.includes(id(doc)), `ineligible ad ${id(doc)} shown`);
+    }
+
+    const kitchen = await get(`/api/feed/spotlights?limit=50&category=${encodeURIComponent('Home & Kitchen')}`);
+    assert.deepEqual(ids(kitchen), [id(a.general)]);
+    assert.equal(kitchen.body.category, 'Home & Kitchen');
+    assert.deepEqual(ids(await get('/api/feed/spotlights?category=Books')), []);
+    assert.equal(ids(await get('/api/feed/spotlights?limit=50&category=All')).length, shown.length);
+  });
+
+  await t.test('campaigns is promote reels only', async () => {
+    const res = await get('/api/feed/campaigns?limit=50');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.data.map((item) => item.item_type), ['promote_reel']);
+    assert.equal(String(res.body.data[0].promote_reel_id), id(promo));
+  });
+
+  await t.test('the daily ad cap applies to ads mixed into feeds, not to browsing Spotlights', async () => {
+    const capped = await ad(u.vendor2, { ad_title: 'Cap test', category: 'Books' });
+    await send('post', '/api/feed/events', {
+      events: [1, 2, 3].map(() => ({ item_id: id(capped), item_type: 'ad', event: 'impression', surface: 'home' })),
+    });
+    assert.ok(ids(await get('/api/feed/spotlights?limit=50&category=Books')).includes(id(capped)));
+    assert.ok(!ids(await get('/api/feed/promotions?limit=50')).includes(id(capped)));
+  });
+
+  await t.test('explore only shows creators the viewer does not follow', async () => {
+    const res = await get('/api/feed/explore?limit=50');
     assert.equal(res.status, 200);
     assert.ok(res.body.data.length > 0);
     for (const item of res.body.data) {

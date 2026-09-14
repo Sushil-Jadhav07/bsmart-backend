@@ -2,11 +2,20 @@
 // Defaults live here. Admins can override any value at runtime through
 // PUT /api/feed/admin/config (stored in the FeedSettings collection), so
 // weights, half-lives and caps can be tuned without a deploy.
+//
+// Surfaces match the app: Home, Moments (photo posts), bSparks (reels), Buzz
+// (tweets), Spotlights (vendor ads), Campaigns (promote reels), plus Explore
+// (discovery) and Promotions (the paid items mixed into the organic feeds).
 
-const SURFACES = ['home', 'sparks', 'buzz', 'spotlight', 'promotions'];
+const SURFACES = ['home', 'moments', 'bsparks', 'buzz', 'spotlights', 'campaigns', 'explore', 'promotions'];
+// Earlier names still accepted in URLs and events.
+const SURFACE_ALIASES = { sparks: 'bsparks' };
 const ORGANIC_TYPES = ['post', 'reel', 'tweet'];
 const PROMOTION_TYPES = ['ad', 'promote_reel'];
 const CONTENT_TYPES = [...ORGANIC_TYPES, ...PROMOTION_TYPES];
+const PROMOTION_SURFACES = ['spotlights', 'campaigns', 'promotions'];
+
+const PAID_WEIGHTS = { affinity: 0.10, interest: 0.35, freshness: 0.10, engagement: 0.20, quality: 0.05, locale: 0.20, semantic: 0.15 };
 
 const DEFAULT_CONFIG = {
   surfaces: {
@@ -19,8 +28,17 @@ const DEFAULT_CONFIG = {
       excludeFollowed: false,
       promotionsEvery: 5,
     },
-    // Sparks — short videos (reels). Watch behaviour carries the most weight.
-    sparks: {
+    // Moments — photo posts.
+    moments: {
+      sources: ['post'],
+      halfLifeHours: 24,
+      weights: { affinity: 0.30, interest: 0.25, freshness: 0.20, engagement: 0.15, quality: 0.05, locale: 0.05, semantic: 0.15 },
+      includeOwn: true,
+      excludeFollowed: false,
+      promotionsEvery: 5,
+    },
+    // bSparks — short videos (reels). Watch behaviour carries the most weight.
+    bsparks: {
       sources: ['reel'],
       halfLifeHours: 48,
       weights: { affinity: 0.15, interest: 0.25, freshness: 0.15, engagement: 0.20, quality: 0.20, locale: 0.05, semantic: 0.20 },
@@ -37,8 +55,29 @@ const DEFAULT_CONFIG = {
       excludeFollowed: false,
       promotionsEvery: 0,
     },
-    // Spotlight — discovery: trending content from creators the viewer does not follow yet.
-    spotlight: {
+    // Spotlights — vendor ads, filterable by category (?category=).
+    // People browse these on purpose, so the daily frequency cap does not apply.
+    spotlights: {
+      sources: ['ad'],
+      halfLifeHours: 168,
+      weights: { ...PAID_WEIGHTS },
+      includeOwn: true,
+      excludeFollowed: false,
+      promotionsEvery: 0,
+      frequencyCap: false,
+    },
+    // Campaigns — promote reels with products.
+    campaigns: {
+      sources: ['promote_reel'],
+      halfLifeHours: 168,
+      weights: { ...PAID_WEIGHTS },
+      includeOwn: true,
+      excludeFollowed: false,
+      promotionsEvery: 0,
+      frequencyCap: false,
+    },
+    // Explore — discovery: trending content from creators the viewer does not follow yet.
+    explore: {
       sources: ['post', 'reel', 'tweet'],
       halfLifeHours: 72,
       weights: { affinity: 0.00, interest: 0.30, freshness: 0.10, engagement: 0.35, quality: 0.15, locale: 0.10, semantic: 0.25 },
@@ -46,14 +85,15 @@ const DEFAULT_CONFIG = {
       excludeFollowed: true,
       promotionsEvery: 0,
     },
-    // Promotions — ads + promote reels, ranked by targeting fit and interest.
+    // Promotions — the ads and promote reels mixed into Home, Moments and bSparks.
     promotions: {
       sources: ['ad', 'promote_reel'],
       halfLifeHours: 168,
-      weights: { affinity: 0.10, interest: 0.35, freshness: 0.10, engagement: 0.20, quality: 0.05, locale: 0.20, semantic: 0.15 },
+      weights: { ...PAID_WEIGHTS },
       includeOwn: false,
       excludeFollowed: false,
       promotionsEvery: 0,
+      frequencyCap: true,
     },
   },
   // Python AI service (ai-service/): taste-similar candidates, semantic scores
@@ -91,7 +131,7 @@ const DEFAULT_CONFIG = {
   },
   promotions: {
     firstSlot: 3,              // first promotion appears after this many organic items
-    frequencyCapPerDay: 3,
+    frequencyCapPerDay: 3,     // for surfaces with frequencyCap: true
     exhaustedBudgetFactor: 0.3,
     timezoneOffsetMinutes: 330, // for Ad.scheduling.delivery_time_slots (IST default)
   },
@@ -111,6 +151,13 @@ const DEFAULT_CONFIG = {
     // Record likes, comments, saves, views … from the existing APIs (track.js).
     serverTracking: true,
   },
+};
+
+// 'sparks' → 'bsparks', 'Buzz' → 'buzz'; null when there is no such surface.
+const resolveSurface = (name) => {
+  const key = String(name || '').trim().toLowerCase();
+  const surface = SURFACE_ALIASES[key] || key;
+  return SURFACES.includes(surface) ? surface : null;
 };
 
 const ALLOW_NEGATIVE = new Set(['timezoneOffsetMinutes']);
@@ -141,7 +188,7 @@ const sanitizeOverrides = (base, overrides, path = '') => {
     } else if (Array.isArray(current)) {
       const sourceMatch = at.match(/^surfaces\.(\w+)\.sources$/);
       const allowed = sourceMatch
-        ? (sourceMatch[1] === 'promotions' ? PROMOTION_TYPES : ORGANIC_TYPES)
+        ? (PROMOTION_SURFACES.includes(sourceMatch[1]) ? PROMOTION_TYPES : ORGANIC_TYPES)
         : null;
       if (!Array.isArray(value) || !value.length || !value.every((v) => typeof v === 'string')) {
         errors.push(`${at}: must be a non-empty array of strings`);
@@ -182,10 +229,13 @@ const mergeConfig = (base, overrides) => {
 
 module.exports = {
   SURFACES,
+  SURFACE_ALIASES,
   ORGANIC_TYPES,
   PROMOTION_TYPES,
+  PROMOTION_SURFACES,
   CONTENT_TYPES,
   DEFAULT_CONFIG,
+  resolveSurface,
   sanitizeOverrides,
   mergeConfig,
 };

@@ -1,5 +1,5 @@
 const FeedProfile = require('../models/FeedProfile');
-const { SURFACES, DEFAULT_CONFIG } = require('../feed/config');
+const { SURFACES, DEFAULT_CONFIG, resolveSurface } = require('../feed/config');
 const { buildFeed } = require('../feed/engine');
 const { validateEvents, recordEvents } = require('../feed/events');
 const { getFeedConfig, getFeedOverrides, saveFeedOverrides } = require('../feed/settings');
@@ -18,16 +18,22 @@ const topWeights = (weights, n) => Object.entries(weights || {})
 // ─── GET /api/feed/:surface ───────────────────────────────────────────────────
 exports.getSurfaceFeed = async (req, res) => {
   try {
-    const surface = String(req.params.surface || '').toLowerCase();
-    if (!SURFACES.includes(surface)) {
+    const surface = resolveSurface(req.params.surface);
+    if (!surface) {
       return res.status(400).json({ message: `Unknown feed surface. Use one of: ${SURFACES.join(', ')}` });
     }
     const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    // Spotlights' category tabs; "All" means no filter.
+    const rawCategory = surface === 'spotlights' && typeof req.query.category === 'string'
+      ? req.query.category.trim().slice(0, 100)
+      : '';
+    const category = rawCategory.toLowerCase() === 'all' ? '' : rawCategory;
 
     const result = await buildFeed({
       user: req.user,
       surface,
+      category,
       page,
       limit,
       cursor: req.query.cursor,

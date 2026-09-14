@@ -18,7 +18,7 @@ test('validateEvents normalises client events and explains rejections', () => {
   ]);
   assert.equal(valid.length, 3);
   assert.deepEqual(valid[0], {
-    item_id: ID, item_type: 'reel', event: 'dwell', surface: 'sparks',
+    item_id: ID, item_type: 'reel', event: 'dwell', surface: 'bsparks', // old name mapped
     position: 3, dwell_ms: 0, watch_ms: null, completion_pct: 100,
   });
   assert.equal(valid[1].surface, 'other');

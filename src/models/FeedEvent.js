@@ -7,7 +7,9 @@ const mongoose = require('mongoose');
 // impressions are recorded; without them engagement *rates* cannot be computed.
 
 const FEED_ITEM_TYPES = ['post', 'reel', 'tweet', 'ad', 'promote_reel'];
-const FEED_SURFACES = ['home', 'sparks', 'buzz', 'spotlight', 'promotions', 'other'];
+const FEED_SURFACES = [
+  'home', 'moments', 'bsparks', 'buzz', 'spotlights', 'campaigns', 'explore', 'promotions', 'other',
+];
 const FEED_EVENT_TYPES = [
   'impression', 'view', 'dwell', 'complete',
   'like', 'comment', 'share', 'repost', 'save', 'click', 'follow',

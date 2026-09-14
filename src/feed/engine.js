@@ -8,6 +8,7 @@
 // pagination is stable while the user scrolls.
 
 const crypto = require('crypto');
+const { PROMOTION_TYPES } = require('./config');
 const { getFeedConfig } = require('./settings');
 const { getViewerContext, resolveLanguages } = require('./profile');
 const { gatherCandidates } = require('./candidates');
@@ -36,6 +37,9 @@ const decodeCursor = (cursor) => {
 };
 
 const round = (n) => (Number.isFinite(n) ? Math.round(n * 10000) / 10000 : n);
+
+// Spotlights (ads), Campaigns (promote reels) and Promotions list paid content only.
+const isPromotionSurface = (surfaceCfg) => surfaceCfg.sources.every((source) => PROMOTION_TYPES.includes(source));
 
 const toEntry = (item, surface, sponsored = false) => ({
   key: item.key,
@@ -100,15 +104,15 @@ const safeRankPromotions = async (ctx, config, options) => {
   }
 };
 
-const createSession = async ({ user, surface, config, languageHint }) => {
+const createSession = async ({ user, surface, config, languageHint, category }) => {
   const now = Date.now();
   const base = await getViewerContext(user, config);
   const ctx = { ...base, languages: resolveLanguages(base, languageHint) };
   const surfaceCfg = config.surfaces[surface];
 
   let entries;
-  if (surface === 'promotions') {
-    const promos = await rankPromotions(ctx, config, { limit: config.candidates.maxRanked });
+  if (isPromotionSurface(surfaceCfg)) {
+    const promos = await rankPromotions(ctx, config, { limit: config.candidates.maxRanked, surfaceCfg, category });
     entries = promos.map((p) => toEntry(p, surface, true));
   } else {
     const organic = (await rankOrganic(ctx, surface, config, now)).map((item) => toEntry(item, surface));
@@ -116,7 +120,7 @@ const createSession = async ({ user, surface, config, languageHint }) => {
     if (every > 0 && organic.length) {
       const promos = await safeRankPromotions(ctx, config, {
         limit: Math.ceil(organic.length / every) + 1,
-        videoOnly: surface === 'sparks',
+        videoOnly: surface === 'bsparks',
       });
       entries = interleave(organic, promos.map((p) => toEntry(p, surface, true)), {
         every,
@@ -135,10 +139,12 @@ const createSession = async ({ user, surface, config, languageHint }) => {
   };
 };
 
-const buildFeed = async ({ user, surface, page = 1, limit = 20, cursor, languageHint, debug = false, baseUrl }) => {
+const buildFeed = async ({ user, surface, page = 1, limit = 20, cursor, languageHint, debug = false, baseUrl, category = '' }) => {
   const config = await getFeedConfig();
   const uid = String(user._id);
-  const latestKey = `${uid}:${surface}:latest`;
+  // Each Spotlights category is its own ranked list.
+  const variant = category ? `:${category.toLowerCase()}` : '';
+  const latestKey = `${uid}:${surface}${variant}:latest`;
 
   let session = null;
   let offset = 0;
@@ -156,7 +162,7 @@ const buildFeed = async ({ user, surface, page = 1, limit = 20, cursor, language
   }
 
   if (!session) {
-    session = await createSession({ user, surface, config, languageHint });
+    session = await createSession({ user, surface, config, languageHint, category });
     sessions.set(`${uid}:${surface}:${session.id}`, session, config.session.ttlMs);
     sessions.set(latestKey, session, config.session.ttlMs);
   }
@@ -170,6 +176,7 @@ const buildFeed = async ({ user, surface, page = 1, limit = 20, cursor, language
   const hasMore = nextOffset < session.items.length;
   return {
     surface,
+    ...(category ? { category } : {}),
     page: Math.floor(offset / limit) + 1,
     limit,
     session_id: session.id,
