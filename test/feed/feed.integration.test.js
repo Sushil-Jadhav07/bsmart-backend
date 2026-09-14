@@ -362,6 +362,81 @@ test('personalized feed API', { skip, timeout: 120000 }, async (t) => {
     assert.ok(history.interests.cricket > 0, 'likes from before tracking still count');
   });
 
+  await t.test('AI service: taste-similar candidates, semantic scores and auto-detected topics', async (tt) => {
+    const http = require('node:http');
+    const FeedItemVector = require('../../src/models/FeedItemVector');
+    const { resetAiClient } = require('../../src/feed/aiClient');
+
+    const calls = [];
+    const aiService = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        calls.push({ path: req.url, token: req.headers['x-ai-token'], body: JSON.parse(body || '{}') });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        if (req.url === '/v1/candidates') {
+          return res.end(JSON.stringify({ has_profile: true, items: [
+            { item_id: id(p.filler3), item_type: 'post', score: 0.9 },
+            { item_id: id(p.blocked), item_type: 'post', score: 0.99 }, // must still be filtered out
+          ] }));
+        }
+        return res.end(JSON.stringify({ has_profile: true, scores: { [id(p.filler3)]: 0.92, [id(p.filler6)]: 0.1 } }));
+      });
+    });
+    await new Promise((resolve) => aiService.listen(0, '127.0.0.1', resolve));
+    process.env.AI_SERVICE_URL = `http://127.0.0.1:${aiService.address().port}`;
+    process.env.AI_SERVICE_TOKEN = 'ai-secret';
+    resetAiClient();
+    tt.after(() => {
+      aiService.close();
+      delete process.env.AI_SERVICE_URL;
+      delete process.env.AI_SERVICE_TOKEN;
+      resetAiClient();
+    });
+
+    // What the AI service would have written after looking at the images.
+    await FeedItemVector.create({ item_id: p.filler4._id, item_type: 'post', topics: ['cricket'] });
+    await FeedItemVector.create({ item_id: p.filler5._id, item_type: 'post', topics: ['gardening'] });
+
+    const res = await get('/api/feed/home?limit=50');
+    assert.equal(res.status, 200);
+    const byId = new Map(res.body.data.map((item) => [String(item._id), item]));
+    assert.ok(byId.get(id(p.filler3)).feed_meta.sources.includes('similar'));
+    assert.ok(byId.get(id(p.filler3)).feed_meta.reasons.includes('for_you'));
+    assert.ok(!byId.has(id(p.blocked)), 'AI suggestions still go through the privacy and block filters');
+    assert.ok(byId.get(id(p.filler4)).feed_meta.reasons.includes('interests'), 'auto-detected "cricket" matches the viewer');
+
+    const candidateCall = calls.find((c) => c.path === '/v1/candidates');
+    assert.equal(candidateCall.token, 'ai-secret');
+    assert.ok(candidateCall.body.exclude_author_ids.includes(id(u.blocked)));
+    assert.ok(calls.some((c) => c.path === '/v1/score' && c.body.item_ids.includes(id(p.filler3))));
+
+    // Learning uses the auto-detected topics too.
+    await send('post', '/api/feed/events', { events: [{ item_id: id(p.filler5), item_type: 'post', event: 'dwell', dwell_ms: 20000 }] });
+    const learned = await waitFor(async () => {
+      const value = await learnedProfile();
+      return value.interests?.gardening ? value : null;
+    });
+    assert.ok(learned.interests.gardening > 0);
+  });
+
+  await t.test('the feed keeps working when the AI service is down', async () => {
+    const { resetAiClient } = require('../../src/feed/aiClient');
+    process.env.AI_SERVICE_URL = 'http://127.0.0.1:9'; // nothing listens there
+    resetAiClient();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const res = await get('/api/feed/home?limit=10');
+      assert.equal(res.status, 200);
+      assert.equal(res.body.data.length, 10);
+    } finally {
+      console.warn = originalWarn;
+      delete process.env.AI_SERVICE_URL;
+      resetAiClient();
+    }
+  });
+
   await t.test('events endpoint validates the batch', async () => {
     assert.equal((await send('post', '/api/feed/events', {})).status, 400);
     const tooMany = Array.from({ length: 101 }, () => ({ item_id: id(p.friend), item_type: 'post', event: 'impression' }));

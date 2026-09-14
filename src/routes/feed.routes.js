@@ -49,7 +49,7 @@ const feedEventsRateLimit = rateLimit({
  *           type: array
  *           items: { type: string }
  *           example: [following, fresh]
- *           description: "Why the item was shown: yours, following, interests, nearby, language, trending, fresh, new_for_you, sponsored, targeted, recommended"
+ *           description: "Why the item was shown: yours, following, interests, for_you (similar to your taste, AI service), nearby, language, trending, fresh, new_for_you, sponsored, targeted, recommended"
  *         sources:
  *           type: array
  *           items: { type: string }

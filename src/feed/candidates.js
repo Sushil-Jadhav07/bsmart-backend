@@ -1,6 +1,7 @@
 // ─── Candidate retrieval ────────────────────────────────────────────────────
 // Pulls a few hundred plausible items per request from several strategies
-// (following, interests, local, trending, recent) and merges them. Ranking
+// (following, interests, local, trending, recent and — when the AI service is
+// configured — similar to the viewer's taste) and merges them. Ranking
 // happens afterwards in memory, so retrieval only has to be broad and cheap.
 
 const mongoose = require('mongoose');
@@ -8,6 +9,8 @@ const Post = require('../models/Post');
 const Tweet = require('../models/tweet.model');
 const User = require('../models/User');
 const { toCandidate, postItemType } = require('./items');
+const { aiServiceConfigured, fetchSimilarItems, fetchSemanticScores } = require('./aiClient');
+const { loadAutoTopics, mergeTopics } = require('./autoTopics');
 const TtlCache = require('./cache');
 
 const AUTHOR_SELECT = 'username full_name avatar_url followers_count isPrivate is_active isDeleted address location';
@@ -135,14 +138,38 @@ const localClause = (type, localIds, city) => {
   return clauses.length ? { $or: clauses } : null;
 };
 
+// Similarity to the viewer's taste, rescaled to 0–1 within this request (raw
+// scores depend on the model). Items the service has no vector for sit at 0.5.
+const applySemanticScores = (candidates, scores) => {
+  const values = [...scores.values()];
+  const min = Math.min(...values);
+  const range = Math.max(...values) - min;
+  for (const candidate of candidates) {
+    const score = scores.get(candidate.key);
+    candidate.semantic = score === undefined || range < 1e-6 ? 0.5 : (score - min) / range;
+  }
+};
+
 const gatherCandidates = async (ctx, surfaceCfg, config, now) => {
   const cc = config.candidates;
+  const useAi = Boolean(config.ai?.enabled) && aiServiceConfigured();
   const since = new Date(now - cc.lookbackDays * 864e5);
   const trendingSince = new Date(Math.max(since.getTime(), now - cc.trendingWindowHours * 3.6e6));
   const perLimit = Math.max(20, Math.round(cc.perSourceLimit / surfaceCfg.sources.length));
   const terms = topInterestTerms(ctx.interests);
   const localIds = await localAuthorIds(ctx, cc.localAuthorLimit);
   const followed = surfaceCfg.excludeFollowed ? [] : ctx.followedIds;
+
+  // Started first, so the AI service works while the MongoDB queries run.
+  const similar = useAi
+    ? fetchSimilarItems(ctx.userId, {
+      k: config.ai.similarLimit,
+      types: surfaceCfg.sources,
+      excludeAuthorIds: [...ctx.excludedAuthorIds, ...(surfaceCfg.excludeFollowed ? ctx.followedIds : [])],
+      sinceDays: cc.lookbackDays,
+      timeoutMs: config.ai.timeoutMs,
+    })
+    : null;
 
   const jobs = [];
   for (const type of surfaceCfg.sources) {
@@ -161,6 +188,14 @@ const gatherCandidates = async (ctx, surfaceCfg, config, now) => {
     add('trending', findTrending(type, base, trendingSince, perLimit));
     // Recency backfill, so small or quiet platforms still fill the feed.
     add('recent', findDocs(type, base, { createdAt: -1 }, perLimit));
+    if (similar) {
+      // The AI service only suggests ids; the same privacy, block and
+      // deletion filters apply to them as to every other source.
+      add('similar', similar.then((items) => {
+        const ids = items.filter((item) => item.item_type === type).map((item) => item.item_id);
+        return ids.length ? findDocs(type, and(base, { _id: { $in: oids(ids) } }), { createdAt: -1 }, ids.length) : [];
+      }));
+    }
   }
 
   const merged = new Map();
@@ -172,7 +207,21 @@ const gatherCandidates = async (ctx, surfaceCfg, config, now) => {
       else merged.set(candidate.key, candidate);
     }
   }
-  return [...merged.values()];
+
+  const candidates = [...merged.values()];
+  if (useAi && candidates.length) {
+    const keys = candidates.map((candidate) => candidate.key);
+    const [autoTopics, semantic] = await Promise.all([
+      loadAutoTopics(keys),
+      fetchSemanticScores(ctx.userId, keys, config.ai.timeoutMs),
+    ]);
+    for (const candidate of candidates) {
+      const extra = autoTopics.get(candidate.key);
+      if (extra?.length) candidate.topics = mergeTopics(candidate.topics, extra);
+    }
+    if (semantic?.size) applySemanticScores(candidates, semantic);
+  }
+  return candidates;
 };
 
-module.exports = { gatherCandidates, AUTHOR_SELECT, oids, topInterestTerms, interestClause };
+module.exports = { gatherCandidates, AUTHOR_SELECT, oids, topInterestTerms, interestClause, applySemanticScores };

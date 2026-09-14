@@ -1,0 +1,6 @@
+# API and storage — enough to run the service's tests.
+fastapi>=0.110,<1
+uvicorn>=0.29,<1
+pymongo>=4.6,<5
+numpy>=1.26,<3
+pillow>=10,<12

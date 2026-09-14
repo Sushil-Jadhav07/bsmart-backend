@@ -43,7 +43,7 @@ test('mergeConfig deep-merges without mutating the defaults', () => {
 });
 
 test('every surface weight set is complete', () => {
-  const terms = ['affinity', 'interest', 'freshness', 'engagement', 'quality', 'locale'];
+  const terms = ['affinity', 'interest', 'freshness', 'engagement', 'quality', 'locale', 'semantic'];
   for (const [name, surface] of Object.entries(DEFAULT_CONFIG.surfaces)) {
     assert.deepEqual(Object.keys(surface.weights).sort(), terms.slice().sort(), name);
   }

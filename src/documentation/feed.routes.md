@@ -59,9 +59,10 @@ Query: `limit` (page size, ≤ 50, default 20), `page`, `cursor`, `lang`, `debug
   pull-to-refresh. Later pages (`cursor`, or `page=2,3…`) read from the same
   ranked list, cached for ~10 minutes, so pages never overlap. If a cursor has
   expired the response has `session_restarted: true` and starts from the top.
-* `feed_meta.reasons`: `yours`, `following`, `interests`, `nearby`, `language`,
-  `trending`, `fresh`, `new_for_you` (exploration slot), `sponsored`, `targeted`,
-  `recommended`. Useful for "Why am I seeing this?".
+* `feed_meta.reasons`: `yours`, `following`, `interests`, `for_you` (similar to
+  the viewer's taste — AI service), `nearby`, `language`, `trending`, `fresh`,
+  `new_for_you` (exploration slot), `sponsored`, `targeted`, `recommended`.
+  Useful for "Why am I seeing this?".
 * `?debug=true` adds `score`, `terms` and `penalty` to `feed_meta` — **admins only**.
 
 ### Where feed signals come from
@@ -231,6 +232,27 @@ test, not taken from bSmart — measure again on real captions.
 
 ---
 
+### AI service (optional, `ai-service/`)
+
+A separate Python service turns every post, reel, tweet and ad into an
+embedding from its caption **and** image, auto-tags it with interests, and keeps
+a "taste vector" per user. When the Node API's `.env` has `AI_SERVICE_URL` and
+`AI_SERVICE_TOKEN`, the feed also:
+
+* retrieves items similar to the viewer's taste (source `similar`, reason
+  `for_you`) — these still go through every privacy, block and deletion filter;
+* adds a `semantic` term: each candidate's similarity to the viewer's taste,
+  rescaled to 0–1 within the request;
+* merges the topics the service detected into each item's topics, for ranking
+  and for learning — a food photo with no hashtags still counts as "food".
+
+Calls time out after 250 ms and stop for 30 s after three failures, so the feed
+never waits on it. Without it the `semantic` term is 0 for every item and
+ranking is unchanged. Admins can switch it off with `ai.enabled`. Setup and
+operation: `ai-service/README.md`.
+
+---
+
 ## 5. New collections, config and dependency
 
 | Collection      | Purpose                                                     |
@@ -239,6 +261,7 @@ test, not taken from bSmart — measure again on real captions.
 | `feeditemstats` | per-item counters (impressions, saves, completions, hides …) |
 | `feedprofiles`  | per-user history + learned signals, preferences             |
 | `feedsettings`  | admin overrides for the ranking config                      |
+| `feeditemvectors`, `feeduservectors`, `aiservicestate` | written by the AI service: item embeddings + auto-topics, user taste vectors, sync checkpoints |
 
 Indexes on these are created automatically. **No existing schema was changed.**
 The existing controllers only gained one-line `trackFeedEvent(...)` calls.

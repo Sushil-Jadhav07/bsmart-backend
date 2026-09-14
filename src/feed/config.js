@@ -14,7 +14,7 @@ const DEFAULT_CONFIG = {
     home: {
       sources: ['post', 'reel', 'tweet'],
       halfLifeHours: 24,
-      weights: { affinity: 0.30, interest: 0.25, freshness: 0.20, engagement: 0.15, quality: 0.05, locale: 0.05 },
+      weights: { affinity: 0.30, interest: 0.25, freshness: 0.20, engagement: 0.15, quality: 0.05, locale: 0.05, semantic: 0.15 },
       includeOwn: true,
       excludeFollowed: false,
       promotionsEvery: 5,
@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
     sparks: {
       sources: ['reel'],
       halfLifeHours: 48,
-      weights: { affinity: 0.15, interest: 0.25, freshness: 0.15, engagement: 0.20, quality: 0.20, locale: 0.05 },
+      weights: { affinity: 0.15, interest: 0.25, freshness: 0.15, engagement: 0.20, quality: 0.20, locale: 0.05, semantic: 0.20 },
       includeOwn: false,
       excludeFollowed: false,
       promotionsEvery: 4,
@@ -32,7 +32,7 @@ const DEFAULT_CONFIG = {
     buzz: {
       sources: ['tweet'],
       halfLifeHours: 12,
-      weights: { affinity: 0.30, interest: 0.20, freshness: 0.30, engagement: 0.15, quality: 0.00, locale: 0.05 },
+      weights: { affinity: 0.30, interest: 0.20, freshness: 0.30, engagement: 0.15, quality: 0.00, locale: 0.05, semantic: 0.10 },
       includeOwn: true,
       excludeFollowed: false,
       promotionsEvery: 0,
@@ -41,7 +41,7 @@ const DEFAULT_CONFIG = {
     spotlight: {
       sources: ['post', 'reel', 'tweet'],
       halfLifeHours: 72,
-      weights: { affinity: 0.00, interest: 0.30, freshness: 0.10, engagement: 0.35, quality: 0.15, locale: 0.10 },
+      weights: { affinity: 0.00, interest: 0.30, freshness: 0.10, engagement: 0.35, quality: 0.15, locale: 0.10, semantic: 0.25 },
       includeOwn: false,
       excludeFollowed: true,
       promotionsEvery: 0,
@@ -50,11 +50,19 @@ const DEFAULT_CONFIG = {
     promotions: {
       sources: ['ad', 'promote_reel'],
       halfLifeHours: 168,
-      weights: { affinity: 0.10, interest: 0.35, freshness: 0.10, engagement: 0.20, quality: 0.05, locale: 0.20 },
+      weights: { affinity: 0.10, interest: 0.35, freshness: 0.10, engagement: 0.20, quality: 0.05, locale: 0.20, semantic: 0.15 },
       includeOwn: false,
       excludeFollowed: false,
       promotionsEvery: 0,
     },
+  },
+  // Python AI service (ai-service/): taste-similar candidates, semantic scores
+  // and auto-detected topics. Only used when AI_SERVICE_URL is set; with it
+  // off, the `semantic` term is 0 for every item and ranking is unchanged.
+  ai: {
+    enabled: true,
+    similarLimit: 150,         // candidates fetched by similarity to the viewer's taste
+    timeoutMs: 250,            // per call; the feed carries on without it after that
   },
   candidates: {
     lookbackDays: 30,          // organic content older than this is never retrieved

@@ -98,7 +98,8 @@ const weightedSum = (terms, weights) => Object.entries(weights || {})
   .reduce((sum, [key, weight]) => sum + num(weight) * num(terms[key]), 0);
 
 // candidate: { key, type, doc, authorId, authorFollowers, authorGeo, topics,
-//              language, locationText, isVideo, createdAt, sources:Set }
+//              language, locationText, isVideo, createdAt, sources:Set,
+//              semantic? (0–1 similarity to the viewer's taste, from the AI service) }
 // ctx:       { followedSet, authorWeights, interests, languages, geo, seenCounts }
 const scoreCandidate = (candidate, ctx, surfaceCfg, config, stats, now) => {
   const hours = ageHours(candidate.createdAt, now);
@@ -115,6 +116,7 @@ const scoreCandidate = (candidate, ctx, surfaceCfg, config, stats, now) => {
     engagement: engagementScore(counts, hours, candidate.authorFollowers),
     quality: qualityScore(counts, candidate.isVideo),
     locale: 0.5 * lang + 0.5 * geo,
+    semantic: Number.isFinite(candidate.semantic) ? candidate.semantic : 0,
   };
   const penalty = penaltyScore(ctx.seenCounts?.get(candidate.key) || 0, negativeRate(stats || {}), config.penalties);
   const score = weightedSum(terms, surfaceCfg.weights) - penalty;
@@ -123,6 +125,7 @@ const scoreCandidate = (candidate, ctx, surfaceCfg, config, stats, now) => {
   if (own) reasons.push('yours');
   else if (followed) reasons.push('following');
   if (terms.interest >= 0.3) reasons.push('interests');
+  if (candidate.sources?.has('similar') || terms.semantic >= 0.8) reasons.push('for_you');
   if (geo >= 0.7) reasons.push('nearby');
   if (lang === 1 && ctx.languages?.length) reasons.push('language');
   if (candidate.sources?.has('trending') || terms.engagement >= 0.5) reasons.push('trending');

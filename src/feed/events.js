@@ -16,6 +16,7 @@ const Ad = require('../models/Ad');
 const PromoteReel = require('../models/PromoteReel');
 const { describeItem, postItemType } = require('./items');
 const { EVENT_WEIGHTS, learnFromInteractions, invalidateViewer } = require('./profile');
+const { loadAutoTopics, mergeTopics } = require('./autoTopics');
 
 const { FEED_ITEM_TYPES, FEED_SURFACES, FEED_EVENT_TYPES } = FeedEvent;
 const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
@@ -100,8 +101,10 @@ const ITEM_SOURCES = [
 ];
 
 // Posts and reels share a collection, so the stored type comes from the
-// document, not from what the caller claimed.
-const loadItems = async (events) => {
+// document, not from what the caller claimed. Topics the AI service detected
+// in the image or text are added, so liking an untagged food photo still
+// teaches "food".
+const loadItems = async (events, config) => {
   const items = new Map();
   await Promise.all(ITEM_SOURCES.map(async ({ types, model, select, typeOf }) => {
     const ids = [...new Set(events.filter((e) => types.includes(e.item_type)).map((e) => e.item_id))];
@@ -109,6 +112,13 @@ const loadItems = async (events) => {
     const docs = await model.find({ _id: { $in: ids } }).select(select).lean();
     for (const doc of docs) items.set(String(doc._id), describeItem(doc, typeOf(doc)));
   }));
+  if (config?.ai?.enabled && items.size) {
+    const autoTopics = await loadAutoTopics([...items.keys()]);
+    for (const [key, item] of items) {
+      const extra = autoTopics.get(key);
+      if (extra?.length) item.topics = mergeTopics(item.topics, extra);
+    }
+  }
   return items;
 };
 
@@ -161,7 +171,7 @@ const updateStats = async (docs) => {
 };
 
 const recordEvents = async (userId, events, config, { source = 'client' } = {}) => {
-  const items = await loadItems(events);
+  const items = await loadItems(events, config);
   const known = events.filter((e) => items.has(e.item_id));
   if (!known.length) return { accepted: 0, unknown: events.length, learning: Promise.resolve() };
 
