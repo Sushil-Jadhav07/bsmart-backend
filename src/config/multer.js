@@ -4,11 +4,17 @@ const { S3Client } = require('@aws-sdk/client-s3');
 const path = require('path');
 const { getPublicBaseUrl } = require('../utils/publicUrl');
 
+// R2 is S3-API-compatible — same SDK, just a different endpoint/region/creds.
 const s3 = new S3Client({
-  region: process.env.AWS_REGION || 'ap-south-1',
+  region: 'auto',
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
 });
 
-const BUCKET = process.env.S3_BUCKET_NAME;
+const BUCKET = process.env.R2_BUCKET_NAME;
 
 const getFolderName = (req, file) => {
   const userId = req.user?._id || req.user?.id || 'unknown';
@@ -49,7 +55,6 @@ const fileFilter = (req, file, cb) => {
   const filetypes = /jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|webm|flv|wmv/;
   const extname = filetypes.test(path.extname(file.originalname || '').toLowerCase());
   const mimetype = file.mimetype.startsWith('video/') || file.mimetype.startsWith('image/');
-  // Accept if MIME type is valid AND (extension matches OR no filename was provided)
   if (mimetype && (extname || !file.originalname)) {
     return cb(null, true);
   }
@@ -87,31 +92,30 @@ const uploadAudio = multer({
   fileFilter: audioFileFilter,
 });
 
-function buildCloudfrontUrl(key) {
-  let cf = process.env.CLOUDFRONT_BASE_URL || '';
-  if (!cf) {
-    return `https://${BUCKET}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${key}`;
+function buildPublicUrl(key) {
+  let base = process.env.R2_PUBLIC_BASE_URL || '';
+  if (!base) {
+    throw new Error(
+      'R2_PUBLIC_BASE_URL is not set — enable public access on the R2 bucket and set this to its r2.dev or custom domain URL.'
+    );
   }
-  if (!cf.startsWith('http')) cf = `https://${cf}`;
-  cf = cf.replace(/\/+$/, '');
-  return `${cf}/${key}`;
+  if (!base.startsWith('http')) base = `https://${base}`;
+  base = base.replace(/\/+$/, '');
+  return `${base}/${key}`;
 }
 
 function getFileUrl(req, file) {
-  // S3 upload — always use file.key to build CloudFront URL
-  if (file.key) return buildCloudfrontUrl(file.key);
+  if (file.key) return buildPublicUrl(file.key);
 
-  // file.location is the raw S3 URL — extract key from it and route via CloudFront
   if (file.location) {
     try {
       const url = new URL(file.location);
       const key = url.pathname.replace(/^\//, '');
-      if (key) return buildCloudfrontUrl(key);
+      if (key) return buildPublicUrl(key);
     } catch {}
     return file.location;
   }
 
-  // Local disk (dev, no S3) — file.filename is just the bare filename, never double-prefix
   const baseUrl  = getPublicBaseUrl(req);
   const filename = file.filename || '';
   return `${baseUrl}/uploads/${filename}`;
@@ -121,7 +125,6 @@ function getFileName(file) {
   return file.key || file.filename;
 }
 
-// Factory: creates a dedicated multer-s3 uploader for a specific folder
 function makeUploader(subfolder) {
   const s3Storage = multerS3({
     s3,
