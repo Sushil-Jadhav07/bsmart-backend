@@ -4,8 +4,8 @@ const admin = require('../lib/firebase');
 const User = require('../models/User');
 
 const LOGO_URL = (() => {
-  const cf = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
   if (cf) return `${cf}/assets/bsmart_logo.png`;
   const base = process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in';

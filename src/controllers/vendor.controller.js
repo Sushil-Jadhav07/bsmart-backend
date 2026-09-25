@@ -205,8 +205,8 @@ exports.uploadVendorCoverImage = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    const cfBase = process.env.CLOUDFRONT_BASE_URL
-      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    const cfBase = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+      ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
       : null;
     const baseUrl = cfBase || `${req.protocol}://${req.get('host')}`;
     const fileUrls = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
@@ -451,8 +451,8 @@ exports.uploadVendorLogo = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    const cfBase2 = process.env.CLOUDFRONT_BASE_URL
-      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    const cfBase2 = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+      ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
       : null;
     const logoUrl = `${cfBase2 || `${req.protocol}://${req.get('host')}`}/uploads/${req.file.filename}`;
     vendor.logo_url = logoUrl;

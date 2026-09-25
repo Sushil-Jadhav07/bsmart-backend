@@ -14,7 +14,7 @@ const s3     = new S3Client({ region: process.env.AWS_REGION || 'ap-south-1' });
 const BUCKET = process.env.S3_BUCKET_NAME;
 
 function getCloudfrontBase() {
-  let cf = process.env.CLOUDFRONT_BASE_URL || '';
+  let cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL) || '';
   if (!cf) {
     console.warn('[HLS] WARNING: CLOUDFRONT_BASE_URL is not set. Videos will be served directly from S3 — no CDN caching, slower playback. Set this env var on EC2.');
   }

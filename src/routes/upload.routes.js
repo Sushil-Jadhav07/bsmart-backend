@@ -23,7 +23,7 @@ const uploadsDir = path.join(__dirname, '../../uploads');
 // Build a CloudFront (or S3) URL from a file uploaded by multer-s3
 function getFileUrl(req, file) {
   if (file.key || file.location) {
-    let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
+    let cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL) || '';
     if (cloudfront && !cloudfront.startsWith('http')) cloudfront = `https://${cloudfront}`;
     cloudfront = cloudfront.replace(/\/+$/, '');
     // Always prefer CloudFront when the key is available

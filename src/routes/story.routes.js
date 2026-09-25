@@ -25,7 +25,7 @@ const { getPublicBaseUrl } = require('../utils/publicUrl');
 // ─── Upload helpers (mirrors /api/upload) ─────────────────────────────────────
 function getFileUrl(req, file) {
   if (file.key || file.location) {
-    let cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
+    let cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL) || '';
     if (cloudfront && !cloudfront.startsWith('http')) cloudfront = `https://${cloudfront}`;
     cloudfront = cloudfront.replace(/\/+$/, '');
     if (cloudfront && file.key) return `${cloudfront}/${file.key}`;

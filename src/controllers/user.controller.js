@@ -10,8 +10,8 @@ const { checkSections } = require('../utils/privacyGuard');
 // Helper to transform post with fileUrl (duplicated from post.controller.js to avoid dependency issues)
 const transformPost = (post, baseUrl) => {
   const postObj = post.toObject ? post.toObject() : post;
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
   const toUploadsUrl = (value) => {
     if (!value) return '';
@@ -826,8 +826,8 @@ const toUploadsUrl = (baseUrl, value) => {
   const normalized = String(value).trim();
   if (!normalized) return null;
 
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
 
   if (/^https?:\/\//i.test(normalized)) {

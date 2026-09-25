@@ -193,8 +193,8 @@ exports.adminGetUserContent = async (req, res) => {
 
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const cloudfront = process.env.CLOUDFRONT_BASE_URL
-      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+      ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
       : null;
 
     const toFileUrl = (fileName) => {

@@ -11,8 +11,8 @@ const resolveUrl = (value, baseUrl) => {
   if (!value) return '';
   const s = String(value).trim();
   if (!s) return '';
-  const cf = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
   if (/^https?:\/\//i.test(s)) {
     if (cf && s.includes('api.bebsmart.in/uploads/')) {

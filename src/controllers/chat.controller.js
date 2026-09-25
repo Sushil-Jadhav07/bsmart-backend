@@ -34,8 +34,8 @@ const toUploadsUrl = (req, fileName) => {
   const trimmed = typeof fileName === 'string' ? fileName.trim() : '';
   if (!trimmed) return '';
 
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
 
   if (/^https?:\/\//i.test(trimmed)) {
@@ -52,8 +52,8 @@ const toUploadsUrl = (req, fileName) => {
 };
 const toCloudfrontUrl = (url) => {
   if (!url || typeof url !== 'string') return url;
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
   if (!cloudfront) return url;
   if (url.includes('api.bebsmart.in/uploads/')) {

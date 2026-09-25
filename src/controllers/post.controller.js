@@ -16,8 +16,8 @@ const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
 // ─── URL Helper ───────────────────────────────────────────────────────────────
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
 
   if (fileUrl && fileUrl.startsWith('http')) {

@@ -8,6 +8,9 @@ const {
   saveAd,
   unsaveAd,
   getSavedItems,
+  listMySavedPosts,
+  listMySavedPromoteReels,
+  listMySavedAds,
 } = require('../controllers/saved.controller');
 
 /**
@@ -61,6 +64,48 @@ router.get('/', auth, (req, res) => {
   req.params.userId = String(req.userId);
   return getSavedItems(req, res);
 });
+
+/**
+ * @swagger
+ * /api/saved/posts:
+ *   get:
+ *     summary: Get the logged-in user's saved posts/reels
+ *     tags: [Saved]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Saved posts list
+ */
+router.get('/posts', auth, listMySavedPosts);
+
+/**
+ * @swagger
+ * /api/saved/promote-reels:
+ *   get:
+ *     summary: Get the logged-in user's saved promote reels
+ *     tags: [Saved]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Saved promote reels list
+ */
+router.get('/promote-reels', auth, listMySavedPromoteReels);
+
+/**
+ * @swagger
+ * /api/saved/ads:
+ *   get:
+ *     summary: Get the logged-in user's saved ads
+ *     tags: [Saved]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Saved ads list
+ */
+router.get('/ads', auth, listMySavedAds);
 
 /**
  * @swagger

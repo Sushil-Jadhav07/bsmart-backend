@@ -13,7 +13,7 @@ const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload');
 
 // ─── URL resolver — always returns CloudFront URL ─────────────────────────────
 function resolveAdMediaUrl(fileName, fileUrl) {
-  let cf = process.env.CLOUDFRONT_BASE_URL || '';
+  let cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL) || '';
   if (cf && !cf.startsWith('http')) cf = `https://${cf}`;
   cf = cf.replace(/\/+$/, '');
 

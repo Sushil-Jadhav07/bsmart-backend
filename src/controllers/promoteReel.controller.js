@@ -49,7 +49,7 @@ async function runPromoteHlsInBackground(app, docId, rawS3Key) {
 
 // ─── URL Helper ───────────────────────────────────────────────────────────────
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
-  let cf = process.env.CLOUDFRONT_BASE_URL || '';
+  let cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL) || '';
   if (cf && !cf.startsWith('http')) cf = `https://${cf}`;
   cf = cf.replace(/\/+$/, '');
 

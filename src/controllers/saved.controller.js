@@ -9,8 +9,8 @@ const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
 
   if (fileUrl && fileUrl.startsWith('http')) {
@@ -344,6 +344,44 @@ exports.listMySavedPosts = async (req, res) => {
     return res.json({ success: true, posts: data, total: data.length });
   } catch (error) {
     console.error('[listMySavedPosts]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.listMySavedPromoteReels = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const saved = await SavedPromoteReel.find({ user_id: userId }).sort({ createdAt: -1 }).lean();
+    const ids = saved.map((s) => s.promote_reel_id);
+    const reels = await PromoteReel.find({ _id: { $in: ids }, isDeleted: { $ne: true } })
+      .populate('user_id', 'username full_name avatar_url gender location')
+      .lean();
+    const data = reels.map((pr) => ({
+      ...pr,
+      is_saved_by_me: true,
+      media: resolveMedia(pr.media, baseUrl).map((m) => ({ ...m, type: 'video', media_type: 'video' })),
+    }));
+    return res.json({ success: true, promote_reels: data, total: data.length });
+  } catch (error) {
+    console.error('[listMySavedPromoteReels]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.listMySavedAds = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const saved = await SavedAd.find({ user_id: userId }).sort({ createdAt: -1 }).lean();
+    const ids = saved.map((s) => s.ad_id);
+    const ads = await Ad.find({ _id: { $in: ids }, isDeleted: false })
+      .populate('user_id', 'username full_name avatar_url gender location')
+      .lean();
+    const data = ads.map((ad) => ({ ...ad, is_saved_by_me: true, media: resolveMedia(ad.media, baseUrl) }));
+    return res.json({ success: true, ads: data, total: data.length });
+  } catch (error) {
+    console.error('[listMySavedAds]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

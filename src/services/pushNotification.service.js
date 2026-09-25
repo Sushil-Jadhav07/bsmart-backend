@@ -155,8 +155,8 @@ const sendPushNotification = async (recipientId, payload) => {
     if (user.sns_endpoint_arn) {
       try {
         const logoUrl = (() => {
-          const cf = process.env.CLOUDFRONT_BASE_URL
-            ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+          const cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+            ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
             : null;
           if (cf) return `${cf}/assets/bsmart_logo.png`;
           return `${process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in'}/assets/bsmart_logo.png`;
@@ -199,8 +199,8 @@ const sendPushNotification = async (recipientId, payload) => {
     if (VAPID_READY && user.web_push_subscription) {
       try {
         const logoUrl = (() => {
-          const cf = process.env.CLOUDFRONT_BASE_URL
-            ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+          const cf = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+            ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
             : null;
           if (cf) return `${cf}/assets/bsmart_logo.png`;
           return `${process.env.BASE_URL || process.env.API_URL || 'https://api.bebsmart.in'}/assets/bsmart_logo.png`;

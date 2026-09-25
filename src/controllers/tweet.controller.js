@@ -922,8 +922,8 @@ const uploadTweetImage = async (req, res) => {
       return res.status(400).json({ message: 'Only image uploads are supported for tweets' });
     }
 
-    const cfBase = process.env.CLOUDFRONT_BASE_URL
-      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    const cfBase = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+      ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
       : null;
     const fileUrl = `${cfBase || getPublicBaseUrl(req)}/uploads/${req.file.filename}`;
 

@@ -26,8 +26,8 @@ function resolveMediaUrl(baseUrl, value) {
   if (!normalized) return '';
   if (/^https?:\/\//i.test(normalized)) return normalized;
 
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
   const clean = normalized.replace(/^\/+/, '');
   const key = clean.startsWith('uploads/') ? clean : `uploads/${clean}`;

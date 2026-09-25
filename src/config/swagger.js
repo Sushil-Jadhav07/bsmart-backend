@@ -23,6 +23,10 @@ const options = {
        {
         url: 'https://api.bebsmart.online/',
         description: 'Dev Server',
+      },
+      {
+        url: 'https://bsmart-backend-dev.bsmart.workers.dev',
+        description: 'Cloudflare Workers Dev Server',
       }
     ],
     components: {

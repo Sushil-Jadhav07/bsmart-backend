@@ -27,8 +27,8 @@ const absolutizeUploadUrl = (value, req) => {
   const raw = String(value).trim();
   if (!raw) return '';
 
-  const cloudfront = process.env.CLOUDFRONT_BASE_URL
-    ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
     : null;
 
   if (/^https?:\/\//i.test(raw)) {

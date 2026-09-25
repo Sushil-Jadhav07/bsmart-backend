@@ -151,8 +151,8 @@ router.get('/', verifyToken, async (req, res) => {
       filter.type = { $in: TAB_TYPE_MAP[typeParam] };
     }
 
-    const cloudfront = process.env.CLOUDFRONT_BASE_URL
-      ? process.env.CLOUDFRONT_BASE_URL.replace(/\/+$/, '')
+    const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+      ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
       : null;
 
     const toCfUrl = (url) => {
