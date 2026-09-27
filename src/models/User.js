@@ -84,7 +84,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['member', 'vendor', 'admin', 'sales'],
+    enum: ['member', 'vendor', 'influencer', 'admin', 'sales'],
     default: 'member'
   },
   avatar_url: {
@@ -136,6 +136,15 @@ const userSchema = new mongoose.Schema({
     tax_id: { type: String, default: '' },
     year_established: { type: String, default: '' },
     company_type: { type: String, default: '' }
+  },
+  // For influencer users: store their storefront details — separate from
+  // vendor's company_details, per the "don't mix vendor and influencer" decision.
+  influencer_profile: {
+    business_type:      { type: String, default: '' },
+    store_name:          { type: String, default: '' },
+    store_description:   { type: String, default: '' },
+    products_type:        { type: [String], default: [] },
+    service_type:         { type: [String], default: [] },
   },
   // ─── Ad Interest Categories ───────────────────────────────────────────────
   // Stores the list of ad categories the user is interested in.

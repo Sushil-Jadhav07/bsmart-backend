@@ -694,6 +694,77 @@ exports.updateUserStatus = async (req, res) => {
   }
 };
 
+// @desc    Change role between member and influencer — a user can change their
+//          own role, or an admin can change anyone's.
+// @route   PATCH /api/users/:id/role
+// @access  Private (self or admin)
+exports.updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    const isSelf = String(req.userId) === String(id);
+    const isAdmin = req.user?.role === 'admin';
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ message: 'Not authorized to change this user\'s role' });
+    }
+
+    // Restricted to this transition only — promoting to admin/sales/vendor happens
+    // through their own dedicated flows, not this generic endpoint.
+    if (!['member', 'influencer'].includes(role)) {
+      return res.status(400).json({ message: "role must be 'member' or 'influencer'" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (!['member', 'influencer'].includes(user.role)) {
+      return res.status(400).json({ message: `Cannot change role for a ${user.role} account via this endpoint` });
+    }
+
+    // When (re-)confirming influencer status, the storefront details are required.
+    if (role === 'influencer') {
+      const { business_type, store_name, store_description, products_type, service_type } = req.body;
+
+      if (!business_type || !String(business_type).trim()) {
+        return res.status(400).json({ message: 'business_type is required' });
+      }
+      if (!store_name || !String(store_name).trim()) {
+        return res.status(400).json({ message: 'store_name is required' });
+      }
+      if (!store_description || !String(store_description).trim()) {
+        return res.status(400).json({ message: 'store_description is required' });
+      }
+      if (!Array.isArray(products_type) || products_type.length === 0) {
+        return res.status(400).json({ message: 'products_type must be a non-empty array' });
+      }
+      if (!Array.isArray(service_type) || service_type.length === 0) {
+        return res.status(400).json({ message: 'service_type must be a non-empty array' });
+      }
+
+      user.influencer_profile = {
+        business_type: String(business_type).trim(),
+        store_name: String(store_name).trim(),
+        store_description: String(store_description).trim(),
+        products_type: products_type.map(String),
+        service_type: service_type.map(String),
+      };
+    }
+
+    user.role = role;
+    await user.save();
+
+    return res.json({ success: true, id: user._id, role: user.role, influencer_profile: user.influencer_profile });
+  } catch (error) {
+    console.error('[updateUserRole]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Delete user
 // @route   DELETE /api/users/:id
 // @access  Private

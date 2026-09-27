@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -721,6 +721,52 @@ router.patch('/:id', auth, adminPatchUser);
  *         description: Server error
  */
 router.patch('/:id/status', auth, updateUserStatus);
+
+/**
+ * @swagger
+ * /api/users/{id}/role:
+ *   patch:
+ *     summary: Change role between member and influencer (self or admin)
+ *     description: A user can change their own role to/from influencer, or an admin can change any user's.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [role]
+ *             properties:
+ *               role: { type: string, enum: [member, influencer] }
+ *               business_type: { type: string, description: "Required when switching to influencer" }
+ *               store_name: { type: string, description: "Required when switching to influencer" }
+ *               store_description: { type: string, description: "Required when switching to influencer" }
+ *               products_type:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: "Required when switching to influencer"
+ *               service_type:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: "Required when switching to influencer"
+ *     responses:
+ *       200:
+ *         description: Role updated
+ *       400:
+ *         description: Invalid role or user is not eligible for this transition
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: User not found
+ */
+router.patch('/:id/role', auth, updateUserRole);
 
 /**
  * @swagger
