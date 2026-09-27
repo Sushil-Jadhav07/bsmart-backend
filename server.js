@@ -55,6 +55,8 @@ const notificationPrefRoutes  = require('./src/routes/notificationPreference.rou
 const tweetRoutes           = require('./src/routes/tweet.routes');
 const promoteReelRoutes = require('./src/routes/promoteReel.routes');
 const savedRoutes          = require('./src/routes/saved.routes');
+const influencerProductRoutes = require('./src/routes/influencerProduct.routes');
+const influencerServiceRoutes = require('./src/routes/influencerService.routes');
 const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <- PUSH NOTIFICATIONS
 const settingsRoutes       = require('./src/routes/settings.routes');       // <- ACCOUNT SETTINGS
 const privacyRoutes        = require('./src/routes/privacy.routes');        // <- PRIVACY SETTINGS
@@ -323,6 +325,8 @@ app.use('/api/notification-preferences', notificationPrefRoutes);
 app.use('/api/tweets',           tweetRoutes);
 app.use('/api/promote-reels', promoteReelRoutes);
 app.use('/api/saved',          savedRoutes);
+app.use('/api/influencer-products', influencerProductRoutes);
+app.use('/api/influencer-services', influencerServiceRoutes);
 app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
 app.use('/api/settings',      settingsRoutes);         // <- ACCOUNT SETTINGS
 app.use('/api/privacy',       privacyRoutes);          // <- PRIVACY SETTINGS
