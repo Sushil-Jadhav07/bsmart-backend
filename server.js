@@ -59,6 +59,7 @@ const influencerProductRoutes = require('./src/routes/influencerProduct.routes')
 const influencerServiceRoutes = require('./src/routes/influencerService.routes');
 const cartRoutes = require('./src/routes/cart.routes');
 const orderRoutes = require('./src/routes/order.routes');
+const serviceBookingRoutes = require('./src/routes/serviceBooking.routes');
 const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <- PUSH NOTIFICATIONS
 const settingsRoutes       = require('./src/routes/settings.routes');       // <- ACCOUNT SETTINGS
 const privacyRoutes        = require('./src/routes/privacy.routes');        // <- PRIVACY SETTINGS
@@ -331,6 +332,7 @@ app.use('/api/influencer-products', influencerProductRoutes);
 app.use('/api/influencer-services', influencerServiceRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/service-bookings', serviceBookingRoutes);
 app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
 app.use('/api/settings',      settingsRoutes);         // <- ACCOUNT SETTINGS
 app.use('/api/privacy',       privacyRoutes);          // <- PRIVACY SETTINGS
