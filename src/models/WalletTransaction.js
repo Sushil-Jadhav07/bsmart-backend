@@ -25,6 +25,11 @@ const walletTransactionSchema = new mongoose.Schema(
       ref: 'Ad',
       index: true,
     },
+    order_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Order',
+      index: true,
+    },
     /**
      * Transaction Type Reference
      * ─────────────────────────────────────────────────────────
@@ -84,6 +89,9 @@ const walletTransactionSchema = new mongoose.Schema(
         'AD_SAVE_DEDUCTION',
         // Member redemption
         'COIN_REDEMPTION',
+        // Marketplace orders (influencer products)
+        'MARKETPLACE_ORDER_PAYMENT',
+        'MARKETPLACE_ORDER_REFUND',
         // Shared
         'ADMIN_ADJUSTMENT',
         // Legacy post actions
