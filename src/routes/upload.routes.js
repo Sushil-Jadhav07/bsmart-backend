@@ -3,8 +3,9 @@ const router     = express.Router();
 const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
+const multerS3   = require('multer-s3');
 const verifyToken = require('../middleware/auth');
-const { upload, makeUploader } = require('../config/multer');
+const { upload, makeUploader, s3, BUCKET } = require('../config/multer');
 const User       = require('../models/User');
 const convertToHls = require('../utils/convertToHls');                        // local-disk HLS (kept for local dev)
 const { convertToHlsAndUpload } = require('../utils/convertToHlsAndUpload'); // NEW — S3 → HLS → S3
@@ -296,11 +297,16 @@ router.post('/avatar', verifyToken, upload.single('file'), async (req, res) => {
  *         description: Image uploaded successfully
  */
 
-const productImageStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename:    (_req, file, cb) => {
+// Stored on R2 (not local disk) — the container's filesystem is ephemeral and
+// gets wiped on every redeploy/restart, which was silently 404ing these images.
+const productImageStorage = multerS3({
+  s3,
+  bucket: BUCKET,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: (req, file, cb) => {
+    const userId = req.user?._id || req.user?.id || 'unknown';
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, unique + path.extname(file.originalname).toLowerCase());
+    cb(null, `uploads/users/${userId}/promote-product/${unique}${path.extname(file.originalname || '').toLowerCase()}`);
   },
 });
 
@@ -346,6 +352,194 @@ router.post(
       return res.json({ promote_img: promoteImg, fileName, media_type: 'image' });
     } catch (error) {
       console.error('[Upload/promote-product] Error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  }
+);
+
+// ─── POST /api/upload/influencer-product ─────────────────────────────────────
+/**
+ * @swagger
+ * /api/upload/influencer-product:
+ *   post:
+ *     summary: Upload one or more images for an influencer product listing
+ *     description: |
+ *       Returns real `fileName`/`fileUrl` pairs — drop the returned `images`
+ *       array straight into `POST /api/influencer-products`'s `images` field.
+ *       Rejects anything that isn't a real image file, so it's not possible
+ *       to accidentally reference a file that was never actually uploaded.
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [files]
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *     responses:
+ *       200:
+ *         description: Images uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       fileName: { type: string }
+ *                       fileUrl: { type: string }
+ *                 count: { type: integer }
+ *       400:
+ *         description: No files, too many files, file too large, or not an image
+ */
+const influencerProductImageStorage = multerS3({
+  s3,
+  bucket: BUCKET,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: (req, file, cb) => {
+    const userId = req.user?._id || req.user?.id || 'unknown';
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `uploads/users/${userId}/influencer-product/${unique}${path.extname(file.originalname || '').toLowerCase()}`);
+  },
+});
+
+const uploadInfluencerProductImages = multer({
+  storage:    influencerProductImageStorage,
+  limits:     { fileSize: 10 * 1024 * 1024 },
+  fileFilter: productImageFilter,
+});
+
+router.post(
+  '/influencer-product',
+  verifyToken,
+  (req, res, next) => {
+    uploadInfluencerProductImages.array('files', 10)(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ message: 'File too large. Maximum size is 10 MB per image.' });
+        }
+        if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+          return res.status(400).json({ message: 'Maximum 10 images allowed per upload.' });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      if (err) return res.status(400).json({ message: err.message });
+      next();
+    });
+  },
+  (req, res) => {
+    try {
+      const files = req.files || [];
+      if (files.length === 0) {
+        return res.status(400).json({ message: 'Please upload at least one image file.' });
+      }
+      const images = files.map((f) => ({ fileName: getFileName(f), fileUrl: getFileUrl(req, f) }));
+      return res.json({ success: true, images, count: images.length });
+    } catch (error) {
+      console.error('[Upload/influencer-product] Error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  }
+);
+
+// ─── POST /api/upload/influencer-service ─────────────────────────────────────
+/**
+ * @swagger
+ * /api/upload/influencer-service:
+ *   post:
+ *     summary: Upload one or more images for an influencer service listing
+ *     description: |
+ *       Returns real `fileName`/`fileUrl` pairs — drop the returned `images`
+ *       array straight into `POST /api/influencer-services`'s `images` field.
+ *     tags: [Upload]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [files]
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *     responses:
+ *       200:
+ *         description: Images uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       fileName: { type: string }
+ *                       fileUrl: { type: string }
+ *                 count: { type: integer }
+ *       400:
+ *         description: No files, too many files, file too large, or not an image
+ */
+const influencerServiceImageStorage = multerS3({
+  s3,
+  bucket: BUCKET,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: (req, file, cb) => {
+    const userId = req.user?._id || req.user?.id || 'unknown';
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `uploads/users/${userId}/influencer-service/${unique}${path.extname(file.originalname || '').toLowerCase()}`);
+  },
+});
+
+const uploadInfluencerServiceImages = multer({
+  storage:    influencerServiceImageStorage,
+  limits:     { fileSize: 10 * 1024 * 1024 },
+  fileFilter: productImageFilter,
+});
+
+router.post(
+  '/influencer-service',
+  verifyToken,
+  (req, res, next) => {
+    uploadInfluencerServiceImages.array('files', 10)(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ message: 'File too large. Maximum size is 10 MB per image.' });
+        }
+        if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+          return res.status(400).json({ message: 'Maximum 10 images allowed per upload.' });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      if (err) return res.status(400).json({ message: err.message });
+      next();
+    });
+  },
+  (req, res) => {
+    try {
+      const files = req.files || [];
+      if (files.length === 0) {
+        return res.status(400).json({ message: 'Please upload at least one image file.' });
+      }
+      const images = files.map((f) => ({ fileName: getFileName(f), fileUrl: getFileUrl(req, f) }));
+      return res.json({ success: true, images, count: images.length });
+    } catch (error) {
+      console.error('[Upload/influencer-service] Error:', error);
       res.status(500).json({ message: 'Server error', error: error.message });
     }
   }

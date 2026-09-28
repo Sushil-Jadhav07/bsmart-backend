@@ -395,7 +395,7 @@ exports.listSellerOrders = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { order_status } = req.body;
+    const order_status = req.body.order_status || req.body.status;
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid order ID' });
     }

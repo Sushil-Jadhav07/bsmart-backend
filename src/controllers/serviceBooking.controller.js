@@ -379,7 +379,7 @@ exports.listSellerBookings = async (req, res) => {
 exports.updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { booking_status } = req.body;
+    const booking_status = req.body.booking_status || req.body.status;
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid booking ID' });
     }

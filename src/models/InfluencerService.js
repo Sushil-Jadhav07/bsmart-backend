@@ -48,6 +48,7 @@ const influencerServiceSchema = new mongoose.Schema({
   service_method: { type: String, enum: ['at_customer_location', 'online', 'at_my_location'], required: true },
   weekly_availability: { type: weeklyAvailabilitySchema, default: {} },
   visible_to_customers: { type: Boolean, default: true },
+  status: { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },
 
   isDeleted: { type: Boolean, default: false },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -55,7 +56,7 @@ const influencerServiceSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 influencerServiceSchema.index({ user_id: 1, isDeleted: 1 });
-influencerServiceSchema.index({ visible_to_customers: 1, isDeleted: 1, category: 1 });
+influencerServiceSchema.index({ visible_to_customers: 1, status: 1, isDeleted: 1, category: 1 });
 
 module.exports = mongoose.model('InfluencerService', influencerServiceSchema);
 module.exports.WEEKDAYS = WEEKDAYS;

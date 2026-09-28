@@ -122,6 +122,7 @@ const buildServiceData = (body) => {
     service_method: body.service_method,
     weekly_availability,
     visible_to_customers: body.visible_to_customers !== undefined ? !!body.visible_to_customers : true,
+    status: ['active', 'inactive', 'draft'].includes(body.status) ? body.status : 'active',
   };
 };
 
@@ -167,7 +168,7 @@ exports.updateService = async (req, res) => {
     const allowedFields = [
       'images', 'name', 'category', 'provider', 'short_description', 'key_highlights',
       'price', 'rate_type', 'duration', 'subservices',
-      'service_method', 'weekly_availability', 'visible_to_customers',
+      'service_method', 'weekly_availability', 'visible_to_customers', 'status',
     ];
 
     const merged = { ...service.toObject(), ...req.body };
@@ -241,7 +242,7 @@ exports.listServices = async (req, res) => {
   try {
     const { category, q, page = 1, limit = 20 } = req.query;
 
-    const query = { visible_to_customers: true, isDeleted: false };
+    const query = { visible_to_customers: true, status: 'active', isDeleted: false };
     if (category) query.category = category;
     if (q && String(q).trim()) {
       const regex = new RegExp(String(q).trim(), 'i');

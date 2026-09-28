@@ -140,4 +140,4 @@ function makeUploader(subfolder) {
   return multer({ storage: s3Storage, limits: { fileSize: 5 * 1024 * 1024 * 1024 }, fileFilter });
 }
 
-module.exports = { upload, uploadAudio, getFileUrl, getFileName, makeUploader };
+module.exports = { upload, uploadAudio, getFileUrl, getFileName, makeUploader, s3, BUCKET };
