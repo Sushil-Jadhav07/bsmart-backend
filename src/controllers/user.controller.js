@@ -4,6 +4,9 @@ const Comment = require('../models/Comment');
 const Vendor = require('../models/Vendor');
 const PromoteReel = require('../models/PromoteReel');
 const Tweet = require('../models/tweet.model');
+const InfluencerProduct = require('../models/InfluencerProduct');
+const InfluencerService = require('../models/InfluencerService');
+const Follow = require('../models/Follow');
 const mongoose = require('mongoose');
 const { checkSections } = require('../utils/privacyGuard');
 
@@ -726,9 +729,14 @@ exports.updateUserRole = async (req, res) => {
       return res.status(400).json({ message: `Cannot change role for a ${user.role} account via this endpoint` });
     }
 
-    // When (re-)confirming influencer status, the storefront details are required.
+    // When (re-)confirming influencer status, the core storefront details are required.
+    // service_areas / languages / store_type / trust_badges are optional here — they
+    // can also be filled in later via PATCH /api/users/me/store-profile.
     if (role === 'influencer') {
-      const { business_type, store_name, store_description, products_type, service_type } = req.body;
+      const {
+        business_type, store_name, store_description, products_type, service_type,
+        service_areas, languages, store_type, trust_badges,
+      } = req.body;
 
       if (!business_type || !String(business_type).trim()) {
         return res.status(400).json({ message: 'business_type is required' });
@@ -745,6 +753,15 @@ exports.updateUserRole = async (req, res) => {
       if (!Array.isArray(service_type) || service_type.length === 0) {
         return res.status(400).json({ message: 'service_type must be a non-empty array' });
       }
+      if (service_areas !== undefined && !Array.isArray(service_areas)) {
+        return res.status(400).json({ message: 'service_areas must be an array' });
+      }
+      if (languages !== undefined && !Array.isArray(languages)) {
+        return res.status(400).json({ message: 'languages must be an array' });
+      }
+      if (trust_badges !== undefined && !Array.isArray(trust_badges)) {
+        return res.status(400).json({ message: 'trust_badges must be an array' });
+      }
 
       user.influencer_profile = {
         business_type: String(business_type).trim(),
@@ -752,6 +769,10 @@ exports.updateUserRole = async (req, res) => {
         store_description: String(store_description).trim(),
         products_type: products_type.map(String),
         service_type: service_type.map(String),
+        service_areas: (service_areas || user.influencer_profile?.service_areas || []).map(String),
+        languages: (languages || user.influencer_profile?.languages || []).map(String),
+        store_type: store_type ? String(store_type).trim() : (user.influencer_profile?.store_type || 'Personal Store'),
+        trust_badges: (trust_badges || user.influencer_profile?.trust_badges || []).map(String),
       };
     }
 
@@ -761,6 +782,105 @@ exports.updateUserRole = async (req, res) => {
     return res.json({ success: true, id: user._id, role: user.role, influencer_profile: user.influencer_profile });
   } catch (error) {
     console.error('[updateUserRole]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Influencer — update their own store profile fields at any time
+//          (not just when switching roles)
+// @route   PATCH /api/users/me/store-profile
+// @access  Private (influencer only, self)
+exports.updateStoreProfile = async (req, res) => {
+  try {
+    if (req.user.role !== 'influencer') {
+      return res.status(403).json({ message: 'Only influencers have a store profile' });
+    }
+
+    const {
+      business_type, store_name, store_description, products_type, service_type,
+      service_areas, languages, store_type, trust_badges,
+    } = req.body;
+
+    const arrayFields = { products_type, service_type, service_areas, languages, trust_badges };
+    for (const [key, value] of Object.entries(arrayFields)) {
+      if (value !== undefined && !Array.isArray(value)) {
+        return res.status(400).json({ message: `${key} must be an array` });
+      }
+    }
+
+    const current = req.user.influencer_profile || {};
+    const updated = {
+      business_type: business_type !== undefined ? String(business_type).trim() : current.business_type,
+      store_name: store_name !== undefined ? String(store_name).trim() : current.store_name,
+      store_description: store_description !== undefined ? String(store_description).trim() : current.store_description,
+      products_type: products_type !== undefined ? products_type.map(String) : current.products_type,
+      service_type: service_type !== undefined ? service_type.map(String) : current.service_type,
+      service_areas: service_areas !== undefined ? service_areas.map(String) : current.service_areas,
+      languages: languages !== undefined ? languages.map(String) : current.languages,
+      store_type: store_type !== undefined ? String(store_type).trim() : current.store_type,
+      trust_badges: trust_badges !== undefined ? trust_badges.map(String) : current.trust_badges,
+    };
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $set: { influencer_profile: updated } },
+      { new: true, runValidators: true }
+    ).select('influencer_profile');
+
+    return res.json({ success: true, influencer_profile: user.influencer_profile });
+  } catch (error) {
+    console.error('[updateStoreProfile]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Public storefront view — profile info + listing counts + follow state
+// @route   GET /api/users/:id/store-profile
+// @access  Public (follow state included only if the viewer is authenticated)
+exports.getStoreProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    const user = await User.findOne({ _id: id, role: 'influencer', isDeleted: false })
+      .select('username full_name avatar_url bio followers_count following_count influencer_profile createdAt')
+      .lean();
+    if (!user) return res.status(404).json({ message: 'Influencer store not found' });
+
+    const [productCount, serviceCount, isFollowing] = await Promise.all([
+      InfluencerProduct.countDocuments({ user_id: id, status: 'active', isDeleted: false }),
+      InfluencerService.countDocuments({ user_id: id, status: 'active', visible_to_customers: true, isDeleted: false }),
+      req.userId ? Follow.exists({ follower_id: req.userId, followed_id: id }) : Promise.resolve(false),
+    ]);
+
+    return res.json({
+      success: true,
+      store: {
+        user_id: user._id,
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        store_name: user.influencer_profile?.store_name || `${user.full_name || user.username}'s Store`,
+        store_type: user.influencer_profile?.store_type || 'Personal Store',
+        business_type: user.influencer_profile?.business_type || '',
+        about: user.influencer_profile?.store_description || user.bio || '',
+        products_type: user.influencer_profile?.products_type || [],
+        service_type: user.influencer_profile?.service_type || [],
+        service_areas: user.influencer_profile?.service_areas || [],
+        languages: user.influencer_profile?.languages || [],
+        trust_badges: user.influencer_profile?.trust_badges || [],
+        followers_count: user.followers_count || 0,
+        following_count: user.following_count || 0,
+        is_following: !!isFollowing,
+        product_count: productCount,
+        service_count: serviceCount,
+        member_since: user.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('[getStoreProfile]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

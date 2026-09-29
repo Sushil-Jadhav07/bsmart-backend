@@ -243,10 +243,11 @@ exports.listMyProducts = async (req, res) => {
 // ─── Public marketplace feed (members explore) ───────────────────────────────
 exports.listProducts = async (req, res) => {
   try {
-    const { category, q, page = 1, limit = 20 } = req.query;
+    const { category, q, seller, page = 1, limit = 20 } = req.query;
 
     const query = { status: 'active', isDeleted: false };
     if (category) query.category = category;
+    if (seller && mongoose.Types.ObjectId.isValid(seller)) query.user_id = seller;
     if (q && String(q).trim()) {
       const regex = new RegExp(String(q).trim(), 'i');
       query.$or = [

@@ -145,6 +145,10 @@ const userSchema = new mongoose.Schema({
     store_description:   { type: String, default: '' },
     products_type:        { type: [String], default: [] },
     service_type:         { type: [String], default: [] },
+    service_areas:        { type: [String], default: [] },
+    languages:             { type: [String], default: [] },
+    store_type:            { type: String, default: 'Personal Store' },
+    trust_badges:          { type: [String], default: [] },
   },
   // ─── Ad Interest Categories ───────────────────────────────────────────────
   // Stores the list of ad categories the user is interested in.

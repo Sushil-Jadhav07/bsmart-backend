@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -767,6 +767,57 @@ router.patch('/:id/status', auth, updateUserStatus);
  *         description: User not found
  */
 router.patch('/:id/role', auth, updateUserRole);
+
+/**
+ * @swagger
+ * /api/users/me/store-profile:
+ *   patch:
+ *     summary: Influencer — update their own store profile fields at any time
+ *     description: All fields optional — only send what you want to change.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               business_type: { type: string }
+ *               store_name: { type: string }
+ *               store_description: { type: string }
+ *               products_type: { type: array, items: { type: string } }
+ *               service_type: { type: array, items: { type: string } }
+ *               service_areas: { type: array, items: { type: string }, example: ["Mumbai", "Online"] }
+ *               languages: { type: array, items: { type: string }, example: ["English", "Hindi"] }
+ *               store_type: { type: string, example: "Personal Store" }
+ *               trust_badges: { type: array, items: { type: string }, example: ["Professional", "Trusted", "Reliable"] }
+ *     responses:
+ *       200:
+ *         description: Updated store profile
+ *       403:
+ *         description: Only influencers have a store profile
+ */
+router.patch('/me/store-profile', auth, updateStoreProfile);
+
+/**
+ * @swagger
+ * /api/users/{id}/store-profile:
+ *   get:
+ *     summary: Public storefront view for an influencer (profile info + listing counts + follow state)
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Store profile
+ *       404:
+ *         description: Influencer store not found
+ */
+router.get('/:id/store-profile', optionalAuth, getStoreProfile);
 
 /**
  * @swagger
