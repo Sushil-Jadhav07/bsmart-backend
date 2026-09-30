@@ -54,8 +54,8 @@ const validateProductBody = (body) => {
     return 'Maximum 5 key highlights allowed';
   }
 
-  if (!['active', 'inactive', 'draft'].includes(body.status)) {
-    return 'status must be active, inactive, or draft';
+  if (!['active', 'inactive', 'draft', 'out_of_stock'].includes(body.status)) {
+    return 'status must be active, inactive, draft, or out_of_stock';
   }
 
   const dims = body.dimensions;
@@ -191,6 +191,43 @@ exports.updateProduct = async (req, res) => {
     return res.json({ success: true, product: transformProduct(product, baseUrl) });
   } catch (error) {
     console.error('[updateProduct]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ─── Restock a product (owner only) ──────────────────────────────────────────
+// Adds to the current stock_quantity rather than replacing it — avoids the
+// classic "two people editing the form at once overwrite each other's stock"
+// bug that plain PATCH /:id would have. Auto-reactivates a product that was
+// marked Out of Stock, since restocking it implies it's sellable again.
+exports.addStock = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid product ID' });
+    }
+
+    const quantity = Number(req.body.quantity);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return res.status(400).json({ message: 'quantity must be a positive whole number' });
+    }
+
+    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false });
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    if (String(product.user_id) !== String(req.userId)) {
+      return res.status(403).json({ message: 'Not authorized to update this product' });
+    }
+
+    product.stock_quantity += quantity;
+    if (product.status === 'out_of_stock') {
+      product.status = 'active';
+    }
+    await product.save();
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json({ success: true, product: transformProduct(product, baseUrl) });
+  } catch (error) {
+    console.error('[addStock]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

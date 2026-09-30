@@ -187,6 +187,17 @@ router.patch('/:id/cancel', auth, cancelOrder);
  * /api/orders/{id}/status:
  *   patch:
  *     summary: Seller or admin — update order fulfillment status
+ *     description: |
+ *       Also accepts the "Fulfill order" panel's fields alongside the status change —
+ *       send whichever ones changed. `courier` and `tracking_number` are **required**
+ *       when transitioning to `shipped` (either in this same call, or already saved on
+ *       the order from an earlier call).
+ *
+ *       On success, this:
+ *       - Broadcasts a `order-status-updated` Socket.io event (`{order_id, order_number,
+ *         order_status, courier, tracking_number, updated_at}`) to the buyer and to every
+ *         seller on the order — this is what powers the "Live updates" panel.
+ *       - Sends the buyer an in-app + push notification, unless `notify_customer` is false.
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -204,9 +215,16 @@ router.patch('/:id/cancel', auth, cancelOrder);
  *             required: [order_status]
  *             properties:
  *               order_status: { type: string, enum: [confirmed, processing, shipped, delivered] }
+ *               confirmed_items: { type: boolean }
+ *               packed: { type: boolean }
+ *               courier: { type: string, example: "Blue Dart" }
+ *               tracking_number: { type: string, example: "BD123456789IN" }
+ *               notify_customer: { type: boolean, default: true }
  *     responses:
  *       200:
- *         description: Order status updated
+ *         description: Order updated — returns the full order
+ *       400:
+ *         description: Invalid order_status, or missing courier/tracking_number when marking shipped
  *       403:
  *         description: Not authorized
  */

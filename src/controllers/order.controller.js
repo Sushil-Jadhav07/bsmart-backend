@@ -8,6 +8,8 @@ const Wallet = require('../models/Wallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const User = require('../models/User');
 const runMongoTransaction = require('../utils/runMongoTransaction');
+const emitToUser = require('../utils/emitToUser');
+const sendNotification = require('../utils/sendNotification');
 
 const razorpay = (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET)
   ? new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET })
@@ -392,10 +394,19 @@ exports.listSellerOrders = async (req, res) => {
 };
 
 // ─── Seller/Admin: update order fulfillment status ───────────────────────────
+const ORDER_STATUS_MESSAGES = {
+  confirmed:  'Your order has been confirmed by the seller.',
+  processing: 'Your order is being packed.',
+  shipped:    'Your order has shipped!',
+  delivered:  'Your order has been delivered.',
+};
+
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const order_status = req.body.order_status || req.body.status;
+    const { confirmed_items, packed, courier, tracking_number, notify_customer } = req.body;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid order ID' });
     }
@@ -417,8 +428,49 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(400).json({ message: 'Cannot update a cancelled order' });
     }
 
+    // Shipping requires knowing how the package is actually being sent.
+    const effectiveCourier = courier !== undefined ? courier : order.courier;
+    const effectiveTracking = tracking_number !== undefined ? tracking_number : order.tracking_number;
+    if (order_status === 'shipped' && (!effectiveCourier || !effectiveTracking)) {
+      return res.status(400).json({ message: 'courier and tracking_number are required to mark an order as shipped' });
+    }
+
+    if (confirmed_items !== undefined) order.confirmed_items = !!confirmed_items;
+    if (packed !== undefined) order.packed = !!packed;
+    if (courier !== undefined) order.courier = courier;
+    if (tracking_number !== undefined) order.tracking_number = tracking_number;
+    if (notify_customer !== undefined) order.notify_customer = !!notify_customer;
+
     order.order_status = order_status;
+    if (order_status === 'shipped' && !order.shipped_at) order.shipped_at = new Date();
+    if (order_status === 'delivered' && !order.delivered_at) order.delivered_at = new Date();
+
     await order.save();
+
+    // ── Real-time push to the buyer (and the seller's own other tabs) ─────────
+    const eventPayload = {
+      order_id: order._id,
+      order_number: order.order_number,
+      order_status: order.order_status,
+      courier: order.courier,
+      tracking_number: order.tracking_number,
+      updated_at: order.updatedAt,
+    };
+    emitToUser(req.app, order.user_id, 'order-status-updated', eventPayload);
+    for (const sellerId of new Set(order.items.map((i) => String(i.seller_id)))) {
+      emitToUser(req.app, sellerId, 'order-status-updated', eventPayload);
+    }
+
+    // ── In-app + push notification to the buyer ───────────────────────────────
+    if (order.notify_customer) {
+      sendNotification(req.app, {
+        recipient: order.user_id,
+        sender: req.userId,
+        type: 'order',
+        message: ORDER_STATUS_MESSAGES[order_status] || `Order status updated: ${order_status}`,
+        link: `/orders/${order._id}`,
+      }).catch(() => {});
+    }
 
     return res.json({ success: true, order });
   } catch (error) {

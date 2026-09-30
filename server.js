@@ -15,6 +15,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const path = require('path');
 const connectDB = require('./src/config/db');
@@ -134,15 +135,27 @@ const emitOnlineUsersUpdate = async () => {
 io.on('connection', (socket) => {
   console.log('[Socket] Connected:', socket.id);
 
-  socket.on('register', (userId) => {
-    if (!userId) return;
-    // If user already has a socket, remove old entry first
-    const normalizedUserId = String(userId);
+  socket.on('register', (token) => {
+    if (!token) return;
+    // The client sends its JWT auth token here (not a bare user id) — verify it
+    // server-side and use the decoded id as the registration key. Trusting a
+    // client-supplied "userId" directly would let anyone register as, and
+    // silently receive the real-time events of, any other user.
+    let normalizedUserId;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      normalizedUserId = String(decoded.id);
+    } catch {
+      console.warn('[Socket] register rejected — invalid or expired token');
+      return;
+    }
+
+    socket.userId = normalizedUserId;
     const socketIds = onlineUsers.get(normalizedUserId) || new Set();
     socketIds.add(socket.id);
     onlineUsers.set(normalizedUserId, socketIds);
     emitOnlineUsersUpdate();
-    console.log(`[Socket] User ${userId} registered → ${socket.id}`);
+    console.log(`[Socket] User ${normalizedUserId} registered → ${socket.id}`);
   });
 
   socket.on('disconnect', () => {

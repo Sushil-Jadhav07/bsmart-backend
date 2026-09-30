@@ -827,7 +827,7 @@ exports.updateStoreProfile = async (req, res) => {
       { new: true, runValidators: true }
     ).select('influencer_profile');
 
-    return res.json({ success: true, influencer_profile: user.influencer_profile });
+    return res.json({ success: true, store: user.influencer_profile, influencer_profile: user.influencer_profile });
   } catch (error) {
     console.error('[updateStoreProfile]', error);
     return res.status(500).json({ message: 'Server error' });

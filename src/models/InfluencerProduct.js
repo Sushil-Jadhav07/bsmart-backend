@@ -41,7 +41,7 @@ const influencerProductSchema = new mongoose.Schema({
   stock_quantity:  { type: Number, required: true, min: 0 },
   seller_sku:      { type: String, required: true },
   track_inventory: { type: Boolean, default: true },
-  status:          { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },
+  status:          { type: String, enum: ['active', 'inactive', 'draft', 'out_of_stock'], default: 'active' },
   variants:        { type: [variantSchema], default: [] },
 
   // ── 3. Delivery & Publish ──────────────────────────────────────────────────

@@ -53,7 +53,16 @@ const orderSchema = new mongoose.Schema({
   },
   shipping_address: { type: addressSchema, required: true },
 
+  // ── Fulfillment checklist (seller's "Fulfill order" panel) ──────────────────
+  confirmed_items: { type: Boolean, default: false },
+  packed:          { type: Boolean, default: false },
+  courier:         { type: String, default: '' },
+  tracking_number: { type: String, default: '' },
+  notify_customer: { type: Boolean, default: true },
+
   placed_at:        { type: Date, default: null },
+  shipped_at:       { type: Date, default: null },
+  delivered_at:     { type: Date, default: null },
   cancelled_at:      { type: Date, default: null },
   cancelled_reason: { type: String, default: '' },
 }, { timestamps: true });

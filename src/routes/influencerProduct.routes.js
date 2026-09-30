@@ -3,6 +3,7 @@ const auth = require('../middleware/auth');
 const {
   createProduct,
   updateProduct,
+  addStock,
   deleteProduct,
   listMyProducts,
   listProducts,
@@ -187,6 +188,48 @@ router.get('/:id', getProductById);
  *         description: Product not found
  */
 router.patch('/:id', auth, updateProduct);
+
+/**
+ * @swagger
+ * /api/influencer-products/{id}/stock:
+ *   patch:
+ *     summary: Restock a product (owner only) — adds to current stock_quantity
+ *     description: |
+ *       Adds `quantity` to the product's existing `stock_quantity` (does not replace it).
+ *       If the product's status was `out_of_stock`, it's automatically switched back to
+ *       `active` since restocking implies it's sellable again.
+ *     tags: [Influencer Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [quantity]
+ *             properties:
+ *               quantity:
+ *                 type: integer
+ *                 minimum: 1
+ *                 example: 10
+ *                 description: Units to ADD to current stock (not the new total)
+ *     responses:
+ *       200:
+ *         description: Stock updated — returns the full updated product
+ *       400:
+ *         description: quantity must be a positive whole number
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Product not found
+ */
+router.patch('/:id/stock', auth, addStock);
 
 /**
  * @swagger
