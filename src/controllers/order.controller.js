@@ -288,8 +288,18 @@ exports.getOrderById = async (req, res) => {
       return res.status(400).json({ message: 'Invalid order ID' });
     }
 
-    const order = await Order.findOne({ _id: id, user_id: req.userId }).lean();
+    const order = await Order.findById(id).lean();
     if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Viewable by the buyer, any seller with items on the order, or an admin —
+    // not the buyer alone. The seller's own "Fulfill order" page calls this
+    // same endpoint to refresh order details.
+    const isBuyer = String(order.user_id) === String(req.userId);
+    const isSeller = order.items.some((i) => String(i.seller_id) === String(req.userId));
+    const isAdmin = req.user?.role === 'admin';
+    if (!isBuyer && !isSeller && !isAdmin) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
 
     return res.json({ success: true, order });
   } catch (error) {
