@@ -365,6 +365,13 @@ exports.cancelOrder = async (req, res) => {
           order.refund_failed = true;
           order.refund_error = refundErr.message || 'Razorpay refund failed';
         }
+      } else if (order.payment_method === 'razorpay') {
+        // Paid via Razorpay but no automatic refund is possible (gateway not
+        // configured or no payment id on record) — flag for manual handling.
+        order.refund_failed = true;
+        order.refund_error = !razorpay
+          ? 'Razorpay is not configured on the server'
+          : 'No Razorpay payment id on this order';
       }
 
       // Restock cancelled items
