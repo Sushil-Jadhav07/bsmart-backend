@@ -149,6 +149,13 @@ const userSchema = new mongoose.Schema({
     languages:             { type: [String], default: [] },
     store_type:            { type: String, default: 'Personal Store' },
     trust_badges:          { type: [String], default: [] },
+    // Admin suspension of selling privileges — separate from a full account
+    // ban (is_active/ban_type): a suspended influencer can still use the app
+    // as a member, just can't create/edit products or services.
+    is_suspended:          { type: Boolean, default: false },
+    suspension_reason:     { type: String, default: '' },
+    suspended_at:          { type: Date, default: null },
+    suspended_by:          { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   // ─── Ad Interest Categories ───────────────────────────────────────────────
   // Stores the list of ad categories the user is interested in.

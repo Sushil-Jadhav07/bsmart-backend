@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const {
   createProduct,
   updateProduct,
@@ -7,6 +8,7 @@ const {
   deleteProduct,
   listMyProducts,
   listProducts,
+  adminListAllProducts,
   getProductById,
 } = require('../controllers/influencerProduct.controller');
 
@@ -56,6 +58,42 @@ router.get('/', listProducts);
  *         description: The influencer's own products
  */
 router.get('/my', auth, listMyProducts);
+
+/**
+ * @swagger
+ * /api/influencer-products/admin/all:
+ *   get:
+ *     summary: Admin — list every product, any status, any seller
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: seller
+ *         schema: { type: string }
+ *         description: Filter by seller's user id
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, inactive, draft, out_of_stock] }
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated list of all products, every status
+ *       403:
+ *         description: Admin only
+ */
+router.get('/admin/all', auth, requireRole('admin'), adminListAllProducts);
 
 /**
  * @swagger

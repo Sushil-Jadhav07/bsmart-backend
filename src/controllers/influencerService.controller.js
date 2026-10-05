@@ -132,6 +132,11 @@ exports.createService = async (req, res) => {
     if (req.user.role !== 'influencer') {
       return res.status(403).json({ message: 'Only influencers can create services' });
     }
+    if (req.user.influencer_profile?.is_suspended) {
+      return res.status(403).json({
+        message: 'Your selling privileges are suspended. Reason: ' + (req.user.influencer_profile.suspension_reason || 'Not specified'),
+      });
+    }
 
     const validationError = validateServiceBody(req.body);
     if (validationError) {
@@ -163,6 +168,11 @@ exports.updateService = async (req, res) => {
     if (!service) return res.status(404).json({ message: 'Service not found' });
     if (String(service.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to update this service' });
+    }
+    if (req.user.influencer_profile?.is_suspended) {
+      return res.status(403).json({
+        message: 'Your selling privileges are suspended. Reason: ' + (req.user.influencer_profile.suspension_reason || 'Not specified'),
+      });
     }
 
     const allowedFields = [
@@ -280,6 +290,53 @@ exports.listServices = async (req, res) => {
     });
   } catch (error) {
     console.error('[listServices]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ─── Admin: list every service, any status, any seller ──────────────────────
+exports.adminListAllServices = async (req, res) => {
+  try {
+    const { seller, status, category, q, page = 1, limit = 20 } = req.query;
+
+    const query = { isDeleted: false };
+    if (seller && mongoose.Types.ObjectId.isValid(seller)) query.user_id = seller;
+    if (status && ['active', 'inactive', 'draft'].includes(status)) query.status = status;
+    if (category) query.category = category;
+    if (q && String(q).trim()) {
+      const regex = new RegExp(String(q).trim(), 'i');
+      query.$or = [
+        { name: regex },
+        { short_description: regex },
+        { category: regex },
+        { provider: regex },
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+    const [total, services] = await Promise.all([
+      InfluencerService.countDocuments(query),
+      InfluencerService.find(query)
+        .populate('user_id', 'username full_name avatar_url influencer_profile.store_name influencer_profile.is_suspended')
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+    ]);
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json({
+      success: true,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+      services: services.map((s) => transformService(s, baseUrl)),
+    });
+  } catch (error) {
+    console.error('[adminListAllServices]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };

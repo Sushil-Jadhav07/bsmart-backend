@@ -1,11 +1,13 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const {
   createService,
   updateService,
   deleteService,
   listMyServices,
   listServices,
+  adminListAllServices,
   getServiceById,
 } = require('../controllers/influencerService.controller');
 
@@ -55,6 +57,42 @@ router.get('/', listServices);
  *         description: The influencer's own services
  */
 router.get('/my', auth, listMyServices);
+
+/**
+ * @swagger
+ * /api/influencer-services/admin/all:
+ *   get:
+ *     summary: Admin — list every service, any status, any seller
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: seller
+ *         schema: { type: string }
+ *         description: Filter by seller's user id
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, inactive, draft] }
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated list of all services, every status
+ *       403:
+ *         description: Admin only
+ */
+router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
 
 /**
  * @swagger

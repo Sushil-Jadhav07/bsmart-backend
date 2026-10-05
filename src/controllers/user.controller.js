@@ -834,6 +834,45 @@ exports.updateStoreProfile = async (req, res) => {
   }
 };
 
+// @desc    Admin — suspend or restore an influencer's selling privileges
+//          (they keep normal app access as a member; they just can't
+//          create/edit products or services while suspended)
+// @route   PATCH /api/users/:id/suspend-influencer
+// @access  Private (admin only)
+exports.suspendInfluencer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { suspended, reason } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+    if (typeof suspended !== 'boolean') {
+      return res.status(400).json({ message: 'suspended must be true or false' });
+    }
+
+    const user = await User.findOne({ _id: id, role: 'influencer' });
+    if (!user) return res.status(404).json({ message: 'Influencer not found' });
+
+    user.influencer_profile = user.influencer_profile || {};
+    user.influencer_profile.is_suspended = suspended;
+    user.influencer_profile.suspension_reason = suspended ? (reason || '') : '';
+    user.influencer_profile.suspended_at = suspended ? new Date() : null;
+    user.influencer_profile.suspended_by = suspended ? req.userId : null;
+    await user.save();
+
+    return res.json({
+      success: true,
+      id: user._id,
+      is_suspended: user.influencer_profile.is_suspended,
+      suspension_reason: user.influencer_profile.suspension_reason,
+    });
+  } catch (error) {
+    console.error('[suspendInfluencer]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Public storefront view — profile info + listing counts + follow state
 // @route   GET /api/users/:id/store-profile
 // @access  Public (follow state included only if the viewer is authenticated)

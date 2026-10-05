@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, suspendInfluencer, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -799,6 +799,46 @@ router.patch('/:id/role', auth, updateUserRole);
  *         description: Only influencers have a store profile
  */
 router.patch('/me/store-profile', auth, updateStoreProfile);
+
+/**
+ * @swagger
+ * /api/users/{id}/suspend-influencer:
+ *   patch:
+ *     summary: Admin — suspend or restore an influencer's selling privileges
+ *     description: |
+ *       Suspending does NOT ban the account — the user keeps normal app access as a
+ *       member (browsing, buying, etc). It only blocks creating/editing products and
+ *       services via `POST/PATCH /api/influencer-products` and
+ *       `POST/PATCH /api/influencer-services`, which both return 403 while suspended.
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [suspended]
+ *             properties:
+ *               suspended: { type: boolean }
+ *               reason: { type: string, description: "Required in practice when suspending, shown to the influencer" }
+ *     responses:
+ *       200:
+ *         description: Suspension state updated
+ *       400:
+ *         description: suspended must be a boolean
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: Influencer not found
+ */
+router.patch('/:id/suspend-influencer', auth, requireRole('admin'), suspendInfluencer);
 
 /**
  * @swagger

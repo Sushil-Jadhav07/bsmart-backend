@@ -134,6 +134,11 @@ exports.createProduct = async (req, res) => {
     if (req.user.role !== 'influencer') {
       return res.status(403).json({ message: 'Only influencers can create products' });
     }
+    if (req.user.influencer_profile?.is_suspended) {
+      return res.status(403).json({
+        message: 'Your selling privileges are suspended. Reason: ' + (req.user.influencer_profile.suspension_reason || 'Not specified'),
+      });
+    }
 
     const validationError = validateProductBody(req.body);
     if (validationError) {
@@ -165,6 +170,11 @@ exports.updateProduct = async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Product not found' });
     if (String(product.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to update this product' });
+    }
+    if (req.user.influencer_profile?.is_suspended) {
+      return res.status(403).json({
+        message: 'Your selling privileges are suspended. Reason: ' + (req.user.influencer_profile.suspension_reason || 'Not specified'),
+      });
     }
 
     const allowedFields = [
@@ -320,6 +330,54 @@ exports.listProducts = async (req, res) => {
     });
   } catch (error) {
     console.error('[listProducts]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ─── Admin: list every product, any status, any seller ──────────────────────
+exports.adminListAllProducts = async (req, res) => {
+  try {
+    const { seller, status, category, q, page = 1, limit = 20 } = req.query;
+
+    const query = { isDeleted: false };
+    if (seller && mongoose.Types.ObjectId.isValid(seller)) query.user_id = seller;
+    if (status && ['active', 'inactive', 'draft', 'out_of_stock'].includes(status)) query.status = status;
+    if (category) query.category = category;
+    if (q && String(q).trim()) {
+      const regex = new RegExp(String(q).trim(), 'i');
+      query.$or = [
+        { name: regex },
+        { short_description: regex },
+        { category: regex },
+        { brand: regex },
+        { seller_sku: regex },
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+    const [total, products] = await Promise.all([
+      InfluencerProduct.countDocuments(query),
+      InfluencerProduct.find(query)
+        .populate('user_id', 'username full_name avatar_url influencer_profile.store_name influencer_profile.is_suspended')
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+    ]);
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json({
+      success: true,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+      products: products.map((p) => transformProduct(p, baseUrl)),
+    });
+  } catch (error) {
+    console.error('[adminListAllProducts]', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
