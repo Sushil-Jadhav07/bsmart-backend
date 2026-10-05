@@ -317,8 +317,11 @@ exports.cancelOrder = async (req, res) => {
       return res.status(400).json({ message: 'Invalid order ID' });
     }
 
-    const order = await Order.findOne({ _id: id, user_id: req.userId });
+    const order = await Order.findById(id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
+    const isBuyer = String(order.user_id) === String(req.userId);
+    const isAdmin = req.user?.role === 'admin';
+    if (!isBuyer && !isAdmin) return res.status(404).json({ message: 'Order not found' });
 
     if (!['pending', 'confirmed', 'processing'].includes(order.order_status)) {
       return res.status(400).json({ message: `Cannot cancel an order that is already ${order.order_status}` });
@@ -370,6 +373,52 @@ exports.cancelOrder = async (req, res) => {
 };
 
 // ─── Seller (influencer): list orders containing their products ─────────────
+// ─── Admin: list every order across all buyers and sellers ──────────────────
+exports.adminListAllOrders = async (req, res) => {
+  try {
+    const { status, payment_status, buyer, seller, q, page = 1, limit = 20 } = req.query;
+
+    const query = {};
+    if (status && ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
+      query.order_status = status;
+    }
+    if (payment_status && ['pending', 'paid', 'failed', 'refunded'].includes(payment_status)) {
+      query.payment_status = payment_status;
+    }
+    if (buyer && mongoose.Types.ObjectId.isValid(buyer)) query.user_id = buyer;
+    if (seller && mongoose.Types.ObjectId.isValid(seller)) query['items.seller_id'] = seller;
+    if (q && String(q).trim()) {
+      const regex = new RegExp(String(q).trim(), 'i');
+      query.$or = [{ order_number: regex }, { razorpay_payment_id: regex }];
+    }
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+    const [total, orders] = await Promise.all([
+      Order.countDocuments(query),
+      Order.find(query)
+        .populate('user_id', 'username full_name avatar_url')
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+      orders,
+    });
+  } catch (error) {
+    console.error('[adminListAllOrders]', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.listSellerOrders = async (req, res) => {
   try {
     if (req.user.role !== 'influencer') {

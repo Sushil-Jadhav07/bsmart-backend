@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const {
   checkout,
   verifyPayment,
@@ -7,6 +8,7 @@ const {
   getOrderById,
   cancelOrder,
   listSellerOrders,
+  adminListAllOrders,
   updateOrderStatus,
 } = require('../controllers/order.controller');
 
@@ -114,6 +116,47 @@ router.get('/seller/mine', auth, listSellerOrders);
 
 /**
  * @swagger
+ * /api/orders/admin/all:
+ *   get:
+ *     summary: Admin — list every order across all buyers and sellers
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, confirmed, processing, shipped, delivered, cancelled] }
+ *       - in: query
+ *         name: payment_status
+ *         schema: { type: string, enum: [pending, paid, failed, refunded] }
+ *       - in: query
+ *         name: buyer
+ *         schema: { type: string }
+ *         description: Filter by buyer's user id
+ *       - in: query
+ *         name: seller
+ *         schema: { type: string }
+ *         description: Filter by seller's user id (any order containing their items)
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: Match order number or Razorpay payment id
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated list of all orders
+ *       403:
+ *         description: Admin only
+ */
+router.get('/admin/all', auth, requireRole('admin'), adminListAllOrders);
+
+/**
+ * @swagger
  * /api/orders:
  *   get:
  *     summary: Get the logged-in buyer's own orders
@@ -158,7 +201,7 @@ router.get('/:id', auth, getOrderById);
  * @swagger
  * /api/orders/{id}/cancel:
  *   patch:
- *     summary: Cancel an order (buyer only, before it ships) — refunds if already paid
+ *     summary: Cancel an order (buyer or admin, before it ships) — refunds if already paid
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
