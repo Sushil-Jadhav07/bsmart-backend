@@ -65,6 +65,10 @@ const orderSchema = new mongoose.Schema({
   delivered_at:     { type: Date, default: null },
   cancelled_at:      { type: Date, default: null },
   cancelled_reason: { type: String, default: '' },
+  // Set when a cancellation's automatic Razorpay refund failed; the order stays
+  // payment_status 'paid' so it can be refunded manually from the dashboard.
+  refund_failed:    { type: Boolean, default: false, index: true },
+  refund_error:     { type: String, default: '' },
 }, { timestamps: true });
 
 orderSchema.index({ user_id: 1, createdAt: -1 });

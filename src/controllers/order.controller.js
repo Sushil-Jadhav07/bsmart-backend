@@ -9,7 +9,14 @@ const WalletTransaction = require('../models/WalletTransaction');
 const User = require('../models/User');
 const runMongoTransaction = require('../utils/runMongoTransaction');
 const emitToUser = require('../utils/emitToUser');
-const sendNotification = require('../utils/sendNotification');
+const {
+  notifyOrderPlaced,
+  notifyOrderStatus,
+  notifyOrderCancelled,
+  notifyOrderRefunded,
+  notifyOrderPaymentFailed,
+  notifyOrderRefundFailed,
+} = require('../services/orderNotification.service');
 
 const razorpay = (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET)
   ? new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET })
@@ -143,6 +150,7 @@ exports.checkout = async (req, res) => {
         },
       });
 
+      notifyOrderPlaced(req.app, result);
       return res.status(201).json({ success: true, order: result });
     }
 
@@ -225,6 +233,7 @@ exports.verifyPayment = async (req, res) => {
     if (expectedSignature !== razorpay_signature) {
       order.payment_status = 'failed';
       await order.save();
+      notifyOrderPaymentFailed(req.app, order);
       return res.status(400).json({ message: 'Payment verification failed — invalid signature' });
     }
 
@@ -250,6 +259,7 @@ exports.verifyPayment = async (req, res) => {
       },
     });
 
+    notifyOrderPlaced(req.app, result);
     return res.json({ success: true, order: result });
   } catch (error) {
     console.error('[verifyPayment]', error);
@@ -352,6 +362,8 @@ exports.cancelOrder = async (req, res) => {
         } catch (refundErr) {
           console.error('[cancelOrder] Razorpay refund failed:', refundErr.message);
           // Order is still marked cancelled; payment_status stays 'paid' so this can be handled manually.
+          order.refund_failed = true;
+          order.refund_error = refundErr.message || 'Razorpay refund failed';
         }
       }
 
@@ -365,6 +377,14 @@ exports.cancelOrder = async (req, res) => {
     }
 
     await order.save();
+
+    notifyOrderCancelled(req.app, order, { reason: order.cancelled_reason });
+    if (order.payment_status === 'refunded') {
+      notifyOrderRefunded(req.app, order, order.total_amount);
+    }
+    if (order.refund_failed) {
+      notifyOrderRefundFailed(req.app, order);
+    }
     return res.json({ success: true, order });
   } catch (error) {
     console.error('[cancelOrder]', error);
@@ -385,6 +405,7 @@ exports.adminListAllOrders = async (req, res) => {
     if (payment_status && ['pending', 'paid', 'failed', 'refunded'].includes(payment_status)) {
       query.payment_status = payment_status;
     }
+    if (req.query.refund_failed === 'true') query.refund_failed = true;
     if (buyer && mongoose.Types.ObjectId.isValid(buyer)) query.user_id = buyer;
     if (seller && mongoose.Types.ObjectId.isValid(seller)) query['items.seller_id'] = seller;
     if (q && String(q).trim()) {
@@ -453,13 +474,6 @@ exports.listSellerOrders = async (req, res) => {
 };
 
 // ─── Seller/Admin: update order fulfillment status ───────────────────────────
-const ORDER_STATUS_MESSAGES = {
-  confirmed:  'Your order has been confirmed by the seller.',
-  processing: 'Your order is being packed.',
-  shipped:    'Your order has shipped!',
-  delivered:  'Your order has been delivered.',
-};
-
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -520,16 +534,7 @@ exports.updateOrderStatus = async (req, res) => {
       emitToUser(req.app, sellerId, 'order-status-updated', eventPayload);
     }
 
-    // ── In-app + push notification to the buyer ───────────────────────────────
-    if (order.notify_customer) {
-      sendNotification(req.app, {
-        recipient: order.user_id,
-        sender: req.userId,
-        type: 'order',
-        message: ORDER_STATUS_MESSAGES[order_status] || `Order status updated: ${order_status}`,
-        link: `/orders/${order._id}`,
-      }).catch(() => {});
-    }
+    notifyOrderStatus(req.app, order, order_status);
 
     return res.json({ success: true, order });
   } catch (error) {

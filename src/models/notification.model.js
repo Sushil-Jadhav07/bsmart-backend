@@ -51,6 +51,15 @@ const notificationSchema = new mongoose.Schema({
       'support_assign',  // query assigned — sent to sales officer
 
       // ── Gift card orders ─────────────────────────────────────────────────
+      // ── Marketplace product orders ───────────────────────────────────────
+      'order_placed',           // buyer — order paid and placed
+      'order_seller_new',       // seller — a new order includes their items
+      'order_status',           // buyer — order moved to confirmed/processing/shipped/delivered
+      'order_cancelled',        // buyer or seller — order cancelled
+      'order_refunded',         // buyer — refund processed
+      'order_payment_failed',   // buyer — checkout payment could not be verified
+      'order_refund_pending',   // buyer — cancelled, automatic refund failed, handled manually
+      'order_refund_failed',    // admin — automatic Razorpay refund failed, needs manual refund
       'gift_card_order',        // sent to the member — their order's status changed
       'gift_card_order_admin',  // sent to admin/sales — an order needs attention or changed
 

@@ -535,7 +535,88 @@ const giftCardVoucherTemplate = ({
   `, BRAND_PRIMARY);
 };
 
+const orderItemsTable = (items = []) => `
+  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+    ${items.map((item) => kvRow(
+      `${item.name} × ${item.quantity}`,
+      `₹${Number(item.subtotal || 0).toLocaleString('en-IN')}`
+    )).join('')}
+  </table>`;
+
+const orderPlacedTemplate = ({ full_name, order_number, items, total_amount, order_url }) =>
+  baseTemplate(`
+    ${h2('Order placed successfully')}
+    ${hi(full_name)}
+    ${p(`Thanks for your order <strong>${order_number}</strong>. We've notified the seller and will keep you updated.`)}
+    ${infoBox(`
+      ${orderItemsTable(items)}
+      ${divider()}
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Total paid', `₹${Number(total_amount || 0).toLocaleString('en-IN')}`)}
+      </table>
+    `)}
+    ${btn('View order', order_url)}
+    ${note('You will receive another email when your order status changes.')}
+  `);
+
+const orderStatusTemplate = ({ full_name, order_number, status_label, message, courier, tracking_number, order_url }) =>
+  baseTemplate(`
+    ${h2(`Order ${status_label}`)}
+    ${hi(full_name)}
+    ${p(message)}
+    ${infoBox(`
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Order number', order_number)}
+        ${kvRow('Status', status_label)}
+        ${courier ? kvRow('Courier', courier) : ''}
+        ${tracking_number ? kvRow('Tracking number', tracking_number) : ''}
+      </table>
+    `, BRAND_LIGHT_ALT, BRAND_SECONDARY)}
+    ${btn('Track your order', order_url, BRAND_SECONDARY)}
+  `, BRAND_SECONDARY);
+
+const orderCancelledTemplate = ({ full_name, order_number, reason, refund_amount, audience = 'buyer', order_url }) =>
+  baseTemplate(`
+    ${h2('Order cancelled')}
+    ${hi(full_name)}
+    ${p(audience === 'seller'
+      ? `Order <strong>${order_number}</strong> has been cancelled. Its items are no longer pending fulfillment.`
+      : `Your order <strong>${order_number}</strong> has been cancelled.`)}
+    ${reason ? infoBox(`<p style="margin:0;color:#444444;font-size:14px;">Reason: ${reason}</p>`) : ''}
+    ${refund_amount && audience === 'buyer' ? kvRow('Refund amount', `₹${Number(refund_amount).toLocaleString('en-IN')}`) : ''}
+    ${btn('View order', order_url)}
+  `, BRAND_SECONDARY);
+
+const orderRefundedTemplate = ({ full_name, order_number, refund_amount, order_url }) =>
+  baseTemplate(`
+    ${h2('Refund processed')}
+    ${hi(full_name)}
+    ${p(`A refund of <strong>₹${Number(refund_amount || 0).toLocaleString('en-IN')}</strong> for order <strong>${order_number}</strong> has been processed.`)}
+    ${note('Depending on your bank or payment method, the amount may take a few working days to appear.')}
+    ${btn('View order', order_url)}
+  `);
+
+const sellerNewOrderTemplate = ({ seller_name, order_number, items, seller_total, order_url }) =>
+  baseTemplate(`
+    ${h2('You have a new order')}
+    ${hi(seller_name)}
+    ${p(`Order <strong>${order_number}</strong> includes items from your store. Please confirm and pack them.`)}
+    ${infoBox(`
+      ${orderItemsTable(items)}
+      ${divider()}
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${kvRow('Your earnings', `₹${Number(seller_total || 0).toLocaleString('en-IN')}`)}
+      </table>
+    `, BRAND_LIGHT_ALT, BRAND_SECONDARY)}
+    ${btn('Open order', order_url, BRAND_SECONDARY)}
+  `, BRAND_SECONDARY);
+
 module.exports = {
+  orderPlacedTemplate,
+  orderStatusTemplate,
+  orderCancelledTemplate,
+  orderRefundedTemplate,
+  sellerNewOrderTemplate,
   welcomeMemberTemplate,
   welcomeVendorTemplate,
   otpTemplate,
