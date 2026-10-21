@@ -117,6 +117,8 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *               - rate_type
  *               - duration
  *               - service_method
+ *               - service_time
+ *               - service_area
  *             properties:
  *               images:
  *                 type: array
@@ -140,13 +142,27 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *               duration: { type: string, example: "1 hour" }
  *               subservices:
  *                 type: array
+ *                 description: Pricing variants for this service — e.g. different area-size tiers
  *                 items:
  *                   type: object
  *                   properties:
- *                     name: { type: string }
+ *                     name: { type: string, example: "Up to 500 sqft" }
  *                     hours: { type: number }
  *                     price: { type: number }
+ *                     sqft: { type: number, example: 500, description: "Area this variant covers, in square feet" }
  *               service_method: { type: string, enum: [at_customer_location, online, at_my_location] }
+ *               service_time:
+ *                 type: object
+ *                 description: General hours this service can be booked within — separate from duration (how long it takes) and weekly_availability (which days/slots)
+ *                 required: [start, end]
+ *                 properties:
+ *                   start: { type: string, example: "09:00" }
+ *                   end: { type: string, example: "17:00" }
+ *               service_area:
+ *                 type: array
+ *                 description: Coverage areas for this specific service — separate from the seller's store-wide service areas
+ *                 items: { type: string }
+ *                 example: ["Malad", "Andheri", "Bandra"]
  *               weekly_availability:
  *                 type: object
  *                 description: Keyed by weekday (monday..sunday). Omit or leave a day's array empty for "Unavailable".
@@ -169,8 +185,11 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *             rate_type: starting_from
  *             duration: "1 hour"
  *             subservices:
- *               - { name: "Deep clean", hours: 3, price: 2499 }
+ *               - { name: "Up to 500 sqft", hours: 3, price: 2499, sqft: 500 }
+ *               - { name: "500-1000 sqft", hours: 5, price: 3999, sqft: 1000 }
  *             service_method: at_customer_location
+ *             service_time: { start: "09:00", end: "17:00" }
+ *             service_area: ["Malad", "Andheri", "Bandra"]
  *             weekly_availability:
  *               monday: [{ start: "09:00", end: "17:00" }]
  *               tuesday: [{ start: "09:00", end: "17:00" }]

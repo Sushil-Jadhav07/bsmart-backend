@@ -94,7 +94,7 @@ exports.createBooking = async (req, res) => {
       if (!match) {
         return res.status(400).json({ message: `Unknown subservice: ${requested.name}` });
       }
-      matchedSubservices.push({ name: match.name, hours: match.hours, price: match.price });
+      matchedSubservices.push({ name: match.name, hours: match.hours, price: match.price, sqft: match.sqft });
       subservicesTotal += match.price;
     }
 

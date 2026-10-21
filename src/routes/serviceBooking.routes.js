@@ -54,7 +54,7 @@ const {
  *                   end: { type: string, example: "12:00" }
  *               selected_subservices:
  *                 type: array
- *                 description: Must match names from the service's own subservices list — price is looked up server-side, not trusted from the client
+ *                 description: Must match names from the service's own subservices list — price and sqft are looked up server-side, not trusted from the client
  *                 items:
  *                   type: object
  *                   properties:

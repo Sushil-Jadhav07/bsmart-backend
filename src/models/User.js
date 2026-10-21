@@ -278,6 +278,13 @@ followRequests: [
     type: Object,
     default: null,
   },
+  // Apple PushKit VoIP token — DIFFERENT from a regular iOS notification
+  // token. Required to make the phone ring for incoming calls when the app
+  // is backgrounded or killed. Android calling reuses fcm_token above.
+  voip_token: {
+    type: String,
+    default: null,
+  },
 
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt

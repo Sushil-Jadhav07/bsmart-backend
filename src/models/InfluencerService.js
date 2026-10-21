@@ -9,6 +9,7 @@ const subserviceSchema = new mongoose.Schema({
   name:  { type: String, default: '' },
   hours: { type: Number, default: 0 },
   price: { type: Number, default: 0 },
+  sqft:  { type: Number, default: 0 }, // area this variant covers, e.g. "500 sqft" pricing tier
 }, { _id: false });
 
 const timeSlotSchema = new mongoose.Schema({
@@ -41,11 +42,18 @@ const influencerServiceSchema = new mongoose.Schema({
   // ── 2. Pricing ──────────────────────────────────────────────────────────────
   price:       { type: Number, required: true, min: 0 },
   rate_type:   { type: String, enum: ['starting_from', 'fixed', 'per_hour', 'per_session'], required: true },
-  duration:    { type: String, required: true }, // e.g. "1 hour", "30 mins"
+  duration:    { type: String, required: true }, // e.g. "1 hour", "30 mins" — how long the service takes
   subservices: { type: [subserviceSchema], default: [] },
 
   // ── 3. Availability & Publish ────────────────────────────────────────────────
   service_method: { type: String, enum: ['at_customer_location', 'online', 'at_my_location'], required: true },
+  // General hours this service can be booked within, e.g. 09:00–17:00 — a
+  // simple top-level window, separate from the detailed per-day weekly_availability.
+  service_time: { type: timeSlotSchema, required: true },
+  // Coverage areas for THIS service specifically — separate from the seller's
+  // store-wide influencer_profile.service_areas, since one seller can offer
+  // different services in different areas.
+  service_area: { type: [String], validate: v => v.length > 0, required: true },
   weekly_availability: { type: weeklyAvailabilitySchema, default: {} },
   visible_to_customers: { type: Boolean, default: true },
   status: { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },

@@ -17,6 +17,7 @@ const cors = require('cors');
 const http = require('http');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
+const { registerCallHandlers } = require('./src/sockets/callSignaling');
 const path = require('path');
 const connectDB = require('./src/config/db');
 const User = require('./src/models/User');
@@ -62,6 +63,7 @@ const cartRoutes = require('./src/routes/cart.routes');
 const orderRoutes = require('./src/routes/order.routes');
 const serviceBookingRoutes = require('./src/routes/serviceBooking.routes');
 const wishlistRoutes = require('./src/routes/wishlist.routes');
+const callRoutes = require('./src/routes/call.routes');
 const addressRoutes = require('./src/routes/address.routes');
 const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <- PUSH NOTIFICATIONS
 const settingsRoutes       = require('./src/routes/settings.routes');       // <- ACCOUNT SETTINGS
@@ -134,6 +136,8 @@ const emitOnlineUsersUpdate = async () => {
 
 io.on('connection', (socket) => {
   console.log('[Socket] Connected:', socket.id);
+
+  registerCallHandlers(io, socket, { onlineUsers, app });
 
   socket.on('register', (token) => {
     if (!token) return;
@@ -349,6 +353,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/service-bookings', serviceBookingRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/calls', callRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
 app.use('/api/settings',      settingsRoutes);         // <- ACCOUNT SETTINGS

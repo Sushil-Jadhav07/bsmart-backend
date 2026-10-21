@@ -60,6 +60,9 @@ const notificationSchema = new mongoose.Schema({
       'order_payment_failed',   // buyer — checkout payment could not be verified
       'order_refund_pending',   // buyer — cancelled, automatic refund failed, handled manually
       'order_refund_failed',    // admin — automatic Razorpay refund failed, needs manual refund
+
+      // ── Voice/video calling ──────────────────────────────────────────────
+      'call_missed',            // the other person's call went unanswered
       'gift_card_order',        // sent to the member — their order's status changed
       'gift_card_order_admin',  // sent to admin/sales — an order needs attention or changed
 

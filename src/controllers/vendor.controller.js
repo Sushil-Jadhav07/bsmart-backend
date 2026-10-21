@@ -1,6 +1,7 @@
 const Vendor = require('../models/Vendor');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
+const { getFileUrl } = require('../config/multer');
 const VendorContact = require('../models/VendorContact');
 const Ad = require('../models/Ad');
 const Follow = require('../models/Follow');
@@ -451,10 +452,8 @@ exports.uploadVendorLogo = async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found' });
     }
 
-    const cfBase2 = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
-      ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
-      : null;
-    const logoUrl = `${cfBase2 || `${req.protocol}://${req.get('host')}`}/uploads/${req.file.filename}`;
+    // Uploads go to R2 via multer-s3, which sets `key` (not `filename`).
+    const logoUrl = getFileUrl(req, req.file);
     vendor.logo_url = logoUrl;
     await vendor.save();
 
@@ -842,17 +841,18 @@ exports.listAllVendors = async (req, res) => {
     const vendors = await Vendor.find({})
       .populate('user_id', 'username full_name avatar_url role phone email createdAt updatedAt gender location')
       .sort({ createdAt: -1 });
-    
-    // Flatten avatar_url for each vendor for convenience
+
+    // Flatten avatar_url for each vendor for convenience; `user` aliases `user_id`
+    // so consumers written against the old duplicate definition keep working.
     const payload = vendors.map(v => {
       const vendorObj = withVendorState(v);
       if (vendorObj.user_id && vendorObj.user_id.avatar_url) {
         vendorObj.avatar_url = vendorObj.user_id.avatar_url;
       }
+      vendorObj.user = vendorObj.user_id;
       return vendorObj;
     });
-    
-    // Return full vendor object with user details embedded
+
     return res.json(payload);
   } catch (error) {
     console.error(error);
@@ -941,27 +941,6 @@ exports.getVendorProfileByUserId = async (req, res) => {
 
     return res.json(fullProfile);
 
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Server error' });
-  }
-};
-
-exports.listAllVendors = async (req, res) => {
-  try {
-    const vendors = await Vendor.find({})
-      .populate('user_id', 'username full_name avatar_url role phone createdAt updatedAt gender location')
-      .sort({ createdAt: -1 });
-
-    const result = vendors.map(vendor => {
-      const vendorObj = vendor.toObject();
-      return {
-        ...vendorObj,
-        user: vendor.user_id
-      };
-    });
-
-    return res.json(result);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });

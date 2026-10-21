@@ -56,6 +56,17 @@ const validateServiceBody = (body) => {
     return 'service_method must be at_customer_location, online, or at_my_location';
   }
 
+  if (!body.service_time || !body.service_time.start || !body.service_time.end) {
+    return 'service_time.start and service_time.end are required';
+  }
+  if (body.service_time.start >= body.service_time.end) {
+    return 'service_time.start must be before service_time.end';
+  }
+
+  if (!Array.isArray(body.service_area) || body.service_area.length === 0) {
+    return 'service_area must be a non-empty array of areas this service covers';
+  }
+
   if (Number(body.price) < 0) {
     return 'price cannot be negative';
   }
@@ -117,9 +128,12 @@ const buildServiceData = (body) => {
       name: s.name || '',
       hours: Number(s.hours) || 0,
       price: Number(s.price) || 0,
+      sqft: Number(s.sqft) || 0,
     })),
 
     service_method: body.service_method,
+    service_time: { start: body.service_time.start, end: body.service_time.end },
+    service_area: body.service_area.map(String),
     weekly_availability,
     visible_to_customers: body.visible_to_customers !== undefined ? !!body.visible_to_customers : true,
     status: ['active', 'inactive', 'draft'].includes(body.status) ? body.status : 'active',
@@ -178,7 +192,7 @@ exports.updateService = async (req, res) => {
     const allowedFields = [
       'images', 'name', 'category', 'provider', 'short_description', 'key_highlights',
       'price', 'rate_type', 'duration', 'subservices',
-      'service_method', 'weekly_availability', 'visible_to_customers', 'status',
+      'service_method', 'service_time', 'service_area', 'weekly_availability', 'visible_to_customers', 'status',
     ];
 
     const merged = { ...service.toObject(), ...req.body };

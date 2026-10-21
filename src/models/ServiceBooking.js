@@ -4,6 +4,7 @@ const subserviceSnapshotSchema = new mongoose.Schema({
   name:  { type: String, default: '' },
   hours: { type: Number, default: 0 },
   price: { type: Number, default: 0 },
+  sqft:  { type: Number, default: 0 },
 }, { _id: false });
 
 const timeSlotSchema = new mongoose.Schema({
