@@ -191,6 +191,74 @@ exports.getMyWallet = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// GET /api/wallet/me/history
+// Self-service wallet history for the logged-in user, regardless of role —
+// unlike getMemberWalletHistory/getVendorWalletHistory, which each only
+// serve their one specific role (and 400 for everyone else, e.g.
+// 'influencer', which has no dedicated history endpoint at all). Same rich
+// response shape (summary, pagination, filters) as the member one.
+// ─────────────────────────────────────────────────────────────
+
+exports.getMyWalletHistory = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const user = await User.findById(userId).select('role username full_name avatar_url').lean();
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const { startDate, endDate, type, limit = 100, page = 1 } = req.query;
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 100), 500);
+    const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+    const skip     = (pageNum - 1) * limitNum;
+
+    const match = { user_id: new mongoose.Types.ObjectId(userId) };
+
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) { const d = new Date(String(startDate)); if (!isNaN(d)) match.createdAt.$gte = d; }
+      if (endDate)   { const d = new Date(String(endDate));   if (!isNaN(d)) { d.setHours(23, 59, 59, 999); match.createdAt.$lte = d; } }
+    }
+    if (type) {
+      const requestedTypes = String(type).split(',').map((s) => s.trim()).filter(Boolean);
+      if (requestedTypes.length) match.type = { $in: requestedTypes };
+    }
+
+    const wallet = await getOrCreateWallet(userId);
+    const total  = await WalletTransaction.countDocuments(match);
+
+    const rawTx = await WalletTransaction.find(match)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate('ad_id', 'caption title thumbnail_url')
+      .lean();
+
+    const transactions = rawTx.map((t) => enrichTransaction(t, 'caption'));
+
+    const [agg] = await WalletTransaction.aggregate([
+      { $match: { user_id: new mongoose.Types.ObjectId(userId) } },
+      { $group: {
+        _id: null,
+        total_earned:   { $sum: { $cond: [{ $gt: ['$amount', 0] }, '$amount', 0] } },
+        total_deducted: { $sum: { $cond: [{ $lt: ['$amount', 0] }, { $abs: '$amount' }, 0] } },
+        total_tx:       { $sum: 1 },
+      } },
+    ]);
+
+    res.json({
+      success: true,
+      user: { _id: user._id, username: user.username, full_name: user.full_name, avatar_url: user.avatar_url, role: user.role },
+      wallet: { balance: wallet.balance, currency: wallet.currency },
+      summary: { total_earned: agg?.total_earned ?? 0, total_deducted: agg?.total_deducted ?? 0, total_transactions: agg?.total_tx ?? 0 },
+      pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) },
+      transactions,
+    });
+  } catch (err) {
+    console.error('[getMyWalletHistory]', err);
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
 // POST /api/wallet/recharge
 // Vendor self-recharge — converts rupee amount to coins based on active package tier
 // ─────────────────────────────────────────────────────────────

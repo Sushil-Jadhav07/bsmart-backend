@@ -55,6 +55,16 @@ const recordLoginHistory = (userId, req, status) => {
   }).catch((err) => console.error('[Auth] recordLoginHistory error:', err.message));
 };
 
+// ─── Coin rewards ──────────────────────────────────────────────────────────
+// Shared with config/passport.js (web OAuth signup) so every signup path —
+// email/password, native Google/Apple token, and the web OAuth popup —
+// grants the same bonus.
+const {
+  REGISTRATION_BONUS_COINS,
+  createWalletWithRegistrationBonus,
+  grantDailyRewardIfDue,
+} = require('../utils/walletRewards');
+
 const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const generateToken = (id) => {
@@ -221,11 +231,7 @@ exports.register = async (req, res) => {
       ...(memberAddress ? { address: memberAddress } : {})
     });
 
-    // Wallet always starts at 0 for every role
-    const wallet = await Wallet.create({
-      user_id: user._id,
-      balance: 0
-    });
+    const wallet = await createWalletWithRegistrationBonus(user._id);
 
     if (userRole === 'member') {
       await Member.create({ user_id: user._id });
@@ -286,7 +292,8 @@ exports.register = async (req, res) => {
         following_count: user.following_count,
         wallet: wallet,
         ...(vendorData || {})
-      }
+      },
+      registration_bonus_amount: REGISTRATION_BONUS_COINS,
     });
 
     fireAndForget('Welcome email', sendWelcomeEmail({
@@ -352,6 +359,7 @@ exports.googleLogin = async (req, res) => {
     }
 
     let user = await User.findOne({ email });
+    const isNewUser = !user;
 
     const bannedGoogle = await denyIfBanned(res, user);
     if (bannedGoogle) return;
@@ -372,7 +380,7 @@ exports.googleLogin = async (req, res) => {
         role: 'member'
       });
 
-      await Wallet.create({ user_id: user._id, balance: 0 });
+      await createWalletWithRegistrationBonus(user._id);
       await Member.create({ user_id: user._id });
 
       fireAndForget('Welcome email', sendWelcomeEmail(user));
@@ -397,7 +405,8 @@ exports.googleLogin = async (req, res) => {
           enabled: !!user.twoFA?.enabled
         },
         createdAt: user.createdAt
-      }
+      },
+      ...(isNewUser ? { registration_bonus_amount: REGISTRATION_BONUS_COINS } : {}),
     });
 
   } catch (error) {
@@ -445,6 +454,7 @@ exports.appleLogin = async (req, res) => {
     const bannedApple = await denyIfBanned(res, user);
     if (bannedApple) return;
 
+    const isNewUser = !user;
     if (!user) {
       // Apple only sends an email the first time a user authorizes this app
       // (unless "Hide My Email" gives a stable private-relay address).
@@ -470,7 +480,7 @@ exports.appleLogin = async (req, res) => {
         role: 'member'
       });
 
-      await Wallet.create({ user_id: user._id, balance: 0 });
+      await createWalletWithRegistrationBonus(user._id);
       await Member.create({ user_id: user._id });
 
       fireAndForget('Welcome email', sendWelcomeEmail(user));
@@ -495,7 +505,8 @@ exports.appleLogin = async (req, res) => {
           enabled: !!user.twoFA?.enabled
         },
         createdAt: user.createdAt
-      }
+      },
+      ...(isNewUser ? { registration_bonus_amount: REGISTRATION_BONUS_COINS } : {}),
     });
 
   } catch (error) {
@@ -613,6 +624,7 @@ exports.login = async (req, res) => {
       }
     }
 
+    const dailyReward = await grantDailyRewardIfDue(user._id);
     const wallet = await Wallet.findOne({ user_id: user._id });
 
     try {
@@ -671,7 +683,9 @@ exports.login = async (req, res) => {
         following_count: user.following_count,
         wallet: wallet,
         ...vendorPayload
-      }
+      },
+      daily_reward_granted: dailyReward.granted,
+      daily_reward_amount: dailyReward.amount,
     });
 
   } catch (error) {

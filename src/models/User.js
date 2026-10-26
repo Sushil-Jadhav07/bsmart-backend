@@ -285,6 +285,14 @@ followRequests: [
     type: String,
     default: null,
   },
+  // Razorpay Customer id — created once on this user's first subscription
+  // purchase (e.g. publishing a service listing) and reused for every
+  // subsequent one, so Razorpay doesn't accumulate a duplicate Customer per
+  // listing. See src/controllers/listingSubscription.controller.js.
+  razorpay_customer_id: {
+    type: String,
+    default: null,
+  },
 
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt

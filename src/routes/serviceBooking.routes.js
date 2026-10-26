@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
 const {
-  createBooking,
-  verifyPayment,
+  createServiceOrder,
+  verifyServiceOrderPayment,
   listMyBookings,
   getBookingById,
   cancelBooking,
@@ -19,20 +19,21 @@ const {
 
 /**
  * @swagger
- * /api/service-bookings:
+ * /api/service-bookings/orders:
  *   post:
- *     summary: Book a service at a specific date/time slot and start payment
+ *     summary: Check out one or more services (optionally from different sellers) in a single payment
  *     description: |
- *       Validates the requested `time_slot` against the service's `weekly_availability`
- *       for that weekday, and rejects it if it overlaps an existing active booking for
- *       the same service.
+ *       Each entry in `items` is validated independently (availability, slot
+ *       conflicts, subservice pricing, address requirement) the same way a
+ *       single booking always was. Coins are applied first — `coins_to_use`
+ *       is clamped server-side to the wallet balance and the order total —
+ *       and any remainder is charged via Razorpay.
  *
- *       For `payment_method: "wallet"` — coins are deducted immediately and the booking
- *       comes back already `paid`/`confirmed`.
- *
- *       For `payment_method: "razorpay"` — a Razorpay order is created and returned
- *       alongside the local booking (status `pending`). The frontend opens Razorpay
- *       checkout, then calls `POST /api/service-bookings/{id}/verify-payment`.
+ *       If coins alone cover the total, the order and all its bookings come
+ *       back already `paid`/`confirmed`. Otherwise a Razorpay order is
+ *       created for just the remainder; the wallet is NOT debited until
+ *       `POST /api/service-bookings/orders/{id}/verify-payment` succeeds, so
+ *       an abandoned Razorpay sheet never costs the user coins.
  *     tags: [Service Bookings]
  *     security:
  *       - bearerAuth: []
@@ -42,54 +43,53 @@ const {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [service_id, booking_date, time_slot, payment_method]
+ *             required: [items]
  *             properties:
- *               service_id: { type: string }
- *               booking_date: { type: string, format: date, example: "2026-10-05" }
- *               time_slot:
- *                 type: object
- *                 required: [start, end]
- *                 properties:
- *                   start: { type: string, example: "10:00" }
- *                   end: { type: string, example: "12:00" }
- *               selected_subservices:
+ *               items:
  *                 type: array
- *                 description: Must match names from the service's own subservices list — price and sqft are looked up server-side, not trusted from the client
  *                 items:
  *                   type: object
+ *                   required: [service_id, booking_date, time_slot]
  *                   properties:
- *                     name: { type: string }
- *               customer_address:
- *                 type: object
- *                 description: Required only when the service's method is at_customer_location
- *                 properties:
- *                   name: { type: string }
- *                   phone: { type: string }
- *                   address_line1: { type: string }
- *                   address_line2: { type: string }
- *                   city: { type: string }
- *                   state: { type: string }
- *                   pincode: { type: string }
- *                   country: { type: string, default: India }
- *               notes: { type: string }
- *               payment_method: { type: string, enum: [razorpay, wallet] }
+ *                     service_id: { type: string }
+ *                     booking_date: { type: string, format: date, example: "2026-10-05" }
+ *                     time_slot:
+ *                       type: object
+ *                       required: [start, end]
+ *                       properties:
+ *                         start: { type: string, example: "10:00" }
+ *                         end: { type: string, example: "12:00" }
+ *                     selected_subservices:
+ *                       type: array
+ *                       description: Must match names from that service's own subservices list — price and sqft are looked up server-side, not trusted from the client
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           name: { type: string }
+ *                     customer_address:
+ *                       type: object
+ *                       description: Required only when that item's service method is at_customer_location
+ *                     notes: { type: string }
+ *               coins_to_use:
+ *                 type: number
+ *                 description: How many wallet coins to apply toward the order total (clamped server-side)
  *     responses:
  *       201:
- *         description: Booking created (wallet — paid immediately; razorpay — awaiting payment)
+ *         description: Order created (fully wallet-covered — paid immediately; otherwise awaiting Razorpay payment)
  *       400:
- *         description: Invalid slot, unavailable time, or insufficient wallet balance
+ *         description: Invalid slot, unavailable time, or unknown subservice
  *       404:
- *         description: Service not found or unavailable
+ *         description: A service was not found or unavailable
  *       409:
- *         description: That time slot is already booked
+ *         description: A requested time slot is already booked
  */
-router.post('/', auth, createBooking);
+router.post('/orders', auth, createServiceOrder);
 
 /**
  * @swagger
- * /api/service-bookings/{id}/verify-payment:
+ * /api/service-bookings/orders/{id}/verify-payment:
  *   post:
- *     summary: Verify a completed Razorpay payment and confirm the booking
+ *     summary: Verify a completed Razorpay payment and confirm a hybrid/razorpay order
  *     tags: [Service Bookings]
  *     security:
  *       - bearerAuth: []
@@ -111,13 +111,15 @@ router.post('/', auth, createBooking);
  *               razorpay_signature: { type: string }
  *     responses:
  *       200:
- *         description: Booking confirmed
+ *         description: Order (and all its bookings) confirmed
  *       400:
- *         description: Invalid signature or mismatched booking
+ *         description: Invalid signature or mismatched order
  *       404:
- *         description: Booking not found
+ *         description: Order not found
+ *       409:
+ *         description: Wallet balance changed before payment completed
  */
-router.post('/:id/verify-payment', auth, verifyPayment);
+router.post('/orders/:id/verify-payment', auth, verifyServiceOrderPayment);
 
 /**
  * @swagger

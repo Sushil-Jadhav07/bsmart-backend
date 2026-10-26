@@ -4,7 +4,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const AppleStrategy = require('passport-apple');
 const User = require('../models/User');
 
-const Wallet = require('../models/Wallet');
+const { createWalletWithRegistrationBonus } = require('../utils/walletRewards');
 
 const hasGoogleEnv =
   process.env.GOOGLE_CLIENT_ID &&
@@ -49,10 +49,7 @@ if (hasGoogleEnv) {
             role: 'member'
           });
           await newUser.save();
-          await Wallet.create({
-            user_id: newUser._id,
-            balance: 0
-          });
+          await createWalletWithRegistrationBonus(newUser._id);
           done(null, newUser);
         } catch (error) {
           done(error, null);
@@ -134,10 +131,7 @@ if (hasAppleEnv) {
             role: 'member',
           });
           await newUser.save();
-          await Wallet.create({
-            user_id: newUser._id,
-            balance: 0,
-          });
+          await createWalletWithRegistrationBonus(newUser._id);
           done(null, newUser);
         } catch (error) {
           done(error, null);

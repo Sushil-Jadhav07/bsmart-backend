@@ -29,6 +29,12 @@ const serviceBookingSchema = new mongoose.Schema({
   service_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'InfluencerService', required: true, index: true },
   seller_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true }, // snapshot of service.user_id
 
+  // Set when this booking was created as one line item of a multi-service
+  // checkout (see ServiceOrder) — payment/coins-vs-razorpay split lives on
+  // the order, not here. Null for... there is no other path anymore, every
+  // booking goes through ServiceOrder, but kept nullable for safety.
+  service_order_id: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceOrder', default: null, index: true },
+
   // Snapshots — kept even if the service is later edited/deleted
   service_name:   { type: String, required: true },
   service_image:  { type: String, default: '' },
@@ -48,12 +54,17 @@ const serviceBookingSchema = new mongoose.Schema({
   customer_address: { type: customerAddressSchema, default: null }, // only when service_method === at_customer_location
   notes:            { type: String, default: '' },
 
-  payment_method: { type: String, enum: ['razorpay', 'wallet'], required: true },
+  payment_method: { type: String, enum: ['razorpay', 'wallet', 'hybrid'], required: true },
   payment_status: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
   razorpay_order_id:   { type: String, default: null },
   razorpay_payment_id: { type: String, default: null, index: true },
   razorpay_signature:  { type: String, default: null },
   wallet_transaction_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WalletTransaction', default: null },
+  // This item's share of the order's coins/razorpay split — set at verify
+  // time, once the order's total split is known. Used by cancelBooking to
+  // refund the right amount to each side.
+  coins_used:    { type: Number, default: 0 },
+  razorpay_used: { type: Number, default: 0 },
 
   booking_status: {
     type: String,

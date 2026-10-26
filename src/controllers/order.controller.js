@@ -38,14 +38,15 @@ const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
 const generateOrderNumber = () =>
   `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-// ─── Checkout: builds the order from the cart, charges via razorpay or wallet ─
+// ─── Checkout: builds the order from the cart, coins first then Razorpay ──────
+// Coins are applied first (capped server-side at the wallet balance and the
+// order total, via `coins_to_use`); any remainder is charged via Razorpay.
+// The wallet isn't actually debited until payment (including any Razorpay
+// remainder) is confirmed — see verifyPayment — so an abandoned Razorpay
+// checkout never costs the buyer coins.
 exports.checkout = async (req, res) => {
   try {
-    const { payment_method, shipping_address } = req.body;
-
-    if (!['razorpay', 'wallet'].includes(payment_method)) {
-      return res.status(400).json({ message: "payment_method must be 'razorpay' or 'wallet'" });
-    }
+    const { coins_to_use, shipping_address } = req.body;
 
     const cart = await Cart.findOne({ user_id: req.userId });
     if (!cart || cart.items.length === 0) {
@@ -100,16 +101,16 @@ exports.checkout = async (req, res) => {
 
     const totalAmount = subtotal; // shipping_fee kept at 0 for now
 
-    if (payment_method === 'wallet') {
+    const wallet = await Wallet.findOne({ user_id: req.userId });
+    const walletBalance = wallet?.balance || 0;
+    const requestedCoins = Math.max(0, Number(coins_to_use) || 0);
+    const coinsToUse = Math.min(requestedCoins, walletBalance, totalAmount);
+    const remaining = Math.round((totalAmount - coinsToUse) * 100) / 100;
+
+    // ── Fully covered by coins — confirm immediately ────────────────────────
+    if (remaining <= 0) {
       const result = await runMongoTransaction({
         work: async (session) => {
-          const wallet = await Wallet.findOne({ user_id: req.userId }).session(session);
-          if (!wallet || wallet.balance < totalAmount) {
-            const err = new Error(`Insufficient wallet balance. Required: ${totalAmount}, Available: ${wallet?.balance || 0}`);
-            err.statusCode = 400;
-            throw err;
-          }
-
           const order = await Order.create([{
             order_number: generateOrderNumber(),
             user_id: req.userId,
@@ -117,19 +118,21 @@ exports.checkout = async (req, res) => {
             subtotal_amount: subtotal,
             total_amount: totalAmount,
             payment_method: 'wallet',
+            coins_used: coinsToUse,
+            razorpay_amount: 0,
             payment_status: 'paid',
             order_status: 'confirmed',
             shipping_address: addr,
             placed_at: new Date(),
           }], { session }).then((docs) => docs[0]);
 
-          await Wallet.updateOne({ user_id: req.userId }, { $inc: { balance: -totalAmount } }).session(session);
+          await Wallet.updateOne({ user_id: req.userId }, { $inc: { balance: -coinsToUse } }).session(session);
 
           const [txn] = await WalletTransaction.create([{
             user_id: req.userId,
             order_id: order._id,
             type: 'MARKETPLACE_ORDER_PAYMENT',
-            amount: totalAmount,
+            amount: coinsToUse,
             description: `Payment for order ${order.order_number}`,
             status: 'SUCCESS',
           }], { session });
@@ -154,10 +157,11 @@ exports.checkout = async (req, res) => {
       return res.status(201).json({ success: true, order: result });
     }
 
-    // ── Razorpay path ────────────────────────────────────────────────────────
+    // ── Hybrid or pure Razorpay — wallet untouched until payment confirms ────
     if (!razorpay) {
       return res.status(500).json({ message: 'Razorpay is not configured on the server' });
     }
+    const paymentMethod = coinsToUse > 0 ? 'hybrid' : 'razorpay';
 
     const order = await Order.create({
       order_number: generateOrderNumber(),
@@ -165,14 +169,16 @@ exports.checkout = async (req, res) => {
       items: orderItems,
       subtotal_amount: subtotal,
       total_amount: totalAmount,
-      payment_method: 'razorpay',
+      payment_method: paymentMethod,
+      coins_used: coinsToUse,
+      razorpay_amount: remaining,
       payment_status: 'pending',
       order_status: 'pending',
       shipping_address: addr,
     });
 
     const rzpOrder = await razorpay.orders.create({
-      amount: Math.round(totalAmount * 100), // paise
+      amount: Math.round(remaining * 100), // paise
       currency: 'INR',
       receipt: order.order_number,
       notes: { order_id: String(order._id), user_id: String(req.userId) },
@@ -215,8 +221,8 @@ exports.verifyPayment = async (req, res) => {
 
     const order = await Order.findOne({ _id: id, user_id: req.userId });
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    if (order.payment_method !== 'razorpay') {
-      return res.status(400).json({ message: 'This order is not a Razorpay order' });
+    if (!['razorpay', 'hybrid'].includes(order.payment_method)) {
+      return res.status(400).json({ message: 'This order does not require Razorpay verification' });
     }
     if (order.payment_status === 'paid') {
       return res.json({ success: true, order, message: 'Already verified' });
@@ -239,6 +245,27 @@ exports.verifyPayment = async (req, res) => {
 
     const result = await runMongoTransaction({
       work: async (session) => {
+        if (order.coins_used > 0) {
+          const wallet = await Wallet.findOne({ user_id: req.userId }).session(session);
+          if (!wallet || wallet.balance < order.coins_used) {
+            const err = new Error('Your wallet balance changed before payment completed — please retry.');
+            err.statusCode = 409;
+            throw err;
+          }
+          await Wallet.updateOne({ user_id: req.userId }, { $inc: { balance: -order.coins_used } }).session(session);
+          const [txn] = await WalletTransaction.create([{
+            user_id: req.userId,
+            order_id: order._id,
+            type: 'MARKETPLACE_ORDER_PAYMENT',
+            amount: order.coins_used,
+            description: `Payment for order ${order.order_number}`,
+            status: 'SUCCESS',
+            razorpay_order_id,
+            razorpay_payment_id,
+          }], { session });
+          order.wallet_transaction_id = txn._id;
+        }
+
         order.payment_status = 'paid';
         order.order_status = 'confirmed';
         order.razorpay_payment_id = razorpay_payment_id;
@@ -262,6 +289,9 @@ exports.verifyPayment = async (req, res) => {
     notifyOrderPlaced(req.app, result);
     return res.json({ success: true, order: result });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
     console.error('[verifyPayment]', error);
     return res.status(500).json({ message: 'Server error' });
   }
@@ -342,37 +372,45 @@ exports.cancelOrder = async (req, res) => {
     order.cancelled_reason = reason || '';
 
     if (order.payment_status === 'paid') {
-      if (order.payment_method === 'wallet') {
-        await Wallet.updateOne({ user_id: order.user_id }, { $inc: { balance: order.total_amount } });
+      // Refund whatever mix of coins/Razorpay this order was actually paid
+      // with — works the same whether it was pure wallet, pure Razorpay, or
+      // hybrid.
+      if (order.coins_used > 0) {
+        await Wallet.updateOne({ user_id: order.user_id }, { $inc: { balance: order.coins_used } });
         await WalletTransaction.create({
           user_id: order.user_id,
           order_id: order._id,
           type: 'MARKETPLACE_ORDER_REFUND',
-          amount: order.total_amount,
-          description: `Refund for cancelled order ${order.order_number}`,
+          amount: order.coins_used,
+          description: `Refund (coins) for cancelled order ${order.order_number}`,
           status: 'SUCCESS',
         });
-        order.payment_status = 'refunded';
-      } else if (order.payment_method === 'razorpay' && razorpay && order.razorpay_payment_id) {
-        try {
-          await razorpay.payments.refund(order.razorpay_payment_id, {
-            amount: Math.round(order.total_amount * 100),
-          });
-          order.payment_status = 'refunded';
-        } catch (refundErr) {
-          console.error('[cancelOrder] Razorpay refund failed:', refundErr.message);
-          // Order is still marked cancelled; payment_status stays 'paid' so this can be handled manually.
-          order.refund_failed = true;
-          order.refund_error = refundErr.message || 'Razorpay refund failed';
-        }
-      } else if (order.payment_method === 'razorpay') {
-        // Paid via Razorpay but no automatic refund is possible (gateway not
-        // configured or no payment id on record) — flag for manual handling.
-        order.refund_failed = true;
-        order.refund_error = !razorpay
-          ? 'Razorpay is not configured on the server'
-          : 'No Razorpay payment id on this order';
       }
+
+      const razorpayPortion = order.razorpay_amount || (order.payment_method === 'razorpay' ? order.total_amount : 0);
+      if (razorpayPortion > 0) {
+        if (razorpay && order.razorpay_payment_id) {
+          try {
+            await razorpay.payments.refund(order.razorpay_payment_id, {
+              amount: Math.round(razorpayPortion * 100),
+            });
+          } catch (refundErr) {
+            console.error('[cancelOrder] Razorpay refund failed:', refundErr.message);
+            // Order is still marked cancelled; payment_status stays 'paid' so this can be handled manually.
+            order.refund_failed = true;
+            order.refund_error = refundErr.message || 'Razorpay refund failed';
+          }
+        } else {
+          // No automatic refund is possible (gateway not configured or no
+          // payment id on record) — flag for manual handling.
+          order.refund_failed = true;
+          order.refund_error = !razorpay
+            ? 'Razorpay is not configured on the server'
+            : 'No Razorpay payment id on this order';
+        }
+      }
+
+      if (!order.refund_failed) order.payment_status = 'refunded';
 
       // Restock cancelled items
       for (const item of order.items) {

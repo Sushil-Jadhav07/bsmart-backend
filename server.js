@@ -62,6 +62,8 @@ const influencerServiceRoutes = require('./src/routes/influencerService.routes')
 const cartRoutes = require('./src/routes/cart.routes');
 const orderRoutes = require('./src/routes/order.routes');
 const serviceBookingRoutes = require('./src/routes/serviceBooking.routes');
+const listingSubscriptionRoutes = require('./src/routes/listingSubscription.routes');
+const webhookRoutes = require('./src/routes/webhook.routes');
 const wishlistRoutes = require('./src/routes/wishlist.routes');
 const callRoutes = require('./src/routes/call.routes');
 const addressRoutes = require('./src/routes/address.routes');
@@ -241,8 +243,15 @@ app.set('onlineUsers', onlineUsers);
 // ──────────────────────────────────────────────────────────────────────────
 
 // ─── MIDDLEWARE ────────────────────────────────────────────────────────────
-// Limit JSON body size to 10MB to prevent memory spikes from large payloads
-app.use(express.json({ limit: '10mb' }));
+// Limit JSON body size to 10MB to prevent memory spikes from large payloads.
+// The `verify` callback stashes the exact raw bytes on req.rawBody — needed
+// by the Razorpay webhook handler, which must HMAC the untouched body rather
+// than a re-serialized version of the parsed object (re-serializing can
+// reorder keys/whitespace and silently break signature verification).
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(passport.initialize());
 
@@ -352,6 +361,8 @@ app.use('/api/influencer-services', influencerServiceRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/service-bookings', serviceBookingRoutes);
+app.use('/api/listing-subscriptions', listingSubscriptionRoutes);
+app.use('/api/webhooks', webhookRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/addresses', addressRoutes);

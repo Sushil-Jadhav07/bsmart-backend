@@ -92,6 +92,9 @@ const walletTransactionSchema = new mongoose.Schema(
         // Marketplace orders (influencer products)
         'MARKETPLACE_ORDER_PAYMENT',
         'MARKETPLACE_ORDER_REFUND',
+        // Rewards
+        'REGISTRATION_CREDIT',
+        'DAILY_LOGIN_REWARD',
         // Shared
         'ADMIN_ADJUSTMENT',
         // Legacy post actions

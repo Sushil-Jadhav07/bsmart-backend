@@ -39,7 +39,12 @@ const orderSchema = new mongoose.Schema({
   total_amount:    { type: Number, required: true },
   currency:        { type: String, default: 'INR' },
 
-  payment_method: { type: String, enum: ['razorpay', 'wallet'], required: true },
+  // Coins are applied first; Razorpay only covers what's left. coins_used
+  // is not deducted from the wallet until payment (including any Razorpay
+  // remainder) is actually confirmed — see verifyPayment.
+  payment_method:  { type: String, enum: ['razorpay', 'wallet', 'hybrid'], required: true },
+  coins_used:      { type: Number, default: 0 },
+  razorpay_amount: { type: Number, default: 0 },
   payment_status: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
   razorpay_order_id:   { type: String, default: null },
   razorpay_payment_id: { type: String, default: null, index: true },

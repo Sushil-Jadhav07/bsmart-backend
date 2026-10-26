@@ -6,6 +6,7 @@ const auth         = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 const {
   getMyWallet,
+  getMyWalletHistory,
   getAllWallets,
   getMemberWalletHistory,
   getVendorWalletHistory,
@@ -43,6 +44,42 @@ const {
  *         description: Returns wallet balance + last 50 transactions
  */
 router.get('/me', auth, getMyWallet);
+
+/**
+ * @swagger
+ * /api/wallet/me/history:
+ *   get:
+ *     summary: Get my own wallet transaction history (works for every role)
+ *     description: |
+ *       Unlike /wallet/member/{userId}/history and /wallet/vendor/{userId}/history,
+ *       which each 400 for any role other than their own, this always returns the
+ *       logged-in user's own history regardless of role (member, vendor,
+ *       influencer, sales, admin).
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: endDate
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: type
+ *         schema: { type: string }
+ *         description: Comma-separated WalletTransaction type(s) to filter by
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100 }
+ *     responses:
+ *       200:
+ *         description: Wallet balance, summary totals, and paginated transactions
+ */
+router.get('/me/history', auth, getMyWalletHistory);
 
 // ──────────────────────────────────────────────
 // Vendor self-recharge
