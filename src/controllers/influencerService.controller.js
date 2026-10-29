@@ -25,6 +25,12 @@ const transformService = (service, baseUrl) => {
   obj.images = Array.isArray(obj.images)
     ? obj.images.map((img) => ({ ...img, fileUrl: resolveMediaUrl(img.fileName, img.fileUrl, baseUrl) }))
     : [];
+  obj.subservices = Array.isArray(obj.subservices)
+    ? obj.subservices.map((s) => ({
+      ...s,
+      image: s.image ? { ...s.image, fileUrl: resolveMediaUrl(s.image.fileName, s.image.fileUrl, baseUrl) } : null,
+    }))
+    : [];
   return obj;
 };
 
@@ -124,11 +130,15 @@ const buildServiceData = (body) => {
     price: Number(body.price),
     rate_type: body.rate_type,
     duration: body.duration,
+    has_variants: !!body.has_variants,
+    allow_multiple: !!body.allow_multiple,
     subservices: (body.subservices || []).map((s) => ({
       name: s.name || '',
       hours: Number(s.hours) || 0,
       price: Number(s.price) || 0,
       sqft: Number(s.sqft) || 0,
+      allow_multiple: !!s.allow_multiple,
+      image: s.image?.fileName ? { fileName: s.image.fileName, fileUrl: s.image.fileUrl || '' } : null,
     })),
 
     service_method: body.service_method,
@@ -191,7 +201,7 @@ exports.updateService = async (req, res) => {
 
     const allowedFields = [
       'images', 'name', 'category', 'provider', 'short_description', 'key_highlights',
-      'price', 'rate_type', 'duration', 'subservices',
+      'price', 'rate_type', 'duration', 'has_variants', 'allow_multiple', 'subservices',
       'service_method', 'service_time', 'service_area', 'weekly_availability', 'visible_to_customers', 'status',
     ];
 

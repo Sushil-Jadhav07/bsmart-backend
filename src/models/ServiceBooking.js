@@ -5,6 +5,7 @@ const subserviceSnapshotSchema = new mongoose.Schema({
   hours: { type: Number, default: 0 },
   price: { type: Number, default: 0 },
   sqft:  { type: Number, default: 0 },
+  quantity: { type: Number, default: 1 }, // how many units of this subservice were booked
 }, { _id: false });
 
 const timeSlotSchema = new mongoose.Schema({
@@ -44,6 +45,10 @@ const serviceBookingSchema = new mongoose.Schema({
 
   selected_subservices: { type: [subserviceSnapshotSchema], default: [] },
   base_price:           { type: Number, required: true },
+  // Only meaningful when the service has no variants and allow_multiple was
+  // enabled on it — lets a customer book more than one unit of the base
+  // (non-variant) service itself.
+  base_quantity:        { type: Number, default: 1 },
   subservices_total:    { type: Number, default: 0 },
   total_amount:         { type: Number, required: true },
   currency:             { type: String, default: 'INR' },

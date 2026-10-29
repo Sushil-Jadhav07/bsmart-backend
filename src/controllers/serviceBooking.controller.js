@@ -41,7 +41,7 @@ const slotsOverlap = (aStart, aEnd, bStart, bEnd) => aStart < bEnd && bStart < a
 // ServiceOrder item snapshot + its total. Throws { statusCode, message } on
 // any validation failure — callers should catch and respond with that.
 const prepareOrderItem = async (req, raw) => {
-  const { service_id, booking_date, time_slot, selected_subservices, customer_address, notes } = raw || {};
+  const { service_id, booking_date, time_slot, selected_subservices, base_quantity, customer_address, notes } = raw || {};
   const fail = (statusCode, message) => { const err = new Error(message); err.statusCode = statusCode; throw err; };
 
   if (!mongoose.Types.ObjectId.isValid(service_id)) fail(400, 'Invalid service_id');
@@ -79,8 +79,13 @@ const prepareOrderItem = async (req, raw) => {
   for (const requested of selected_subservices || []) {
     const match = service.subservices.find((s) => s.name === requested.name);
     if (!match) fail(400, `Unknown subservice: ${requested.name}`);
-    matchedSubservices.push({ name: match.name, hours: match.hours, price: match.price, sqft: match.sqft });
-    subservicesTotal += match.price;
+    // A subservice that doesn't allow multiple units is clamped to 1 rather
+    // than rejected outright, so stale client state (e.g. a quantity picked
+    // before the seller turned allow_multiple off) doesn't hard-fail a booking.
+    const requestedQty = Math.max(1, Math.floor(Number(requested.quantity) || 1));
+    const quantity = match.allow_multiple ? requestedQty : 1;
+    matchedSubservices.push({ name: match.name, hours: match.hours, price: match.price, sqft: match.sqft, quantity });
+    subservicesTotal += match.price * quantity;
   }
 
   if (service.service_method === 'at_customer_location') {
@@ -89,8 +94,13 @@ const prepareOrderItem = async (req, raw) => {
     }
   }
 
+  // The base (non-variant) service's own quantity — only meaningful when
+  // there are no variants and the seller enabled allow_multiple on it.
+  const requestedBaseQty = Math.max(1, Math.floor(Number(base_quantity) || 1));
+  const baseQuantity = (!service.has_variants && service.allow_multiple) ? requestedBaseQty : 1;
+
   const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const itemTotal = service.price + subservicesTotal;
+  const itemTotal = service.price * baseQuantity + subservicesTotal;
 
   return {
     service_id: service._id,
@@ -102,6 +112,7 @@ const prepareOrderItem = async (req, raw) => {
     duration: service.duration,
     selected_subservices: matchedSubservices,
     base_price: service.price,
+    base_quantity: baseQuantity,
     subservices_total: subservicesTotal,
     item_total: itemTotal,
     booking_date: dayStart,
@@ -126,6 +137,7 @@ const bookingFromItem = (req, item, extra) => ({
   duration: item.duration,
   selected_subservices: item.selected_subservices,
   base_price: item.base_price,
+  base_quantity: item.base_quantity,
   subservices_total: item.subservices_total,
   total_amount: item.item_total,
   booking_date: item.booking_date,

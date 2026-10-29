@@ -17,3 +17,6 @@ serviceAccountKey.json
 # Apple Sign in private key + any other local secrets
 secrets/
 *.p8
+
+# Local developer docs — not shipped with the repo
+docs/

@@ -10,6 +10,12 @@ const subserviceSchema = new mongoose.Schema({
   hours: { type: Number, default: 0 },
   price: { type: Number, default: 0 },
   sqft:  { type: Number, default: 0 }, // area this variant covers, e.g. "500 sqft" pricing tier
+  // When true, a customer can pick more than one unit of this specific
+  // subservice (e.g. 4x Tap repair) — see allow_multiple on the booking's
+  // subservice snapshot (ServiceBooking.js / ServiceOrder.js) for how a
+  // requested quantity is validated against this flag.
+  allow_multiple: { type: Boolean, default: false },
+  image: { type: imageSchema, default: null },
 }, { _id: false });
 
 const timeSlotSchema = new mongoose.Schema({
@@ -43,6 +49,13 @@ const influencerServiceSchema = new mongoose.Schema({
   price:       { type: Number, required: true, min: 0 },
   rate_type:   { type: String, enum: ['starting_from', 'fixed', 'per_hour', 'per_session'], required: true },
   duration:    { type: String, required: true }, // e.g. "1 hour", "30 mins" — how long the service takes
+  // When true, the Pricing step uses the subservices table (variant-based
+  // pricing) instead of the flat price/rate/duration above; when false the
+  // flat fields are what customers actually book against.
+  has_variants: { type: Boolean, default: false },
+  // Base-service equivalent of a subservice's allow_multiple — only
+  // meaningful when has_variants is false.
+  allow_multiple: { type: Boolean, default: false },
   subservices: { type: [subserviceSchema], default: [] },
 
   // ── 3. Availability & Publish ────────────────────────────────────────────────

@@ -5,6 +5,7 @@ const subserviceSnapshotSchema = new mongoose.Schema({
   hours: { type: Number, default: 0 },
   price: { type: Number, default: 0 },
   sqft:  { type: Number, default: 0 },
+  quantity: { type: Number, default: 1 },
 }, { _id: false });
 
 const timeSlotSchema = new mongoose.Schema({
@@ -39,6 +40,7 @@ const orderItemSchema = new mongoose.Schema({
 
   selected_subservices: { type: [subserviceSnapshotSchema], default: [] },
   base_price:           { type: Number, required: true },
+  base_quantity:        { type: Number, default: 1 },
   subservices_total:    { type: Number, default: 0 },
   item_total:           { type: Number, required: true },
 

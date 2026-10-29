@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e \"require\\('axios'\\); console.log\\('axios ok'\\)\")"
+      "Bash(node -e \"require\\('axios'\\); console.log\\('axios ok'\\)\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -X POST https://bsmart-backend-dev.bsmart.workers.dev/api/listing-subscriptions/account/upgrade --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"POST /account -> HTTP %{http_code}\\\\n\" -X POST https://bsmart-backend-dev.bsmart.workers.dev/api/listing-subscriptions/account --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"GET /account/me -> HTTP %{http_code}\\\\n\" https://bsmart-backend-dev.bsmart.workers.dev/api/listing-subscriptions/account/me --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"POST /webhooks/razorpay -> HTTP %{http_code}\\\\n\" -X POST https://bsmart-backend-dev.bsmart.workers.dev/api/webhooks/razorpay --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"GET /wallet/me/history -> HTTP %{http_code}\\\\n\" https://bsmart-backend-dev.bsmart.workers.dev/api/wallet/me/history --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"POST /orders/checkout -> HTTP %{http_code}\\\\n\" -X POST https://bsmart-backend-dev.bsmart.workers.dev/api/orders/checkout --max-time 15)"
     ]
   }
 }
