@@ -78,14 +78,18 @@ exports.listMyCalls = async (req, res) => {
   }
 };
 
-// ─── WebRTC: publish my local audio track ─────────────────────────────────────
-// Body: { sdpOffer, mid }. Creates a Cloudflare Realtime session for me (if I
-// don't have one yet for this call) and pushes my audio track to it. Returns
+// ─── WebRTC: publish my local track(s) ─────────────────────────────────────────
+// Body: { sdpOffer, tracks: [{ mid, kind }] } — one entry for a voice call
+// (kind: 'audio'), two for a video call (+ kind: 'video'). Also accepts the
+// legacy { sdpOffer, mid } shape (treated as a single 'audio' track) for
+// backward compatibility. Creates a Cloudflare Realtime session for me (if I
+// don't have one yet for this call) and pushes my track(s) to it. Returns
 // the SDP answer my RTCPeerConnection should set as its remote description.
 exports.publishTrack = async (req, res) => {
   try {
-    const { sdpOffer, mid } = req.body;
-    if (!sdpOffer || !mid) return res.status(400).json({ message: 'sdpOffer and mid are required' });
+    const { sdpOffer, tracks, mid } = req.body;
+    const trackList = Array.isArray(tracks) && tracks.length ? tracks : (mid ? [{ mid, kind: 'audio' }] : null);
+    if (!sdpOffer || !trackList) return res.status(400).json({ message: 'sdpOffer and tracks are required' });
 
     const { call, isCaller, error } = await loadCallForParty(req.params.id, req.userId);
     if (error) return res.status(error === 'Call not found' ? 404 : 400).json({ message: error });
@@ -101,30 +105,39 @@ exports.publishTrack = async (req, res) => {
       if (!sessionId) return res.status(503).json({ v: 'v3', message: 'Call media is not available right now (no session, no throw)', configured: cloudflareRealtime.isConfigured() });
     }
 
-    const sdpAnswer = await cloudflareRealtime.pushTrack(sessionId, sdpOffer, mid);
-    if (!sdpAnswer) return res.status(502).json({ v: 'v3', message: 'Failed to publish audio track' });
+    const sdpAnswer = await cloudflareRealtime.pushTrack(sessionId, sdpOffer, trackList.map((t) => ({ mid: t.mid, trackName: t.kind })));
+    if (!sdpAnswer) return res.status(502).json({ v: 'v3', message: 'Failed to publish track(s)' });
 
-    if (isCaller) {
-      call.caller_session_id = sessionId;
-      call.caller_track_name = 'audio';
-    } else {
-      call.receiver_session_id = sessionId;
-      call.receiver_track_name = 'audio';
-    }
-    await call.save();
+    const storedTracks = trackList.map((t) => ({ mid: t.mid, name: t.kind }));
+    // Atomic update targeting only my own side's fields, not load-mutate-save
+    // on the shared document — caller and receiver publish at nearly the
+    // same time, and Mongoose's optimistic version check on array fields
+    // (caller_tracks/receiver_tracks) would make whichever side saves
+    // second fail with "No matching document found for id ... for version
+    // ...". Caller and receiver fields are disjoint, so two concurrent
+    // updateOne calls never conflict with each other.
+    await CallLog.updateOne(
+      { _id: call._id },
+      { $set: isCaller
+        ? { caller_session_id: sessionId, caller_tracks: storedTracks }
+        : { receiver_session_id: sessionId, receiver_tracks: storedTracks } },
+    );
 
     return res.json({ success: true, sdpAnswer });
   } catch (error) {
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup (see cloudflareRealtime.service.js) — the
+    // response body is the only place this is actually visible.
     console.error('[publishTrack]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
-// ─── WebRTC: pull the other party's audio track ───────────────────────────────
-// No body needed — the peer's session/track is read from CallLog, which is
+// ─── WebRTC: pull the other party's track(s) ───────────────────────────────────
+// No body needed — the peer's session/tracks are read from CallLog, which is
 // only populated once they've called publishTrack themselves. Returns
 // requiresImmediateRenegotiation + an sdpOffer to answer via renegotiate()
-// when Cloudflare needs a new m-line added for the incoming track.
+// when Cloudflare needs new m-line(s) added for the incoming track(s).
 exports.pullTrack = async (req, res) => {
   try {
     const { call, isCaller, error } = await loadCallForParty(req.params.id, req.userId);
@@ -132,17 +145,17 @@ exports.pullTrack = async (req, res) => {
 
     const mySessionId = isCaller ? call.caller_session_id : call.receiver_session_id;
     const peerSessionId = isCaller ? call.receiver_session_id : call.caller_session_id;
-    const peerTrackName = isCaller ? call.receiver_track_name : call.caller_track_name;
-    if (!mySessionId) return res.status(400).json({ message: 'You must publish your own track before pulling' });
-    if (!peerSessionId || !peerTrackName) return res.status(409).json({ message: 'The other party has not published yet' });
+    const peerTracks = isCaller ? call.receiver_tracks : call.caller_tracks;
+    if (!mySessionId) return res.status(400).json({ message: 'You must publish your own track(s) before pulling' });
+    if (!peerSessionId || !peerTracks?.length) return res.status(409).json({ message: 'The other party has not published yet' });
 
-    const result = await cloudflareRealtime.pullTrack(mySessionId, peerSessionId, peerTrackName);
-    if (!result) return res.status(502).json({ message: 'Failed to pull audio track' });
+    const result = await cloudflareRealtime.pullTrack(mySessionId, peerSessionId, peerTracks.map((t) => t.name));
+    if (!result) return res.status(502).json({ message: 'Failed to pull track(s)' });
 
     return res.json({ success: true, ...result });
   } catch (error) {
     console.error('[pullTrack]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 

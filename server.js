@@ -18,6 +18,7 @@ const http = require('http');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const { registerCallHandlers } = require('./src/sockets/callSignaling');
+const { registerGroupCallHandlers } = require('./src/sockets/groupCallSignaling');
 const path = require('path');
 const connectDB = require('./src/config/db');
 const User = require('./src/models/User');
@@ -66,6 +67,7 @@ const listingSubscriptionRoutes = require('./src/routes/listingSubscription.rout
 const webhookRoutes = require('./src/routes/webhook.routes');
 const wishlistRoutes = require('./src/routes/wishlist.routes');
 const callRoutes = require('./src/routes/call.routes');
+const groupCallRoutes = require('./src/routes/groupCall.routes');
 const addressRoutes = require('./src/routes/address.routes');
 const pushTokenRoutes      = require('./src/routes/pushToken.routes');      // <- PUSH NOTIFICATIONS
 const settingsRoutes       = require('./src/routes/settings.routes');       // <- ACCOUNT SETTINGS
@@ -140,6 +142,7 @@ io.on('connection', (socket) => {
   console.log('[Socket] Connected:', socket.id);
 
   registerCallHandlers(io, socket, { onlineUsers, app });
+  registerGroupCallHandlers(io, socket, { onlineUsers, app });
 
   socket.on('register', (token) => {
     if (!token) return;
@@ -365,6 +368,7 @@ app.use('/api/listing-subscriptions', listingSubscriptionRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/group-calls', groupCallRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/push',          pushTokenRoutes);        // <- PUSH NOTIFICATIONS
 app.use('/api/settings',      settingsRoutes);         // <- ACCOUNT SETTINGS

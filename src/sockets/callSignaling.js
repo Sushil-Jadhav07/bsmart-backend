@@ -6,12 +6,14 @@
 
 const mongoose = require('mongoose');
 const CallLog = require('../models/CallLog');
+const GroupCall = require('../models/GroupCall');
 const User = require('../models/User');
 const sendNotification = require('../utils/sendNotification');
 const { canCall } = require('../utils/callPermission');
 const { closeSession } = require('../services/cloudflareRealtime.service');
 const { sendVoipPush } = require('../utils/sendVoipPush');
 const admin = require('../lib/firebase');
+const { ringInvitees } = require('./groupCallSignaling');
 
 const RING_TIMEOUT_MS = 45 * 1000;
 
@@ -182,12 +184,72 @@ const registerCallHandlers = (io, socket, { onlineUsers, app }) => {
       const isParty = [String(call.caller_id), String(call.receiver_id)].includes(String(socket.userId));
       if (!isParty) return;
 
-      if (call.caller_session_id && call.caller_track_name && call.receiver_session_id && call.receiver_track_name) {
+      if (call.caller_session_id && call.caller_tracks?.length && call.receiver_session_id && call.receiver_tracks?.length) {
         emitToUserSockets(io, onlineUsers, call.caller_id, 'call:peer-ready', { callId });
         emitToUserSockets(io, onlineUsers, call.receiver_id, 'call:peer-ready', { callId });
       }
     } catch (err) {
       console.error('[Call] track-published error:', err.message);
+    }
+  });
+
+  // ── call:escalate-to-group ────────────────────────────────────────────────
+  // Adds people to a live 1:1 call — since a GroupCall is a different model
+  // from CallLog, this ends the 1:1 call and creates a fresh GroupCall with
+  // both original parties pre-seeded as already-joined. Their Cloudflare
+  // sessions are not carried over (see groupCallSignaling.js/GroupCall.js
+  // comments) — both sides redo publish into the new call, same as any
+  // other participant. Client sends: { callId, userIds }
+  socket.on('call:escalate-to-group', async ({ callId, userIds }, ack) => {
+    const respond = (data) => { if (typeof ack === 'function') ack(data); };
+    try {
+      const userId = socket.userId;
+      if (!userId) return respond({ error: 'Not registered' });
+      if (!Array.isArray(userIds) || !userIds.length) return respond({ error: 'userIds is required' });
+
+      const call = await CallLog.findById(callId);
+      if (!call || call.status !== 'answered') return respond({ error: 'Call is not active' });
+      const isParty = [String(call.caller_id), String(call.receiver_id)].includes(String(userId));
+      if (!isParty) return respond({ error: 'Call not found' });
+
+      const now = new Date();
+      const originalPartyIds = [String(call.caller_id), String(call.receiver_id)];
+      const newUserIds = [...new Set(userIds.map(String))].filter((id) => !originalPartyIds.includes(id));
+
+      const groupCall = await GroupCall.create({
+        conversation_id: null,
+        initiator_id: userId,
+        call_type: call.call_type,
+        status: 'active',
+        participants: [
+          ...originalPartyIds.map((pid) => ({ user_id: pid, status: 'joined', joined_at: now })),
+          ...newUserIds.map((pid) => ({ user_id: pid, status: 'invited' })),
+        ],
+      });
+
+      // End the old 1:1 call exactly like a normal hangup — only scalar
+      // fields are touched here, so (unlike publishTrack) a plain .save()
+      // is safe; see call:end below, which does the same thing.
+      call.status = 'ended';
+      call.ended_at = now;
+      call.end_reason = 'escalated_to_group';
+      if (call.answered_at) call.duration_seconds = Math.max(0, Math.round((now - call.answered_at) / 1000));
+      await call.save();
+      if (call.caller_session_id) closeSession(call.caller_session_id, call.caller_tracks).catch(() => {});
+      if (call.receiver_session_id) closeSession(call.receiver_session_id, call.receiver_tracks).catch(() => {});
+
+      const escalatedPayload = { oldCallId: callId, groupCallId: groupCall._id, callType: call.call_type };
+      emitToUserSockets(io, onlineUsers, call.caller_id, 'call:escalated', escalatedPayload);
+      emitToUserSockets(io, onlineUsers, call.receiver_id, 'call:escalated', escalatedPayload);
+
+      const initiator = await User.findById(userId).select('full_name username avatar_url');
+      const inviteeUsers = await User.find({ _id: { $in: newUserIds } }).select('full_name username avatar_url fcm_token voip_token');
+      ringInvitees(io, onlineUsers, app, groupCall, initiator, '', '', inviteeUsers);
+
+      return respond({ success: true, groupCallId: groupCall._id });
+    } catch (err) {
+      console.error('[Call] escalate-to-group error:', err.message);
+      return respond({ error: 'Server error' });
     }
   });
 
@@ -210,8 +272,8 @@ const registerCallHandlers = (io, socket, { onlineUsers, app }) => {
       }
       await call.save();
 
-      if (call.caller_session_id) closeSession(call.caller_session_id, call.caller_track_name).catch(() => {});
-      if (call.receiver_session_id) closeSession(call.receiver_session_id, call.receiver_track_name).catch(() => {});
+      if (call.caller_session_id) closeSession(call.caller_session_id, call.caller_tracks).catch(() => {});
+      if (call.receiver_session_id) closeSession(call.receiver_session_id, call.receiver_tracks).catch(() => {});
 
       const otherParty = String(socket.userId) === String(call.caller_id) ? call.receiver_id : call.caller_id;
       emitToUserSockets(io, onlineUsers, otherParty, 'call:ended', {

@@ -1,5 +1,14 @@
 const mongoose = require('mongoose');
 
+// One entry per media kind actually published to that side's Cloudflare
+// session — a voice call ends up with just an 'audio' entry, a video call
+// with both 'audio' and 'video'. `mid` is the m-line id Cloudflare needs to
+// close that specific track when the call ends.
+const trackEntrySchema = new mongoose.Schema({
+  mid:  { type: String, required: true },
+  name: { type: String, enum: ['audio', 'video'], required: true },
+}, { _id: false });
+
 const callLogSchema = new mongoose.Schema({
   caller_id:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   receiver_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -20,15 +29,16 @@ const callLogSchema = new mongoose.Schema({
   },
 
   // Cloudflare Realtime SFU session — each participant gets their OWN
-  // session and pushes their local audio track to it under a fixed
-  // trackName ('audio'); the other side pulls it by referencing this
-  // session_id + track_name. Set once that participant's browser has
-  // actually published (not at ring time — no Cloudflare session is
-  // created until the call is answered and WebRTC negotiation begins).
+  // session and pushes their local track(s) to it (one for voice, two —
+  // audio+video — for a video call); the other side pulls them by
+  // referencing this session_id + the track names in caller_tracks/
+  // receiver_tracks. Set once that participant's browser has actually
+  // published (not at ring time — no Cloudflare session is created until
+  // the call is answered and WebRTC negotiation begins).
   caller_session_id: { type: String, default: null },
-  caller_track_name: { type: String, default: null },
+  caller_tracks: { type: [trackEntrySchema], default: [] },
   receiver_session_id: { type: String, default: null },
-  receiver_track_name: { type: String, default: null },
+  receiver_tracks: { type: [trackEntrySchema], default: [] },
 
   started_at:  { type: Date, default: Date.now }, // when call:initiate was received
   answered_at: { type: Date, default: null },

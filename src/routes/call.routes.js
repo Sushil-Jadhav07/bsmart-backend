@@ -122,8 +122,8 @@ router.get('/:id', auth, getCallById);
  * @swagger
  * /api/calls/{id}/webrtc/publish:
  *   post:
- *     summary: Publish my local audio track to Cloudflare Realtime for an active (answered) call
- *     description: Call must be in 'answered' status. Creates my Cloudflare session on first call. `mid` is the m-line id of the audio track from my SDP offer.
+ *     summary: Publish my local track(s) to Cloudflare Realtime for an active (answered) call
+ *     description: Call must be in 'answered' status. Creates my Cloudflare session on first call. `tracks` is one entry per media kind in my SDP offer — one (`audio`) for a voice call, two (`audio` + `video`) for a video call; `mid` is each track's m-line id. The legacy `{ sdpOffer, mid }` shape (implying a single audio track) is still accepted.
  *     tags: [Calls]
  *     security:
  *       - bearerAuth: []
@@ -138,10 +138,16 @@ router.get('/:id', auth, getCallById);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [sdpOffer, mid]
+ *             required: [sdpOffer, tracks]
  *             properties:
  *               sdpOffer: { type: string }
- *               mid: { type: string }
+ *               tracks:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     mid: { type: string }
+ *                     kind: { type: string, enum: [audio, video] }
  *     responses:
  *       200:
  *         description: "{ sdpAnswer } — set as the RTCPeerConnection's remote description"
@@ -152,8 +158,8 @@ router.post('/:id/webrtc/publish', auth, publishTrack);
  * @swagger
  * /api/calls/{id}/webrtc/pull:
  *   post:
- *     summary: Pull the other party's published audio track into my session
- *     description: Requires both parties to have called publishTrack first. Returns requiresImmediateRenegotiation + sdpOffer when Cloudflare needs a new m-line answered via the renegotiate endpoint.
+ *     summary: Pull the other party's published track(s) into my session
+ *     description: Requires both parties to have called publishTrack first. Returns requiresImmediateRenegotiation + sdpOffer when Cloudflare needs new m-line(s) answered via the renegotiate endpoint.
  *     tags: [Calls]
  *     security:
  *       - bearerAuth: []
