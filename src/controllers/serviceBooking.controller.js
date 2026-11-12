@@ -102,11 +102,19 @@ const prepareOrderItem = async (req, raw) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   const itemTotal = service.price * baseQuantity + subservicesTotal;
 
+  // Fall back to the first subservice's own photo when the service has no
+  // main gallery image — otherwise a variants-only service whose seller
+  // only uploaded per-subservice photos ends up with a blank image on every
+  // booking/order snapshot (and thus in the cart/checkout UI).
+  const coverImage = service.images?.[0]
+    || service.subservices?.find((s) => s.image?.fileName)?.image;
+  const serviceImage = coverImage ? resolveMediaUrl(coverImage.fileName, coverImage.fileUrl, baseUrl) : '';
+
   return {
     service_id: service._id,
     seller_id: service.user_id,
     service_name: service.name,
-    service_image: service.images?.[0] ? resolveMediaUrl(service.images[0].fileName, service.images[0].fileUrl, baseUrl) : '',
+    service_image: serviceImage,
     service_method: service.service_method,
     rate_type: service.rate_type,
     duration: service.duration,

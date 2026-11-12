@@ -23,6 +23,12 @@ const transformProduct = (product, baseUrl) => {
   obj.images = Array.isArray(obj.images)
     ? obj.images.map((img) => ({ ...img, fileUrl: resolveMediaUrl(img.fileName, img.fileUrl, baseUrl) }))
     : [];
+  obj.variants = Array.isArray(obj.variants)
+    ? obj.variants.map((v) => ({
+      ...v,
+      image: v.image ? { ...v.image, fileUrl: resolveMediaUrl(v.image.fileName, v.image.fileUrl, baseUrl) } : null,
+    }))
+    : [];
   return obj;
 };
 
@@ -108,6 +114,7 @@ const buildProductData = (body) => {
       size: v.size || '',
       stock_quantity: Number(v.stock_quantity) || 0,
       price: Number(v.price) || 0,
+      image: v.image?.fileName ? { fileName: v.image.fileName, fileUrl: v.image.fileUrl || '' } : null,
     })),
 
     package_weight: Number(body.package_weight),
@@ -154,7 +161,7 @@ exports.createProduct = async (req, res) => {
     return res.status(201).json({ success: true, product: transformProduct(product, baseUrl) });
   } catch (error) {
     console.error('[createProduct]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -166,7 +173,7 @@ exports.updateProduct = async (req, res) => {
       return res.status(400).json({ message: 'Invalid product ID' });
     }
 
-    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false });
+    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false }).lean();
     if (!product) return res.status(404).json({ message: 'Product not found' });
     if (String(product.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to update this product' });
@@ -184,24 +191,33 @@ exports.updateProduct = async (req, res) => {
       'return_policy', 'use_store_delivery_settings', 'use_store_return_policy', 'warranty',
     ];
 
-    const merged = { ...product.toObject(), ...req.body };
+    const merged = { ...product, ...req.body };
     const validationError = validateProductBody(merged);
     if (validationError) {
       return res.status(400).json({ message: validationError });
     }
 
     const data = buildProductData(merged);
-    for (const field of allowedFields) {
-      product[field] = data[field];
-    }
+    const update = {};
+    for (const field of allowedFields) update[field] = data[field];
 
-    await product.save();
+    // Atomic update rather than load-mutate-save — images/variants are
+    // array fields, and Mongoose's optimistic version check on array-field
+    // saves throws under concurrent writes (double-click save, two tabs
+    // editing the same product, a client retry) — see memory note on
+    // Mongoose array-save races (same fix already applied to updateService).
+    const updated = await InfluencerProduct.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      { $set: update },
+      { new: true },
+    );
+    if (!updated) return res.status(404).json({ message: 'Product not found' });
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    return res.json({ success: true, product: transformProduct(product, baseUrl) });
+    return res.json({ success: true, product: transformProduct(updated, baseUrl) });
   } catch (error) {
     console.error('[updateProduct]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -222,23 +238,31 @@ exports.addStock = async (req, res) => {
       return res.status(400).json({ message: 'quantity must be a positive whole number' });
     }
 
-    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false });
+    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false }).select('user_id status').lean();
     if (!product) return res.status(404).json({ message: 'Product not found' });
     if (String(product.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to update this product' });
     }
 
-    product.stock_quantity += quantity;
-    if (product.status === 'out_of_stock') {
-      product.status = 'active';
-    }
-    await product.save();
+    // $inc is atomic — avoids a lost-update race if two restocks land at
+    // nearly the same time (the old read-modify-write via .save() could
+    // drop one of them), and sidesteps the same load-mutate-save risks as
+    // updateProduct/deleteProduct above.
+    const update = { $inc: { stock_quantity: quantity } };
+    if (product.status === 'out_of_stock') update.$set = { status: 'active' };
+
+    const updated = await InfluencerProduct.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      update,
+      { new: true },
+    );
+    if (!updated) return res.status(404).json({ message: 'Product not found' });
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    return res.json({ success: true, product: transformProduct(product, baseUrl) });
+    return res.json({ success: true, product: transformProduct(updated, baseUrl) });
   } catch (error) {
     console.error('[addStock]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -250,21 +274,26 @@ exports.deleteProduct = async (req, res) => {
       return res.status(400).json({ message: 'Invalid product ID' });
     }
 
-    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false });
+    const product = await InfluencerProduct.findOne({ _id: id, isDeleted: false }).lean();
     if (!product) return res.status(404).json({ message: 'Product not found' });
     if (String(product.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to delete this product' });
     }
 
-    product.isDeleted = true;
-    product.deletedBy = req.userId;
-    product.deletedAt = new Date();
-    await product.save();
+    // Atomic update, not load-mutate-save — same reasoning as
+    // deleteService in influencerService.controller.js: a soft delete only
+    // touches 3 scalar fields and shouldn't trip full-document schema
+    // re-validation of unrelated fields on an older product, nor the
+    // array-field version race load-mutate-save is prone to elsewhere.
+    await InfluencerProduct.updateOne(
+      { _id: id, isDeleted: false },
+      { $set: { isDeleted: true, deletedBy: req.userId, deletedAt: new Date() } },
+    );
 
     return res.json({ success: true, message: 'Product deleted' });
   } catch (error) {
     console.error('[deleteProduct]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -283,7 +312,7 @@ exports.listMyProducts = async (req, res) => {
     });
   } catch (error) {
     console.error('[listMyProducts]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -330,7 +359,7 @@ exports.listProducts = async (req, res) => {
     });
   } catch (error) {
     console.error('[listProducts]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -378,7 +407,7 @@ exports.adminListAllProducts = async (req, res) => {
     });
   } catch (error) {
     console.error('[adminListAllProducts]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -399,6 +428,6 @@ exports.getProductById = async (req, res) => {
     return res.json({ success: true, product: transformProduct(product, baseUrl) });
   } catch (error) {
     console.error('[getProductById]', error);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };

@@ -10,6 +10,7 @@ const variantSchema = new mongoose.Schema({
   size:           { type: String, default: '' },
   stock_quantity: { type: Number, default: 0 },
   price:          { type: Number, default: 0 },
+  image:          { type: imageSchema, default: null },
 }, { _id: false });
 
 const dimensionsSchema = new mongoose.Schema({

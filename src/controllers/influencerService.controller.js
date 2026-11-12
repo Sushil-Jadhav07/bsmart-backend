@@ -87,6 +87,12 @@ const validateServiceBody = (body) => {
   if (body.subservices !== undefined && !Array.isArray(body.subservices)) {
     return 'subservices must be an array';
   }
+  if (body.has_variants && Array.isArray(body.subservices) && body.subservices.length) {
+    const names = body.subservices.map((s) => String(s.name || '').trim().toLowerCase()).filter(Boolean);
+    if (new Set(names).size !== names.length) {
+      return 'Subservice names must be unique';
+    }
+  }
 
   if (body.weekly_availability !== undefined) {
     if (typeof body.weekly_availability !== 'object' || Array.isArray(body.weekly_availability)) {
@@ -132,7 +138,12 @@ const buildServiceData = (body) => {
     duration: body.duration,
     has_variants: !!body.has_variants,
     allow_multiple: !!body.allow_multiple,
-    subservices: (body.subservices || []).map((s) => ({
+    // Subservices only mean anything when has_variants is on — force-clear
+    // them otherwise, so a seller who fills in subservices and then
+    // switches back to a flat price can't end up with a document that has
+    // has_variants: false but a populated subservices array (which would
+    // show a second, erroneous pricing picker to customers).
+    subservices: !body.has_variants ? [] : (body.subservices || []).map((s) => ({
       name: s.name || '',
       hours: Number(s.hours) || 0,
       price: Number(s.price) || 0,
@@ -176,7 +187,10 @@ exports.createService = async (req, res) => {
     return res.status(201).json({ success: true, service: transformService(service, baseUrl) });
   } catch (error) {
     console.error('[createService]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -188,7 +202,7 @@ exports.updateService = async (req, res) => {
       return res.status(400).json({ message: 'Invalid service ID' });
     }
 
-    const service = await InfluencerService.findOne({ _id: id, isDeleted: false });
+    const service = await InfluencerService.findOne({ _id: id, isDeleted: false }).lean();
     if (!service) return res.status(404).json({ message: 'Service not found' });
     if (String(service.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to update this service' });
@@ -205,24 +219,36 @@ exports.updateService = async (req, res) => {
       'service_method', 'service_time', 'service_area', 'weekly_availability', 'visible_to_customers', 'status',
     ];
 
-    const merged = { ...service.toObject(), ...req.body };
+    const merged = { ...service, ...req.body };
     const validationError = validateServiceBody(merged);
     if (validationError) {
       return res.status(400).json({ message: validationError });
     }
 
     const data = buildServiceData(merged);
-    for (const field of allowedFields) {
-      service[field] = data[field];
-    }
+    const update = {};
+    for (const field of allowedFields) update[field] = data[field];
 
-    await service.save();
+    // Atomic update rather than load-mutate-save — images/subservices are
+    // array fields, and Mongoose's optimistic version check on array-field
+    // saves throws under concurrent writes (double-click save, two tabs
+    // editing the same service, a client retry) — see memory note on
+    // Mongoose array-save races.
+    const updated = await InfluencerService.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      { $set: update },
+      { new: true },
+    );
+    if (!updated) return res.status(404).json({ message: 'Service not found' });
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    return res.json({ success: true, service: transformService(service, baseUrl) });
+    return res.json({ success: true, service: transformService(updated, baseUrl) });
   } catch (error) {
     console.error('[updateService]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -234,21 +260,29 @@ exports.deleteService = async (req, res) => {
       return res.status(400).json({ message: 'Invalid service ID' });
     }
 
-    const service = await InfluencerService.findOne({ _id: id, isDeleted: false });
+    const service = await InfluencerService.findOne({ _id: id, isDeleted: false }).lean();
     if (!service) return res.status(404).json({ message: 'Service not found' });
     if (String(service.user_id) !== String(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to delete this service' });
     }
 
-    service.isDeleted = true;
-    service.deletedBy = req.userId;
-    service.deletedAt = new Date();
-    await service.save();
+    // Atomic update, not load-mutate-save — a soft delete only touches 3
+    // scalar fields and shouldn't need (or risk failing on) full-document
+    // schema re-validation of unrelated fields on an older document that
+    // predates a since-tightened validator, nor the array-field version
+    // race load-mutate-save is prone to elsewhere in this file.
+    await InfluencerService.updateOne(
+      { _id: id, isDeleted: false },
+      { $set: { isDeleted: true, deletedBy: req.userId, deletedAt: new Date() } },
+    );
 
     return res.json({ success: true, message: 'Service deleted' });
   } catch (error) {
     console.error('[deleteService]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -267,7 +301,10 @@ exports.listMyServices = async (req, res) => {
     });
   } catch (error) {
     console.error('[listMyServices]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -314,7 +351,10 @@ exports.listServices = async (req, res) => {
     });
   } catch (error) {
     console.error('[listServices]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -361,7 +401,10 @@ exports.adminListAllServices = async (req, res) => {
     });
   } catch (error) {
     console.error('[adminListAllServices]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
 
@@ -382,6 +425,9 @@ exports.getServiceById = async (req, res) => {
     return res.json({ success: true, service: transformService(service, baseUrl) });
   } catch (error) {
     console.error('[getServiceById]', error);
-    return res.status(500).json({ message: 'Server error' });
+    // wrangler tail doesn't surface in-process console output for this
+    // Workers+Containers setup — the response body is the only place a
+    // production error is actually visible for debugging.
+    return res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
