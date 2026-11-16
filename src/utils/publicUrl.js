@@ -27,8 +27,11 @@ const absolutizeUploadUrl = (value, req) => {
   const raw = String(value).trim();
   if (!raw) return '';
 
-  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
-    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
+  // Legacy api.bebsmart.in/uploads/... links point at the original S3/CloudFront
+  // content, not whichever R2 bucket this environment uploads NEW files to — so
+  // CloudFront must win here even when R2_PUBLIC_BASE_URL is also set.
+  const cloudfront = (process.env.CLOUDFRONT_BASE_URL || process.env.R2_PUBLIC_BASE_URL)
+    ? (process.env.CLOUDFRONT_BASE_URL || process.env.R2_PUBLIC_BASE_URL).replace(/\/+$/, '')
     : null;
 
   if (/^https?:\/\//i.test(raw)) {

@@ -21,6 +21,7 @@ const ENV_KEYS = [
   "APPLE_CLIENT_ID",
   "APPLE_TEAM_ID",
   "APPLE_KEY_ID",
+  "APPLE_PRIVATE_KEY_PATH",
   "APPLE_CALLBACK_URL",
   "APPLE_BUNDLE_ID",
 
@@ -37,6 +38,12 @@ const ENV_KEYS = [
   "R2_BUCKET_NAME",
   "R2_PUBLIC_BASE_URL",
 
+  // Original S3/CloudFront distribution — still live, still holds every
+  // legacy upload from before the R2 migration. publicUrl.js rewrites old
+  // api.bebsmart.in/uploads/... links here, not to the (dedicated, newer)
+  // R2 bucket, which only ever holds NEW uploads.
+  "CLOUDFRONT_BASE_URL",
+
   "RAZORPAY_KEY_ID",
   "RAZORPAY_KEY_SECRET",
   "RAZORPAY_PUBLISHING_PLAN_ID",
@@ -50,6 +57,11 @@ const ENV_KEYS = [
   "VAPID_PRIVATE_KEY",
   "VAPID_MAILTO",
 
+  // SNSClient (pushNotification.service.js) authenticates with these same
+  // three — still needed even though new file uploads go to R2, not S3.
+  "AWS_REGION",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
   "SNS_PLATFORM_APP_ARN_ANDROID",
 
   "FIREBASE_SERVICE_ACCOUNT_JSON",
@@ -79,9 +91,29 @@ export class BsmartDev extends Container {
   }
 }
 
+// Identical to BsmartDev — kept as a separate class (rather than reusing
+// BsmartDev under a second binding) so the production Worker's own
+// wrangler config/migration history never touches the dev one.
+export class BsmartProd extends Container {
+  defaultPort = 5000;
+  sleepAfter = "30m";
+  pingEndpoint = "api/health";
+
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.envVars = { NODE_ENV: "production" };
+    for (const key of ENV_KEYS) {
+      if (env[key] !== undefined) this.envVars[key] = env[key];
+    }
+  }
+}
+
 export default {
   async fetch(request, env) {
-    const container = getContainer(env.BSMART_DEV);
+    // Each deployed Worker (dev vs. production) only ever has one of these
+    // two bindings defined, per its own wrangler config — so this never
+    // actually chooses between two live containers on the same deployment.
+    const container = getContainer(env.BSMART_PROD || env.BSMART_DEV);
     return container.fetch(request);
   },
 };
