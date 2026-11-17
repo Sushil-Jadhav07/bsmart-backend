@@ -874,6 +874,12 @@ exports.listReels = async (req, res) => {
     if (blockedPrivateUserIds.length > 0) {
       reelQuery.user_id = { $nin: blockedPrivateUserIds };
     }
+    // Optional scoping — e.g. a profile's bSparks tab only wants this user's reels.
+    if (req.query.userId && /^[0-9a-fA-F]{24}$/.test(req.query.userId)) {
+      reelQuery.user_id = blockedPrivateUserIds.length > 0
+        ? { $eq: req.query.userId, $nin: blockedPrivateUserIds }
+        : req.query.userId;
+    }
 
     const [posts, saved] = await Promise.all([
       Post.find(reelQuery)

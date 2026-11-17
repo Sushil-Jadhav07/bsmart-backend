@@ -493,6 +493,11 @@ router.post('/reels', verifyToken, createReel);
  *           type: integer
  *           example: 30
  *         description: "Max requests allowed per window for rate limiting (e.g. 30 = max 30 requests per minute)"
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         description: "Scope results to reels authored by this user only (e.g. for a profile's bSparks tab)"
  *     responses:
  *       200:
  *         description: Paginated reels payload
