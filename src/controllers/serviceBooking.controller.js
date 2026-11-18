@@ -55,12 +55,24 @@ const prepareOrderItem = async (req, raw) => {
   const service = await InfluencerService.findOne({ _id: service_id, isDeleted: false, visible_to_customers: true });
   if (!service) fail(404, 'Service not found or unavailable');
 
+  // A date_overrides entry for this exact date takes priority over the
+  // recurring weekly pattern — lets an owner block (or give custom hours
+  // for) one specific date without touching weekly_availability.
+  const dateKey = date.toISOString().slice(0, 10);
+  const override = (service.date_overrides || []).find(
+    (o) => new Date(o.date).toISOString().slice(0, 10) === dateKey
+  );
   const weekday = WEEKDAYS[date.getDay()];
-  const dayAvailability = service.weekly_availability?.[weekday] || [];
+  const dayAvailability = override ? (override.slots || []) : (service.weekly_availability?.[weekday] || []);
   const fitsInAvailability = dayAvailability.some(
     (slot) => time_slot.start >= slot.start && time_slot.end <= slot.end
   );
-  if (!fitsInAvailability) fail(400, `${service.name} is not available on ${weekday} at that time`);
+  if (!fitsInAvailability) {
+    const REASON_LABELS = { unavailable: 'Unavailable', fully_booked: 'Fully Booked', on_leave: 'On Leave', custom: override?.custom_reason };
+    fail(400, override
+      ? `${service.name} is not available on ${dateKey} at that time (${REASON_LABELS[override.reason] || 'Unavailable'})`
+      : `${service.name} is not available on ${weekday} at that time`);
+  }
 
   const dayStart = new Date(date.toDateString());
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);

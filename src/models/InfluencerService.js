@@ -30,6 +30,21 @@ for (const day of WEEKDAYS) {
   weeklyAvailabilitySchema[day] = { type: [timeSlotSchema], default: [] }; // empty = Unavailable
 }
 
+// One-off exception for a specific calendar date — takes priority over
+// weekly_availability for that date only, without touching the recurring
+// weekly schedule. Empty slots = the whole date is blocked; non-empty slots
+// = only these custom hours are bookable that date (replaces, not adds to,
+// whatever weekly_availability would normally say for that weekday).
+const DATE_OVERRIDE_REASONS = ['unavailable', 'fully_booked', 'on_leave', 'custom'];
+
+const dateOverrideSchema = new mongoose.Schema({
+  date:   { type: Date, required: true },
+  slots:  { type: [timeSlotSchema], default: [] },
+  reason: { type: String, enum: DATE_OVERRIDE_REASONS, default: 'unavailable' },
+  // Only meaningful when reason === 'custom' — free text the owner enters.
+  custom_reason: { type: String, default: '', maxlength: 200 },
+}, { _id: false });
+
 const influencerServiceSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
@@ -68,6 +83,7 @@ const influencerServiceSchema = new mongoose.Schema({
   // different services in different areas.
   service_area: { type: [String], validate: v => v.length > 0, required: true },
   weekly_availability: { type: weeklyAvailabilitySchema, default: {} },
+  date_overrides: { type: [dateOverrideSchema], default: [] },
   visible_to_customers: { type: Boolean, default: true },
   status: { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },
 

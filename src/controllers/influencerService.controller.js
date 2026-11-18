@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const InfluencerService = require('../models/InfluencerService');
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DATE_OVERRIDE_REASONS = ['unavailable', 'fully_booked', 'on_leave', 'custom'];
 
 // ─── URL Helper (R2-first, CloudFront fallback) ──────────────────────────────
 const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
@@ -113,6 +114,40 @@ const validateServiceBody = (body) => {
     }
   }
 
+  if (body.date_overrides !== undefined) {
+    if (!Array.isArray(body.date_overrides)) {
+      return 'date_overrides must be an array';
+    }
+    const seenDates = new Set();
+    for (const override of body.date_overrides) {
+      const parsedDate = new Date(override?.date);
+      if (!override?.date || Number.isNaN(parsedDate.getTime())) {
+        return 'Each date_overrides entry requires a valid date';
+      }
+      const dateKey = parsedDate.toISOString().slice(0, 10);
+      if (seenDates.has(dateKey)) {
+        return `date_overrides has more than one entry for ${dateKey}`;
+      }
+      seenDates.add(dateKey);
+
+      if (override.slots !== undefined && !Array.isArray(override.slots)) {
+        return `date_overrides.${dateKey}.slots must be an array of {start, end} slots`;
+      }
+      for (const slot of override.slots || []) {
+        if (!slot.start || !slot.end) {
+          return `date_overrides.${dateKey}.slots require both start and end`;
+        }
+      }
+
+      if (override.reason !== undefined && !DATE_OVERRIDE_REASONS.includes(override.reason)) {
+        return `date_overrides.${dateKey}.reason must be one of ${DATE_OVERRIDE_REASONS.join(', ')}`;
+      }
+      if (override.reason === 'custom' && !String(override.custom_reason || '').trim()) {
+        return `date_overrides.${dateKey} requires custom_reason when reason is custom`;
+      }
+    }
+  }
+
   return null;
 };
 
@@ -156,6 +191,12 @@ const buildServiceData = (body) => {
     service_time: { start: body.service_time.start, end: body.service_time.end },
     service_area: body.service_area.map(String),
     weekly_availability,
+    date_overrides: (body.date_overrides || []).map((o) => ({
+      date: new Date(o.date),
+      slots: (o.slots || []).map((s) => ({ start: s.start, end: s.end })),
+      reason: DATE_OVERRIDE_REASONS.includes(o.reason) ? o.reason : 'unavailable',
+      custom_reason: o.reason === 'custom' ? String(o.custom_reason || '').trim() : '',
+    })),
     visible_to_customers: body.visible_to_customers !== undefined ? !!body.visible_to_customers : true,
     status: ['active', 'inactive', 'draft'].includes(body.status) ? body.status : 'active',
   };
@@ -216,7 +257,7 @@ exports.updateService = async (req, res) => {
     const allowedFields = [
       'images', 'name', 'category', 'provider', 'short_description', 'key_highlights',
       'price', 'rate_type', 'duration', 'has_variants', 'allow_multiple', 'subservices',
-      'service_method', 'service_time', 'service_area', 'weekly_availability', 'visible_to_customers', 'status',
+      'service_method', 'service_time', 'service_area', 'weekly_availability', 'date_overrides', 'visible_to_customers', 'status',
     ];
 
     const merged = { ...service, ...req.body };

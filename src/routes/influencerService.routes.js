@@ -174,6 +174,23 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *                       properties:
  *                         start: { type: string, example: "09:00" }
  *                         end: { type: string, example: "17:00" }
+ *               date_overrides:
+ *                 type: array
+ *                 description: One-off exceptions for specific calendar dates — takes priority over weekly_availability for that date only. Omit or leave slots empty to fully block the date; give slots to allow only those custom hours that date.
+ *                 items:
+ *                   type: object
+ *                   required: [date]
+ *                   properties:
+ *                     date: { type: string, format: date, example: "2026-12-25" }
+ *                     slots:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           start: { type: string, example: "09:00" }
+ *                           end: { type: string, example: "13:00" }
+ *                     reason: { type: string, enum: [unavailable, fully_booked, on_leave, custom], default: unavailable }
+ *                     custom_reason: { type: string, description: "Required when reason is custom", example: "Equipment maintenance" }
  *               visible_to_customers: { type: boolean, default: true }
  *           example:
  *             name: "Home Cleaning"
@@ -198,6 +215,11 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *               friday: [{ start: "09:00", end: "17:00" }]
  *               saturday: []
  *               sunday: []
+ *             date_overrides:
+ *               - date: "2026-12-25"
+ *                 slots: []
+ *               - date: "2026-12-31"
+ *                 slots: [{ start: "09:00", end: "13:00" }]
  *             visible_to_customers: true
  *     responses:
  *       201:
