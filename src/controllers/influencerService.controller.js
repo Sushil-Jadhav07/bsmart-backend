@@ -27,10 +27,17 @@ const transformService = (service, baseUrl) => {
     ? obj.images.map((img) => ({ ...img, fileUrl: resolveMediaUrl(img.fileName, img.fileUrl, baseUrl) }))
     : [];
   obj.subservices = Array.isArray(obj.subservices)
-    ? obj.subservices.map((s) => ({
-      ...s,
-      image: s.image ? { ...s.image, fileUrl: resolveMediaUrl(s.image.fileName, s.image.fileUrl, baseUrl) } : null,
-    }))
+    ? obj.subservices.map((s) => {
+      // Back-compat: services saved before the single `image` field became
+      // the `images` array still have data under the old key.
+      const images = Array.isArray(s.images) && s.images.length
+        ? s.images
+        : (s.image ? [s.image] : []);
+      return {
+        ...s,
+        images: images.map((img) => ({ ...img, fileUrl: resolveMediaUrl(img.fileName, img.fileUrl, baseUrl) })),
+      };
+    })
     : [];
   return obj;
 };
@@ -38,7 +45,7 @@ const transformService = (service, baseUrl) => {
 // ─── Validation helpers ───────────────────────────────────────────────────────
 const REQUIRED_TOP_LEVEL = [
   'name', 'category', 'short_description',
-  'price', 'rate_type', 'duration', 'service_method',
+  'price', 'rate_type', 'service_method',
 ];
 
 const validateServiceBody = (body) => {
@@ -92,6 +99,22 @@ const validateServiceBody = (body) => {
     const names = body.subservices.map((s) => String(s.name || '').trim().toLowerCase()).filter(Boolean);
     if (new Set(names).size !== names.length) {
       return 'Subservice names must be unique';
+    }
+    for (const s of body.subservices) {
+      if (s.description !== undefined && String(s.description).length > 200) {
+        return 'Subservice description must be 200 characters or fewer';
+      }
+      // hours is optional — 0/blank means "not specified", only reject a
+      // genuine negative number.
+      if (s.hours !== undefined && s.hours !== '' && s.hours !== null && Number(s.hours) < 0) {
+        return 'Subservice hours cannot be negative';
+      }
+      if (s.images !== undefined && !Array.isArray(s.images)) {
+        return 'Subservice images must be an array';
+      }
+      for (const img of s.images || []) {
+        if (!img.fileName) return 'Each subservice image must have a fileName';
+      }
     }
   }
 
@@ -170,7 +193,7 @@ const buildServiceData = (body) => {
 
     price: Number(body.price),
     rate_type: body.rate_type,
-    duration: body.duration,
+    duration: body.duration || '',
     has_variants: !!body.has_variants,
     allow_multiple: !!body.allow_multiple,
     // Subservices only mean anything when has_variants is on — force-clear
@@ -180,11 +203,12 @@ const buildServiceData = (body) => {
     // show a second, erroneous pricing picker to customers).
     subservices: !body.has_variants ? [] : (body.subservices || []).map((s) => ({
       name: s.name || '',
-      hours: Number(s.hours) || 0,
+      description: (s.description || '').slice(0, 200),
+      hours: s.hours === '' || s.hours == null ? 0 : Number(s.hours) || 0,
       price: Number(s.price) || 0,
       sqft: Number(s.sqft) || 0,
       allow_multiple: !!s.allow_multiple,
-      image: s.image?.fileName ? { fileName: s.image.fileName, fileUrl: s.image.fileUrl || '' } : null,
+      images: (s.images || []).filter((img) => img?.fileName).map((img) => ({ fileName: img.fileName, fileUrl: img.fileUrl || '' })),
     })),
 
     service_method: body.service_method,

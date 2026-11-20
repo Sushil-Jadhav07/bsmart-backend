@@ -119,7 +119,7 @@ const prepareOrderItem = async (req, raw) => {
   // only uploaded per-subservice photos ends up with a blank image on every
   // booking/order snapshot (and thus in the cart/checkout UI).
   const coverImage = service.images?.[0]
-    || service.subservices?.find((s) => s.image?.fileName)?.image;
+    || service.subservices?.find((s) => s.images?.[0]?.fileName)?.images?.[0];
   const serviceImage = coverImage ? resolveMediaUrl(coverImage.fileName, coverImage.fileUrl, baseUrl) : '';
 
   return {

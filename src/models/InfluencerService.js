@@ -6,16 +6,17 @@ const imageSchema = new mongoose.Schema({
 }, { _id: false });
 
 const subserviceSchema = new mongoose.Schema({
-  name:  { type: String, default: '' },
-  hours: { type: Number, default: 0 },
-  price: { type: Number, default: 0 },
-  sqft:  { type: Number, default: 0 }, // area this variant covers, e.g. "500 sqft" pricing tier
+  name:        { type: String, default: '' },
+  description: { type: String, default: '', maxlength: 200 },
+  hours:       { type: Number, default: 0 },
+  price:       { type: Number, default: 0 },
+  sqft:        { type: Number, default: 0 }, // area this variant covers, e.g. "500 sqft" pricing tier
   // When true, a customer can pick more than one unit of this specific
   // subservice (e.g. 4x Tap repair) — see allow_multiple on the booking's
   // subservice snapshot (ServiceBooking.js / ServiceOrder.js) for how a
   // requested quantity is validated against this flag.
   allow_multiple: { type: Boolean, default: false },
-  image: { type: imageSchema, default: null },
+  images: { type: [imageSchema], default: [] },
 }, { _id: false });
 
 const timeSlotSchema = new mongoose.Schema({
@@ -63,7 +64,7 @@ const influencerServiceSchema = new mongoose.Schema({
   // ── 2. Pricing ──────────────────────────────────────────────────────────────
   price:       { type: Number, required: true, min: 0 },
   rate_type:   { type: String, enum: ['starting_from', 'fixed', 'per_hour', 'per_session'], required: true },
-  duration:    { type: String, required: true }, // e.g. "1 hour", "30 mins" — how long the service takes
+  duration:    { type: String, default: '' }, // e.g. "1 hour", "30 mins" — how long the service takes; optional
   // When true, the Pricing step uses the subservices table (variant-based
   // pricing) instead of the flat price/rate/duration above; when false the
   // flat fields are what customers actually book against.

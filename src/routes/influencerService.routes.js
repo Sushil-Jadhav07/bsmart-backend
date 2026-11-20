@@ -115,7 +115,6 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *               - key_highlights
  *               - price
  *               - rate_type
- *               - duration
  *               - service_method
  *               - service_time
  *               - service_area
@@ -139,7 +138,7 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *                 example: ["All equipment included"]
  *               price: { type: number }
  *               rate_type: { type: string, enum: [starting_from, fixed, per_hour, per_session] }
- *               duration: { type: string, example: "1 hour" }
+ *               duration: { type: string, example: "1 hour", description: "Optional — how long the service takes" }
  *               subservices:
  *                 type: array
  *                 description: Pricing variants for this service — e.g. different area-size tiers
@@ -147,9 +146,18 @@ router.get('/admin/all', auth, requireRole('admin'), adminListAllServices);
  *                   type: object
  *                   properties:
  *                     name: { type: string, example: "Up to 500 sqft" }
- *                     hours: { type: number }
+ *                     description: { type: string, maxLength: 200, description: "Optional" }
+ *                     hours: { type: number, description: "Optional — 0 or omitted means not specified" }
  *                     price: { type: number }
  *                     sqft: { type: number, example: 500, description: "Area this variant covers, in square feet" }
+ *                     images:
+ *                       type: array
+ *                       description: Optional, multiple allowed
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           fileName: { type: string }
+ *                           fileUrl: { type: string }
  *               service_method: { type: string, enum: [at_customer_location, online, at_my_location] }
  *               service_time:
  *                 type: object
