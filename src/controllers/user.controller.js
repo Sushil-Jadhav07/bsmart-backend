@@ -322,7 +322,9 @@ exports.getUserPostsDetails = async (req, res) => {
     const [postsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
       privacyPD.posts
         ? Post.find({ user_id: userId, isDeleted: { $ne: true } })
-            .sort({ createdAt: -1 })
+            // Pinned posts first (most recently pinned first among those);
+            // unpinned posts (pinned_at: null) sort after, newest first.
+            .sort({ pinned_at: -1, createdAt: -1 })
             .populate('user_id', 'username full_name avatar_url followers_count following_count gender location')
         : [],
       privacyPD.pulse
@@ -401,12 +403,12 @@ exports.getUserProfileContent = async (req, res) => {
     const [postsRaw, reelsRaw, promoteReelsRaw, tweetsRaw] = await Promise.all([
       privacy.posts
         ? Post.find({ user_id: userId, type: 'post', isDeleted: { $ne: true } })
-            .sort({ createdAt: -1 }).limit(limit)
+            .sort({ pinned_at: -1, createdAt: -1 }).limit(limit)
             .populate('user_id', 'username full_name avatar_url')
         : [],
       privacy.pulse
         ? Post.find({ user_id: userId, type: 'reel', isDeleted: { $ne: true } })
-            .sort({ createdAt: -1 }).limit(limit)
+            .sort({ pinned_at: -1, createdAt: -1 }).limit(limit)
             .populate('user_id', 'username full_name avatar_url')
         : [],
       privacy.pulse
@@ -421,8 +423,10 @@ exports.getUserProfileContent = async (req, res) => {
         : [],
     ]);
 
-    const posts = postsRaw.map((p) => withMediaUrls(p, baseUrl));
-    const reels = reelsRaw.map((r) => withMediaUrls(r, baseUrl));
+    // withMediaUrls is shared across content types that don't all have
+    // pinned_at (PromoteReel/Tweet) — add is_pinned only for posts/reels.
+    const posts = postsRaw.map((p) => ({ ...withMediaUrls(p, baseUrl), is_pinned: !!p.pinned_at }));
+    const reels = reelsRaw.map((r) => ({ ...withMediaUrls(r, baseUrl), is_pinned: !!r.pinned_at }));
     const promoteReels = promoteReelsRaw.map((pr) => withMediaUrls(pr, baseUrl));
     const tweets = tweetsRaw.map((t) => withMediaUrls(t, baseUrl));
 

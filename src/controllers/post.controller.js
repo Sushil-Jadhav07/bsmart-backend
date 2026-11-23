@@ -102,6 +102,8 @@ const transformPost = (post, baseUrl, currentUserId = null, savedSet = null) => 
     ? savedSet.has(postObj._id.toString())
     : false;
 
+  postObj.is_pinned = !!postObj.pinned_at;
+
   const explicitCommentCount =
     postObj.commentsCount  ??
     postObj.comments_count ??
@@ -1001,6 +1003,19 @@ exports.setPostPinned = async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post not found' });
     if (post.user_id.toString() !== req.userId.toString()) {
       return res.status(403).json({ message: 'Not authorized to pin this post' });
+    }
+    if (pinned && !post.pinned_at) {
+      // Moments (the only place a pin actually shows) is image-only — reject
+      // pinning a post that carries video media, rather than silently
+      // "succeeding" into a pin that never appears anywhere.
+      const hasVideo = (post.media || []).some((m) => m?.type === 'video' || m?.media_type === 'video');
+      if (hasVideo) {
+        return res.status(400).json({ message: 'Only image posts can be pinned to Moments' });
+      }
+      const pinnedCount = await Post.countDocuments({ user_id: req.userId, type: 'post', pinned_at: { $ne: null } });
+      if (pinnedCount >= 3) {
+        return res.status(400).json({ message: 'You can only pin up to 3 posts — unpin one first' });
+      }
     }
     post.pinned_at = pinned ? new Date() : null;
     await post.save();
