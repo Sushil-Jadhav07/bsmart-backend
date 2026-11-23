@@ -992,6 +992,29 @@ exports.updatePostMetadata = async (req, res) => {
   }
 };
 
+// Pin/unpin a post to the top of the owner's Moments tab. Scoped to
+// type: 'post' only — reels/ads/tweets have their own feeds and don't use this.
+exports.setPostPinned = async (req, res) => {
+  try {
+    const pinned = req.path.endsWith('/unpin') ? false : true;
+    const post = await Post.findOne({ _id: req.params.id, type: 'post' });
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to pin this post' });
+    }
+    post.pinned_at = pinned ? new Date() : null;
+    await post.save();
+    const populatedPost = await Post.findById(post._id)
+      .populate('user_id', 'username full_name avatar_url followers_count following_count gender location');
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    return res.json(transformPost(populatedPost, baseUrl, req.userId));
+  } catch (error) {
+    console.error('[Post] setPostPinned error:', error);
+    if (error.kind === 'ObjectId') return res.status(404).json({ message: 'Post not found' });
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 exports.updateReelMetadata = async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, type: 'reel' });

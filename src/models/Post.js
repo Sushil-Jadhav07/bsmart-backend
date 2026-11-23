@@ -181,6 +181,12 @@ const postSchema = new mongoose.Schema({
   },
   deletedAt: {
     type: Date
+  },
+  // Set when the owner pins this post to the top of their Moments tab —
+  // null means not pinned. Only meaningful for type: 'post'.
+  pinned_at: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true

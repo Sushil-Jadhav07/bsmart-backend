@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
 const { dynamicRateLimit } = require('../middleware/rateLimit');
-const { createPost, getFeed, getFeedGuest, getPost, deletePost, createReel, listReels, listReelsGuest, getMixedReelsFeed, getReelById, updatePostMetadata, updateReelMetadata } = require('../controllers/post.controller');
+const { createPost, getFeed, getFeedGuest, getPost, deletePost, createReel, listReels, listReelsGuest, getMixedReelsFeed, getReelById, updatePostMetadata, updateReelMetadata, setPostPinned } = require('../controllers/post.controller');
 const { likePost, unlikePost, getPostLikes } = require('../controllers/like.controller');
 const { savePost, unsavePost, listMySavedPosts, savePromoteReel, unsavePromoteReel, saveAd, unsaveAd, getSavedItems } = require('../controllers/saved.controller');
 const { getPostStats } = require('../controllers/poststats.controller');
@@ -715,6 +715,46 @@ router.get('/:id/stats', verifyToken, getPostStats);
  *         description: Post not found
  */
 router.patch('/:id/metadata', verifyToken, updatePostMetadata);
+
+/**
+ * @swagger
+ * /api/posts/{id}/pin:
+ *   patch:
+ *     summary: Pin a post to the top of the owner's Moments tab
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Updated post }
+ *       403: { description: Not the post owner }
+ *       404: { description: Post not found }
+ */
+router.patch('/:id/pin', verifyToken, setPostPinned);
+
+/**
+ * @swagger
+ * /api/posts/{id}/unpin:
+ *   patch:
+ *     summary: Unpin a post from the owner's Moments tab
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Updated post }
+ *       403: { description: Not the post owner }
+ *       404: { description: Post not found }
+ */
+router.patch('/:id/unpin', verifyToken, setPostPinned);
 
 router.get('/:id', verifyToken, getPost);
 
