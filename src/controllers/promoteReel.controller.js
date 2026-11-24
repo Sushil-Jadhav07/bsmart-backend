@@ -1,3 +1,4 @@
+const mongoose          = require('mongoose');
 const PromoteReel       = require('../models/PromoteReel');
 const Comment           = require('../models/Comment');
 const User              = require('../models/User');
@@ -412,6 +413,95 @@ exports.deletePromoteReel = async (req, res) => {
     if (error.kind === 'ObjectId') {
       return res.status(404).json({ message: 'Promote reel not found' });
     }
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Insights for one promoted reel — likes by gender/age (same pattern
+//          as post insights, since `likes` is a plain User-ref array), comment
+//          totals + recent, and the lifetime view counters. There's no
+//          per-viewer view log for promote reels (no PromoteReelView model,
+//          unlike posts' PostView), so — unlike post insights — there is no
+//          views-by-location/age breakdown here, only the aggregate counts.
+// @route   GET /api/promote-reels/:id/stats
+// @access  Private (owner only)
+exports.getPromoteReelStats = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid promote reel ID' });
+    }
+
+    const doc = await PromoteReel.findOne({ _id: id, isDeleted: false }).lean();
+    if (!doc) return res.status(404).json({ message: 'Promote reel not found' });
+    if (doc.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to view this promote reel’s insights' });
+    }
+
+    const likedUserIds = doc.likes || [];
+    const likedUsers = await User.find(
+      { _id: { $in: likedUserIds } },
+      { _id: 1, gender: 1, age: 1 }
+    ).lean();
+
+    const getAgeGroup = (age) => {
+      if (age === undefined || age === null || age === '') return 'Unknown';
+      const a = Number(age);
+      if (isNaN(a)) return 'Unknown';
+      if (a <= 12) return 'Child (0–12 years)';
+      if (a <= 19) return 'Teen (13–19 years)';
+      if (a <= 39) return 'Adult (20–39 years)';
+      if (a <= 59) return 'Middle Age (40–59 years)';
+      return 'Senior (60+ years)';
+    };
+
+    const genderBuckets = { male: 0, female: 0, other: 0, unknown: 0 };
+    const ageBuckets = {
+      'Child (0–12 years)': 0,
+      'Teen (13–19 years)': 0,
+      'Adult (20–39 years)': 0,
+      'Middle Age (40–59 years)': 0,
+      'Senior (60+ years)': 0,
+      Unknown: 0,
+    };
+    for (const u of likedUsers) {
+      const g = (u.gender || '').toLowerCase();
+      if (g === 'male') genderBuckets.male++;
+      else if (g === 'female') genderBuckets.female++;
+      else if (g) genderBuckets.other++;
+      else genderBuckets.unknown++;
+      ageBuckets[getAgeGroup(u.age)]++;
+    }
+
+    const [totalComments, recentComments] = await Promise.all([
+      Comment.countDocuments({ post_id: id }),
+      Comment.find({ post_id: id, parent_id: null }, { text: 1, 'user.username': 1, createdAt: 1 })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+    ]);
+
+    return res.json({
+      promote_reel_id: doc._id,
+      caption: doc.caption,
+      created_at: doc.createdAt,
+      likes: {
+        total: likedUserIds.length,
+        by_gender: genderBuckets,
+        by_age: ageBuckets,
+      },
+      comments: {
+        total: totalComments,
+        recent: recentComments,
+      },
+      views: {
+        total: doc.views_count || 0,
+        unique: doc.unique_views_count || 0,
+        completed: doc.completed_views_count || 0,
+      },
+    });
+  } catch (error) {
+    console.error('[PromoteReel] getPromoteReelStats error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

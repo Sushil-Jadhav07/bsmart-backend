@@ -20,6 +20,7 @@ const {
   getPromoteReelById,
   updatePromoteReel,
   deletePromoteReel,
+  getPromoteReelStats,
   likePromoteReel,
   unlikePromoteReel,
   getPromoteReelLikes,
@@ -307,6 +308,26 @@ router.patch('/:id', verifyToken, updatePromoteReel);
  *         description: Promote reel not found
  */
 router.delete('/:id', verifyToken, deletePromoteReel);
+
+/**
+ * @swagger
+ * /api/promote-reels/{id}/stats:
+ *   get:
+ *     summary: Get insights for one promoted reel (owner only)
+ *     tags: [PromoteReels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Promote reel insights }
+ *       403: { description: Not authorized }
+ *       404: { description: Promote reel not found }
+ */
+router.get('/:id/stats', verifyToken, getPromoteReelStats);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LIKE / UNLIKE

@@ -38,6 +38,15 @@ const postViewSchema = new mongoose.Schema({
   },
   watchTimeMs: {
     type: Number
+  },
+  // Max fraction (0-1) of the video this viewer has watched — lets a real
+  // retention curve be built (what % of viewers got at least N% through),
+  // instead of just the binary `completed` flag.
+  watch_fraction: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 1
   }
 }, {
   timestamps: true

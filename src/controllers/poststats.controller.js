@@ -4,6 +4,39 @@ const PostView = require('../models/PostView');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 
+// ─── URL Helper (copied from post.controller.js's resolveMediaUrl, same
+// R2/CloudFront precedence rules — kept local per this codebase's convention
+// of per-controller copies rather than a shared import) ────────────────────
+const resolveMediaUrl = (fileName, fileUrl, baseUrl) => {
+  const cloudfront = (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL)
+    ? (process.env.R2_PUBLIC_BASE_URL || process.env.CLOUDFRONT_BASE_URL).replace(/\/+$/, '')
+    : null;
+
+  if (fileUrl && fileUrl.startsWith('http')) {
+    if (cloudfront && fileUrl.includes('api.bebsmart.in/uploads/')) {
+      return fileUrl.replace(/https?:\/\/api\.bebsmart\.in\/uploads\//, `${cloudfront}/uploads/`);
+    }
+    return fileUrl;
+  }
+
+  if (fileName) {
+    if (fileName.startsWith('uploads/') || fileName.startsWith('/uploads/')) {
+      const key = fileName.replace(/^\/+/, '');
+      if (cloudfront) return `${cloudfront}/${key}`;
+      return `${baseUrl}/${key}`;
+    }
+    if (cloudfront) return `${cloudfront}/uploads/${fileName}`;
+    return `${baseUrl}/uploads/${fileName}`;
+  }
+
+  if (fileUrl) {
+    if (fileUrl.startsWith('/')) return `${baseUrl}${fileUrl}`;
+    return `${baseUrl}/${fileUrl}`;
+  }
+
+  return '';
+};
+
 /**
  * GET /api/posts/:id/stats
  *
@@ -27,6 +60,11 @@ exports.getPostStats = async (req, res) => {
     const post = await Post.findById(id).lean();
     if (!post || post.isDeleted) {
       return res.status(404).json({ message: 'Post not found' });
+    }
+    // Insights (who liked/viewed, their age/gender/location) are private to
+    // the post's own author — this previously had no ownership check at all.
+    if (post.user_id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ message: 'Not authorized to view this post’s insights' });
     }
 
     // ── 2. Likes — populate users who liked, group by gender ─────────────
@@ -223,12 +261,65 @@ exports.getPostStats = async (req, res) => {
       viewsByAge[item._id] = item.count;
     });
 
+    // ── 5b. Retention curve — only meaningful for reels (PostView only
+    // tracks reel views). Each viewer's watch_fraction is the max point they
+    // reached; retained_pct at each decile = % of viewers who got at least
+    // that far — a real, honest curve, not fabricated.
+    const deciles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+    const toCurve = (fractions) => {
+      const total = fractions.length;
+      return deciles.map((d) => ({
+        percent: Math.round(d * 100),
+        retained_pct: total
+          ? Math.round((fractions.filter((f) => (f.watch_fraction || 0) >= d).length / total) * 100)
+          : 0,
+      }));
+    };
+
+    let retentionCurve = [];
+    let platformAvgRetentionCurve = [];
+    if (post.type === 'reel') {
+      const fractions = await PostView.find({ post_id: id }, { watch_fraction: 1 }).lean();
+      retentionCurve = toCurve(fractions);
+
+      // Platform-wide baseline — a real average across other reels' viewers
+      // (sampled, not every view ever, to keep this one request cheap), so
+      // "your reel vs. the platform" is an honest comparison, never invented.
+      const platformFractions = await PostView.aggregate([
+        { $lookup: { from: 'posts', localField: 'post_id', foreignField: '_id', as: 'post' } },
+        { $unwind: '$post' },
+        { $match: { 'post.type': 'reel', post_id: { $ne: new mongoose.Types.ObjectId(id) } } },
+        { $project: { watch_fraction: 1 } },
+        { $sample: { size: 5000 } },
+      ]);
+      if (platformFractions.length) {
+        platformAvgRetentionCurve = toCurve(platformFractions);
+      }
+    }
+
+    // ── 5c. Thumbnail — reuse the same R2/CloudFront resolution the main
+    // feed uses, so the insights page can show the actual content next to
+    // its stats instead of a blank header.
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const firstMedia = Array.isArray(post.media) ? post.media[0] : null;
+    let thumbnailUrl = '';
+    if (firstMedia) {
+      if (firstMedia.thumbnail && firstMedia.thumbnail.fileName) {
+        thumbnailUrl = resolveMediaUrl(firstMedia.thumbnail.fileName, null, baseUrl);
+      } else if (Array.isArray(firstMedia.thumbnails) && firstMedia.thumbnails[0]?.fileName) {
+        thumbnailUrl = resolveMediaUrl(firstMedia.thumbnails[0].fileName, null, baseUrl);
+      } else {
+        thumbnailUrl = resolveMediaUrl(firstMedia.fileName, firstMedia.fileUrl, baseUrl);
+      }
+    }
+
     // ── 6. Build final response ───────────────────────────────────────────
     res.json({
       post_id: post._id,
       caption: post.caption,
       type: post.type,
       created_at: post.createdAt,
+      thumbnail_url: thumbnailUrl,
 
       likes: {
         total: likedUserIds.length,
@@ -257,6 +348,13 @@ exports.getPostStats = async (req, res) => {
         by_location: viewsWithLocation,
         by_age: viewsByAge,
       },
+
+      // Empty array for non-reel posts — there's no per-viewer watch-progress
+      // tracking for images, so no curve can honestly be drawn for them.
+      retention_curve: retentionCurve,
+      // Empty when there isn't yet a meaningful platform sample — never
+      // filled with a guessed number.
+      platform_avg_retention_curve: platformAvgRetentionCurve,
     });
   } catch (error) {
     console.error('[PostStats]', error);

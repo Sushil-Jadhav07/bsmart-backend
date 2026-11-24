@@ -34,6 +34,39 @@ exports.addView = async (req, res) => {
   }
 };
 
+// Periodic "how far through the video did this viewer get" ping — used to
+// build a real retention curve (poststats.controller.js), distinct from the
+// binary `completed` flag. Keeps only the MAX fraction seen per viewer, so
+// repeated calls (e.g. a re-watch, or a looping player) never count backward.
+exports.pingProgress = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { postId, fraction } = req.body;
+    if (!postId) return res.status(400).json({ message: 'postId is required' });
+    const f = Number(fraction);
+    if (!Number.isFinite(f) || f < 0 || f > 1) {
+      return res.status(400).json({ message: 'fraction must be a number between 0 and 1' });
+    }
+
+    const post = await Post.findById(postId).select('type');
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (post.type !== 'reel') return res.status(400).json({ message: 'Only reels support views' });
+
+    const pv = await PostView.findOne({ post_id: postId, user_id: userId });
+    if (!pv) {
+      await PostView.create({ post_id: postId, user_id: userId, type: 'reel', view_count: 1, watch_fraction: f });
+      await Post.findByIdAndUpdate(postId, { $inc: { unique_views_count: 1, views_count: 1 } });
+    } else if (f > (pv.watch_fraction || 0)) {
+      pv.watch_fraction = f;
+      await pv.save();
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.completeView = async (req, res) => {
   try {
     const userId = req.userId;
@@ -54,6 +87,7 @@ exports.completeView = async (req, res) => {
     if (!pv.completed) {
       pv.completed = true;
       pv.completed_at = new Date();
+      pv.watch_fraction = 1;
       if (typeof watchTimeMs === 'number') pv.watchTimeMs = watchTimeMs;
       completedChanged = true;
       await pv.save();

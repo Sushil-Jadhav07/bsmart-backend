@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middleware/auth');
-const { addView, completeView } = require('../controllers/view.controller');
+const { addView, completeView, pingProgress } = require('../controllers/view.controller');
 
 /**
  * @swagger
@@ -86,5 +86,30 @@ router.post('/', verifyToken, addView);
  *         description: Not authorized
  */
 router.post('/complete', verifyToken, completeView);
+
+/**
+ * @swagger
+ * /api/views/progress:
+ *   post:
+ *     summary: Report how far through a reel this viewer has watched (for retention curve)
+ *     tags: [Views]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [postId, fraction]
+ *             properties:
+ *               postId: { type: string }
+ *               fraction: { type: number, minimum: 0, maximum: 1 }
+ *     responses:
+ *       200: { description: Progress recorded }
+ *       400: { description: Invalid postId/fraction/type }
+ *       401: { description: Not authorized }
+ */
+router.post('/progress', verifyToken, pingProgress);
 
 module.exports = router;

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, suspendInfluencer, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, getUserInsights, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, suspendInfluencer, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -413,6 +413,7 @@ router.get('/tag-list', auth, listTagCandidates);
  *         description: Server error
  */
 router.get('/:id/profile-content', optionalAuth, getUserProfileContent);
+router.get('/:id/insights', auth, getUserInsights);
 
 /**
  * @swagger

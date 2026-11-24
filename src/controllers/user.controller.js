@@ -7,6 +7,7 @@ const Tweet = require('../models/tweet.model');
 const InfluencerProduct = require('../models/InfluencerProduct');
 const InfluencerService = require('../models/InfluencerService');
 const Follow = require('../models/Follow');
+const PostView = require('../models/PostView');
 const mongoose = require('mongoose');
 const { checkSections } = require('../utils/privacyGuard');
 
@@ -451,6 +452,149 @@ exports.getUserProfileContent = async (req, res) => {
     });
   } catch (error) {
     console.error('[User] getUserProfileContent error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Aggregate insights for one user's own account — totals across
+//          their posts, top-performing posts, and daily follower growth.
+// @route   GET /api/users/:id/insights
+// @access  Private (owner only)
+exports.getUserInsights = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid user id' });
+    }
+    // Account-wide insights are private to the owner, same as per-post insights.
+    if (!req.userId || String(req.userId) !== String(userId)) {
+      return res.status(403).json({ message: 'Not authorized to view this account’s insights' });
+    }
+
+    const owner = await User.findById(userId).select('followers_count following_count').lean();
+    if (!owner) return res.status(404).json({ message: 'User not found' });
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const posts = await Post.find({ user_id: userId, isDeleted: { $ne: true } })
+      .select('type caption media likes_count comments_count views_count createdAt')
+      .lean();
+
+    const totals = posts.reduce((acc, p) => {
+      acc.posts += 1;
+      acc.views += p.views_count || 0;
+      acc.likes += p.likes_count || 0;
+      acc.comments += p.comments_count || 0;
+      return acc;
+    }, { posts: 0, views: 0, likes: 0, comments: 0 });
+
+    const topPosts = [...posts]
+      .sort((a, b) => (b.views_count || 0) - (a.views_count || 0))
+      .slice(0, 5)
+      .map((p) => withMediaUrls(p, baseUrl));
+
+    // Fuller content list for a library-style table — most recent first,
+    // capped at 20 so the payload stays bounded for a very active account.
+    const recentContent = [...posts]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 20)
+      .map((p) => withMediaUrls(p, baseUrl));
+
+    // Follower growth — last 30 days, daily buckets, built from real Follow
+    // event timestamps (genuine time series, not a fabricated trend). Note:
+    // an unfollow deletes its row, so a day's "new followers" count here
+    // can't retroactively reflect someone who later unfollowed.
+    const since = new Date();
+    since.setDate(since.getDate() - 29);
+    since.setHours(0, 0, 0, 0);
+    const followEvents = await Follow.aggregate([
+      { $match: { followed_id: new mongoose.Types.ObjectId(userId), createdAt: { $gte: since } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+    ]);
+    const countsByDay = Object.fromEntries(followEvents.map((e) => [e._id, e.count]));
+    const followerGrowth = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(since);
+      d.setDate(d.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      followerGrowth.push({ date: key, new_followers: countsByDay[key] || 0 });
+    }
+
+    // Reel-viewer reach, posting-time heatmap, and top territories — all
+    // built from PostView, which only exists for reels (no per-viewer log
+    // exists for image posts), so these three are honestly scoped to "reel
+    // viewers", not the whole content library.
+    const ownedReelIds = posts.filter((p) => p.type === 'reel').map((p) => p._id);
+    const reelViews = ownedReelIds.length
+      ? await PostView.aggregate([
+        { $match: { post_id: { $in: ownedReelIds } } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user_id',
+            foreignField: '_id',
+            as: 'viewer',
+          },
+        },
+        { $unwind: { path: '$viewer', preserveNullAndEmptyArrays: true } },
+        { $project: { user_id: 1, createdAt: 1, location: { $ifNull: ['$viewer.location', 'Unknown'] } } },
+      ])
+      : [];
+
+    // Posting-time heatmap — 7 days x 24 hours, in IST (fixed +5:30 offset;
+    // this app's user base is India-centric, matching every other IST
+    // reference already in this codebase).
+    const heatmap = Array.from({ length: 7 }, () => Array(24).fill(0));
+    for (const v of reelViews) {
+      const istMs = new Date(v.createdAt).getTime() + 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(istMs);
+      heatmap[istDate.getUTCDay()][istDate.getUTCHours()] += 1;
+    }
+
+    // Reach — unique reel viewers, split into followers vs non-followers of
+    // the account at the time of this request (not a historical snapshot).
+    const distinctViewerIds = [...new Set(reelViews.map((v) => String(v.user_id)))];
+    const followerIdsAmongViewers = distinctViewerIds.length
+      ? await Follow.find(
+        { followed_id: userId, follower_id: { $in: distinctViewerIds } },
+        { follower_id: 1 }
+      ).lean()
+      : [];
+    const followerViewerCount = followerIdsAmongViewers.length;
+    const reach = {
+      total: distinctViewerIds.length,
+      followers: followerViewerCount,
+      non_followers: distinctViewerIds.length - followerViewerCount,
+    };
+
+    // Top territories — by unique reel viewer, not raw view count.
+    const locationToViewers = new Map();
+    for (const v of reelViews) {
+      const loc = v.location || 'Unknown';
+      if (!locationToViewers.has(loc)) locationToViewers.set(loc, new Set());
+      locationToViewers.get(loc).add(String(v.user_id));
+    }
+    const topTerritories = [...locationToViewers.entries()]
+      .map(([location, viewerSet]) => ({ location, viewers: viewerSet.size }))
+      .sort((a, b) => b.viewers - a.viewers)
+      .slice(0, 5);
+
+    return res.json({
+      totals: {
+        ...totals,
+        followers: owner.followers_count || 0,
+        following: owner.following_count || 0,
+      },
+      top_posts: topPosts,
+      recent_content: recentContent,
+      total_content_count: posts.length,
+      follower_growth: followerGrowth,
+      reel_viewer_reach: reach,
+      top_territories: topTerritories,
+      posting_time_heatmap: heatmap, // [dayOfWeek 0-6 (Sun-Sat)][hourOfDay 0-23] = view count, IST
+    });
+  } catch (error) {
+    console.error('[User] getUserInsights error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
