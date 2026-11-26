@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, getUserInsights, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, suspendInfluencer, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
+const { getAllUsers, getUserById, getUserByUsername, updateUser, deleteUser, getUserPostsDetails, getUserProfileContent, getUserInsights, getUserContentPerformance, listUsersProfiles, listTagCandidates, updateUserStatus, updateUserRole, updateStoreProfile, getStoreProfile, suspendInfluencer, getUserInterests, updateUserInterests, adminPatchUser, checkEmail, checkUsername, checkPhone, getMe, updateLocation } = require('../controllers/user.controller');
 const { getSavedPostsByUser } = require('../controllers/saved.controller');
 const { getFollowers, getFollowing } = require('../controllers/follow.controller');
 const {
@@ -414,6 +414,29 @@ router.get('/tag-list', auth, listTagCandidates);
  */
 router.get('/:id/profile-content', optionalAuth, getUserProfileContent);
 router.get('/:id/insights', auth, getUserInsights);
+
+/**
+ * @swagger
+ * /api/users/{id}/content-performance:
+ *   get:
+ *     summary: Content-performance summary (plays, watch time, engagement rate) for posts/reels/promote reels/stories in a date window, with a prior-period comparison
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: days
+ *         schema: { type: integer, default: 28 }
+ *         description: Window size in days (7-90)
+ *     responses:
+ *       200: { description: Current and previous period breakdowns, by content type }
+ *       403: { description: Not authorized }
+ */
+router.get('/:id/content-performance', auth, getUserContentPerformance);
 
 /**
  * @swagger

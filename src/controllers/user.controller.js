@@ -8,6 +8,9 @@ const InfluencerProduct = require('../models/InfluencerProduct');
 const InfluencerService = require('../models/InfluencerService');
 const Follow = require('../models/Follow');
 const PostView = require('../models/PostView');
+const SavedPost = require('../models/SavedPost');
+const StoryItem = require('../models/StoryItem');
+const StoryView = require('../models/StoryView');
 const mongoose = require('mongoose');
 const { checkSections } = require('../utils/privacyGuard');
 
@@ -595,6 +598,115 @@ exports.getUserInsights = async (req, res) => {
     });
   } catch (error) {
     console.error('[User] getUserInsights error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Content-performance summary across posts/reels/promote reels/
+//          stories published in a date window, with a same-length prior
+//          window for comparison. All numbers are the real counters already
+//          stored on each document (or, for watch time and story views,
+//          aggregated from the per-view PostView/StoryView logs) — scoped by
+//          each item's publish date, since that's the only timestamp this
+//          app tracks consistently across content types.
+// @route   GET /api/users/:id/content-performance?days=28
+exports.getUserContentPerformance = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid user id' });
+    }
+    if (!req.userId || String(req.userId) !== String(userId)) {
+      return res.status(403).json({ message: 'Not authorized to view this account’s insights' });
+    }
+
+    const days = Math.min(90, Math.max(7, parseInt(req.query.days, 10) || 28));
+    const periodEnd = new Date();
+    const periodStart = new Date(periodEnd); periodStart.setDate(periodStart.getDate() - days);
+    const prevEnd = periodStart;
+    const prevStart = new Date(periodStart); prevStart.setDate(prevStart.getDate() - days);
+
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const sumField = (list, field) => list.reduce((sum, item) => sum + (item[field] || 0), 0);
+    const buildBucket = (plays, likes, comments, saves, watchTimeMs, contentCount) => ({
+      content_count: contentCount,
+      plays,
+      watch_time_ms: watchTimeMs,
+      likes,
+      comments,
+      saves,
+      engagement_rate: plays > 0 ? Math.round(((likes + comments + saves) / plays) * 1000) / 10 : 0,
+    });
+
+    const computeWindow = async (from, to) => {
+      const [posts, promoteReels, storyItems] = await Promise.all([
+        Post.find({ user_id: userObjectId, isDeleted: { $ne: true }, createdAt: { $gte: from, $lt: to } })
+          .select('type likes_count comments_count views_count').lean(),
+        PromoteReel.find({ user_id: userObjectId, isDeleted: { $ne: true }, createdAt: { $gte: from, $lt: to } })
+          .select('likes_count comments_count views_count').lean(),
+        StoryItem.find({ user_id: userObjectId, isDeleted: { $ne: true }, createdAt: { $gte: from, $lt: to } })
+          .select('likes_count').lean(),
+      ]);
+
+      const reelPosts  = posts.filter((p) => p.type === 'reel');
+      const photoPosts = posts.filter((p) => p.type !== 'reel');
+      const reelIds       = reelPosts.map((p) => p._id);
+      const photoIds      = photoPosts.map((p) => p._id);
+      const storyItemIds  = storyItems.map((s) => s._id);
+
+      const [reelWatch, reelSaves, photoSaves, storyViewCount] = await Promise.all([
+        reelIds.length
+          ? PostView.aggregate([
+              { $match: { post_id: { $in: reelIds } } },
+              { $group: { _id: null, total: { $sum: { $ifNull: ['$watchTimeMs', 0] } } } },
+            ])
+          : [],
+        reelIds.length ? SavedPost.countDocuments({ post_id: { $in: reelIds } }) : 0,
+        photoIds.length ? SavedPost.countDocuments({ post_id: { $in: photoIds } }) : 0,
+        storyItemIds.length ? StoryView.countDocuments({ story_item_id: { $in: storyItemIds } }) : 0,
+      ]);
+      const reelWatchTimeMs = reelWatch[0]?.total || 0;
+
+      const reel = buildBucket(
+        sumField(reelPosts, 'views_count'), sumField(reelPosts, 'likes_count'), sumField(reelPosts, 'comments_count'),
+        reelSaves, reelWatchTimeMs, reelPosts.length,
+      );
+      const post = buildBucket(
+        sumField(photoPosts, 'views_count'), sumField(photoPosts, 'likes_count'), sumField(photoPosts, 'comments_count'),
+        photoSaves, 0, photoPosts.length,
+      );
+      // Promote reels (sponsored/product-tagged reels) fold into the "all
+      // content" total — they keep their own cumulative counters since
+      // there's no per-view watch-time log for them yet.
+      const promotePlays    = sumField(promoteReels, 'views_count');
+      const promoteLikes    = sumField(promoteReels, 'likes_count');
+      const promoteComments = sumField(promoteReels, 'comments_count');
+      const story = buildBucket(storyViewCount, sumField(storyItems, 'likes_count'), 0, 0, 0, storyItems.length);
+      const all = buildBucket(
+        reel.plays + post.plays + promotePlays,
+        reel.likes + post.likes + promoteLikes,
+        reel.comments + post.comments + promoteComments,
+        reel.saves + post.saves,
+        reel.watch_time_ms,
+        reel.content_count + post.content_count + promoteReels.length,
+      );
+
+      return { all, reel, post, story };
+    };
+
+    const [current, previous] = await Promise.all([
+      computeWindow(periodStart, periodEnd),
+      computeWindow(prevStart, prevEnd),
+    ]);
+
+    return res.json({
+      period: { days, from: periodStart.toISOString(), to: periodEnd.toISOString() },
+      previous_period: { from: prevStart.toISOString(), to: prevEnd.toISOString() },
+      current,
+      previous,
+    });
+  } catch (error) {
+    console.error('[User] getUserContentPerformance error:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
