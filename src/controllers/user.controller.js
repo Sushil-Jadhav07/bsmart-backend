@@ -540,7 +540,9 @@ exports.getUserInsights = async (req, res) => {
           },
         },
         { $unwind: { path: '$viewer', preserveNullAndEmptyArrays: true } },
-        { $project: { user_id: 1, createdAt: 1, location: { $ifNull: ['$viewer.location', 'Unknown'] } } },
+        // User.location is a {name, lat, lng} object, not a plain string —
+        // project the place name, never the raw object.
+        { $project: { user_id: 1, createdAt: 1, location: { $cond: [{ $in: ['$viewer.location.name', [null, '']] }, 'Unknown', '$viewer.location.name'] } } },
       ])
       : [];
 

@@ -194,7 +194,9 @@ exports.getPostStats = async (req, res) => {
           byLocation: [
             {
               $group: {
-                _id: { $ifNull: ['$user.location', 'Unknown'] },
+                // User.location is a {name, lat, lng} object, not a plain
+                // string — group by the place name, never the raw object.
+                _id: { $cond: [{ $in: ['$user.location.name', [null, '']] }, 'Unknown', '$user.location.name'] },
                 views: { $sum: '$view_count' },
                 unique_viewers: { $addToSet: '$user_id' },
                 completed_views: {

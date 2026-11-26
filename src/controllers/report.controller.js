@@ -815,7 +815,9 @@ exports.getGeographicReport = async (req, res) => {
           viewer_country: {
             $ifNull: [
               '$viewer.address.country',
-              { $ifNull: ['$viewer.location', 'Unknown'] },
+              // User.location is a {name, lat, lng} object, not a plain
+              // string — fall back to the place name, never the raw object.
+              { $cond: [{ $in: ['$viewer.location.name', [null, '']] }, 'Unknown', '$viewer.location.name'] },
             ],
           },
           viewer_gender: { $toLower: { $ifNull: ['$viewer.gender', ''] } },
